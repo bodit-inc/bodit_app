@@ -1,0 +1,56 @@
+# bodit_app — 사내 매입내역 자동완성 앱 (Flutter)
+
+증빙(영수증·카드 앱 캡처)을 올리면 OCR 과 과거 이력으로 매입내역 폼을 프리필하고,
+확인·제출하면 증빙은 G-Drive 에, 폼 내용은 Google Sheets 에 적재한다.
+
+## 지식은 여기에 없다
+
+**설계·결정·스키마의 단일 원천은 개인 LLM wiki 다.** 이 repo 는 코드만 갖는다.
+문서를 이쪽으로 복제하지 말고 링크한다 — 복제하면 두 벌이 갈라진다.
+
+| 무엇 | 어디 |
+|---|---|
+| 구조 결정(ADR) | `~/llm-wiki-template/wiki/decisions/2026-09-bodit-app-sheets-as-source.md` |
+| 프로젝트 허브 | `~/llm-wiki-template/wiki/projects/bodit-app/overview.md` |
+| **시트 컬럼 계약** | `~/llm-wiki-template/wiki/projects/bodit-app/sheet-schema.md` |
+| 태스크 | `~/llm-wiki-template/wiki/tasks/board.md` |
+
+작업이 끝나면 위키에서 `/repo-ingest` 로 끌어가 지식화한다. 이 repo 에서 위키로 밀지 않는다.
+
+## 아키텍처 제약 (ADR 에서 온 것 — 바꾸려면 ADR 부터)
+
+1. **백엔드 없음.** 앱이 Google API 와 Anthropic API 를 직접 호출한다.
+2. **Sheets 가 원천.** 별도 DB 없음. 앱은 append 만 하고 수정·삭제는 하지 않는다.
+3. **역할 미분리.** 제출자가 15개 필드를 전부 채운다. 교정은 회계 담당자가 시트에서 한다.
+   → **앱에 수정·삭제 화면이 없다.**
+4. **모바일 전용.** 데스크톱·웹 타깃 추가 금지.
+5. 화면은 3개다: 홈 / 검토 폼 / 내 제출 목록.
+
+## 보안 (타협 불가)
+
+- Google 인증은 **사용자별 OAuth(PKCE)**. 서비스 계정 키를 코드에 넣지 않는다.
+- Drive scope 는 **`drive.file`** 만. 넓히지 않는다.
+- **Anthropic 키가 클라이언트에 있다** — 알고 감수한 결정이다(ADR). 콘솔 지출 한도가
+  유일한 방어선이므로 한도 없이 키를 발급하지 않는다.
+- 카드번호는 **뒤 4자리만** 저장한다. OCR 결과의 전체 번호는 즉시 버린다.
+- 시크릿은 `.gitignore` 의 목록을 따른다. `secrets.dart`·`.env` 커밋 금지.
+
+## 시트에 쓸 때 (어기면 데이터가 깨진다)
+
+1. **행 번호로 레코드를 지목하지 않는다.** `id`(UUID) 컬럼으로 찾는다.
+2. **추가는 `values.append`.** 읽고→계산하고→쓰기 금지 (동시 제출에서 덮어쓴다).
+3. **수식 컬럼(해당년도·해당월·분류명)에 값을 쓰지 않는다.** ARRAYFORMULA 가 채운다.
+4. **부가세를 자동 계산하지 않는다.** 면세는 0원이다. 인쇄된 값만 넣는다.
+5. 비목·분류명 마스터를 **하드코딩하지 않는다.** 시트의 `_비목마스터`·`_분류마스터` 탭을 읽는다.
+
+## OCR
+
+- `claude-opus-5` + structured outputs(`output_config.format`)로 JSON 스키마 강제
+- 필드별 `value` + `confidence` 를 받아 확신 낮은 필드만 강조
+- Dart 공식 Anthropic SDK 가 없으므로 `package:http` 로 `POST /v1/messages` 직접 호출
+- **비목·분류코드는 OCR 대상이 아니다** — 영수증에 없다. 과거 이력 추천이 담당한다
+
+## 코드 규약
+
+- 주석을 충분히 단다. 특히 "왜 이렇게 했는지" — 위 제약에서 나온 코드는 ADR 을 참조로 남긴다
+- 파일·디렉토리·식별자는 영어 kebab/lowerCamel. 주석·문서는 한국어 평어체
