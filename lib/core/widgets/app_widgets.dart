@@ -60,12 +60,17 @@ class LabeledRow extends StatelessWidget {
     super.key,
     this.value,
     this.placeholder,
+    this.subtitle,
     this.trailing,
     this.onTap,
   });
 
   final String label;
   final String? value;
+
+  /// 값 아래에 붙는 작은 설명 줄. 전송 진행 상태·실패 사유처럼
+  /// **한 줄로 안 끝나는 정보**를 담는다.
+  final String? subtitle;
 
   /// 값이 비었을 때 회색으로 보여줄 안내 문구.
   final String? placeholder;
@@ -77,11 +82,7 @@ class LabeledRow extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final hasValue = (value ?? '').isNotEmpty;
 
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Gap.lg, vertical: Gap.md),
-        child: Row(
+    final row = Row(
           children: [
             SizedBox(
               width: 84,
@@ -107,7 +108,26 @@ class LabeledRow extends StatelessWidget {
                 child: Icon(Icons.chevron_right, size: 20, color: Color(0xFFC2C2C7)),
               ),
           ],
-        ),
+        );
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding:
+            const EdgeInsets.symmetric(horizontal: Gap.lg, vertical: Gap.md),
+        child: subtitle == null
+            ? row
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  row,
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle!,
+                    style: t.bodySmall?.copyWith(color: AppColors.neutralFg),
+                  ),
+                ],
+              ),
       ),
     );
   }
