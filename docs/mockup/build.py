@@ -140,7 +140,7 @@ screen('02-home', '홈 — 촬영 / 파일 선택, 전송 대기 큐, Sheets·Dr
   <div class="sec">전송 대기</div>
   <div class="card"><div class="row">
     <div><div style="font-weight:600">2건이 전송을 기다리고 있습니다</div>
-    <div style="font-size:12px;color:#8A8A8E;margin-top:2px">네트워크가 연결되면 자동 전송</div></div>
+    <div style="font-size:12px;color:#8A8A8E;margin-top:2px">전송 시도를 누르면 보냅니다</div></div>
     <span class="pill p-wt">보기</span></div></div>
   <div class="sec">바로가기</div>
   <div class="card">
