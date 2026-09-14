@@ -30,3 +30,13 @@ pubspec.lock
 *.apk
 *.aab
 *.ipa
+
+# fvm — .fvmrc(버전 핀)는 커밋하고 SDK 심볼릭 링크는 무시한다
+.fvm/
+!.fvmrc
+
+# build_runner 생성물 — 커밋하지 않는다. 받은 뒤 아래를 한 번 돌린다:
+#   fvm dart run build_runner build --delete-conflicting-outputs
+*.g.dart
+*.freezed.dart
+*.drift.dart
