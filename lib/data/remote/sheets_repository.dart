@@ -8,7 +8,7 @@
 /// 예외는 읽기다 — 비목·분류코드 추천을 위해 과거 행을 **읽는** 것은 한다.
 library;
 
-import 'package:bodit_app/models/purchase_entry.dart';
+import 'package:bodit_app/models/sheet_row.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
 
@@ -39,21 +39,25 @@ class SheetsRepository {
   });
 
   final String spreadsheetId;
+
+  /// 매입내역 탭. 추천 조회에만 쓴다 — append 는 `SheetRow.sheetName` 이 정한다.
   final String dataSheetName;
 
-  /// 매입내역 한 건을 시트 맨 아래에 붙인다.
+  /// 한 행을 그 항목이 속한 탭 맨 아래에 붙인다.
+  ///
+  /// `SheetRow` 를 받으므로 2차 사업비·3차 월결산이 와도 이 함수 하나면 된다.
   ///
   /// `values.append` 는 서버가 마지막 행을 찾아 붙이므로,
   /// 읽고→계산하고→쓰는 방식과 달리 동시 제출에서 서로 덮어쓰지 않는다.
-  Future<void> appendEntry({
+  Future<void> appendRow({
     required gapis.AuthClient client,
-    required PurchaseEntry entry,
+    required SheetRow row,
   }) async {
     final api = sheets.SheetsApi(client);
     await api.spreadsheets.values.append(
-      sheets.ValueRange(values: <List<Object>>[entry.toSheetRow()]),
+      sheets.ValueRange(values: <List<Object>>[row.toSheetRow()]),
       spreadsheetId,
-      dataSheetName,
+      row.sheetName,
       // USER_ENTERED = 시트가 날짜·숫자로 해석하게 둔다.
       // RAW 로 하면 전부 문자열이 돼서 회계 담당자의 수식·필터가 깨진다.
       valueInputOption: 'USER_ENTERED',

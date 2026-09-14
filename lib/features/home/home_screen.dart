@@ -1,11 +1,11 @@
 import 'dart:async';
 
-import 'package:bodit_app/core/router/app_router.dart';
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/providers.dart';
 import 'package:bodit_app/features/capture/capture_service.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
+import 'package:bodit_app/router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';

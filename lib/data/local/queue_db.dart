@@ -1,4 +1,3 @@
-import 'package:bodit_app/models/purchase_entry.dart' show PurchaseEntry;
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
@@ -19,7 +18,14 @@ class Submissions extends Table {
   /// 로컬 식별자. 시트에는 안 들어간다(ADR Decision 14) — 여기서만 쓴다.
   TextColumn get localId => text()();
 
-  /// [PurchaseEntry] 를 JSON 으로 직렬화해 둔 것.
+  /// 항목의 종류(`EntryKind.wireName`). 지금은 `purchase` 하나뿐이다.
+  ///
+  /// **꺼낼 때 어떤 타입으로 되살릴지** 알려면 이게 필요하다.
+  /// 2차 사업비가 오면 값 하나만 늘리면 된다 — 지금 넣어두는 이유가 그거다.
+  TextColumn get entryKind =>
+      text().withDefault(const Constant('purchase'))();
+
+  /// 항목을 JSON 으로 직렬화해 둔 것. 되살리는 방법은 [entryKind] 가 정한다.
   TextColumn get entryJson => text()();
 
   /// 기기에 보관 중인 증빙 원본 경로.
@@ -50,7 +56,19 @@ class QueueDb extends _$QueueDb {
       : super(executor ?? driftDatabase(name: 'bodit_queue'));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  /// v1 → v2: `entryKind` 추가.
+  ///
+  /// 실사용 데이터가 없는 시점에 넣어서 백필이 필요 없다. 기존 행이 있더라도
+  /// 1차에는 매입내역밖에 없었으므로 기본값 `purchase` 가 정답이다.
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) await m.addColumn(submissions, submissions.entryKind);
+        },
+      );
 
   /// 아직 세 곳 다 못 보낸 건. **최근순** — 시안 ⑬번의 정렬 규칙이다.
   Future<List<Submission>> pending() {

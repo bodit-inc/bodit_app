@@ -12,6 +12,7 @@ import 'package:bodit_app/features/auth/auth_controller.dart';
 import 'package:bodit_app/features/capture/capture_service.dart';
 import 'package:bodit_app/models/entry_draft.dart';
 import 'package:bodit_app/models/purchase_entry.dart';
+import 'package:bodit_app/models/sheet_row.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -176,6 +177,7 @@ class ReviewController extends Notifier<ReviewState> {
       await db.enqueue(
         SubmissionsCompanion.insert(
           localId: _uuid.v4(),
+          entryKind: Value(EntryKind.purchase.wireName),
           entryJson: jsonEncode(entry.toJson()),
           evidencePath: d.evidencePath,
           filename: d.filename,

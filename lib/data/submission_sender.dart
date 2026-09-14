@@ -26,6 +26,7 @@ import 'package:bodit_app/data/remote/google_auth.dart';
 import 'package:bodit_app/data/remote/sheets_repository.dart';
 import 'package:bodit_app/data/remote/slack_repository.dart';
 import 'package:bodit_app/models/purchase_entry.dart';
+import 'package:bodit_app/models/sheet_row.dart';
 import 'package:drift/drift.dart' show Value;
 
 /// 한 건의 전송 결과.
@@ -78,9 +79,7 @@ class SubmissionSender {
       return await _fail(row, 'Google 인가가 없습니다. 다시 로그인해 주세요.');
     }
 
-    final entry = PurchaseEntry.fromJson(
-      jsonDecode(row.entryJson) as Map<String, dynamic>,
-    );
+    final entry = _decode(row);
     final file = File(row.evidencePath);
     if (!file.existsSync()) {
       return await _fail(row, '증빙 원본을 찾을 수 없습니다: ${row.evidencePath}');
@@ -109,9 +108,9 @@ class SubmissionSender {
 
       // ── 2. Sheets ───────────────────────────────────────────────
       if (!current.sheetsDone) {
-        await sheets.appendEntry(
+        await sheets.appendRow(
           client: client,
-          entry: entry.copyWith(evidenceUrl: driveUrl),
+          row: entry.copyWith(evidenceUrl: driveUrl),
         );
         current = current.copyWith(sheetsDone: true, lastError: const Value(null));
         await db.updateRow(current);
@@ -140,6 +139,17 @@ class SubmissionSender {
       // 여기까지 성공한 목적지는 이미 DB 에 기록됐다 — 재시도하면 그 지점부터 간다.
       return await _fail(current, '$e');
     }
+  }
+
+  /// 큐에 저장된 JSON 을 원래 타입으로 되살린다.
+  ///
+  /// 2차 사업비가 생기면 여기 `case` 하나만 추가한다.
+  /// switch 가 exhaustive 라 새 종류를 빠뜨리면 **컴파일이 막아준다.**
+  PurchaseEntry _decode(Submission row) {
+    final json = jsonDecode(row.entryJson) as Map<String, dynamic>;
+    return switch (EntryKind.fromWire(row.entryKind)) {
+      EntryKind.purchase => PurchaseEntry.fromJson(json),
+    };
   }
 
   Future<SendOutcome> _fail(Submission row, String message) async {
