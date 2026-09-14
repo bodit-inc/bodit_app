@@ -119,16 +119,13 @@ def screen(slug, caption, body, bg='#F2F2F7'):
 # 화면 정의
 # ══════════════════════════════════════════════════════════════════════════
 
-screen('01-login', '회사 Google 계정으로 로그인 (@bodit.co 만)', f'''
+screen('01-login', 'Google 계정으로 로그인', f'''
 <div class="body"><div class="ctr">
-  <div style="font-size:46px;margin-bottom:14px">🧾</div>
+  <div style="font-size:46px;margin-bottom:16px">🧾</div>
   <div style="font-size:25px;font-weight:700;letter-spacing:-.5px">매입내역</div>
-  <div style="font-size:14px;color:#8A8A8E;margin-top:7px;line-height:1.6">
-    증빙을 올리면 항목을 자동으로 채워<br>Sheets · Drive · Slack 에 한 번에 등록합니다</div>
-  <div style="height:44px"></div>
+  <div style="height:58px"></div>
   <div class="btn sec2" style="width:100%;display:flex;align-items:center;
        justify-content:center;gap:9px"><b style="font-size:17px">G</b> Google 계정으로 로그인</div>
-  <div style="font-size:12px;color:#9A9A9E;margin-top:16px">@bodit.co 계정만 사용할 수 있습니다</div>
 </div></div>''')
 
 screen('02-home', '홈 — 촬영 / 파일 선택, 전송 대기 큐, Sheets·Drive 바로가기', f'''
@@ -188,27 +185,53 @@ screen('04-analyzing', 'OCR — 이미지에서 항목을 추출하고 과거 �
     비목과 분류코드는 영수증에 없습니다.<br>과거에 같은 업체를 어떻게 처리했는지 보고 제안합니다.</div>
 </div></div>''')
 
-screen('05-review-top', '검토 폼 ① — 프리필된 값. 확신이 낮은 항목만 노란색', f'''
+screen('05-review-one', '검토 폼 ① — 한 건. 저장될 파일명을 여기서 보고 고친다', f'''
 {nav('검토', left='취소', right='제출')}
 <div class="body">
-  <div class="banner"><b>2개 항목은 확인이 필요합니다.</b><br>
-    노란색으로 표시된 곳만 봐주세요. 나머지는 그대로 제출해도 됩니다.</div>
-  <div style="height:12px"></div>
   <div class="thumb"><div class="im"></div>
-    <div class="tx"><b>영풍문고_영수증.jpg</b><br>탭하면 원본을 크게 볼 수 있습니다</div></div>
+    <div class="tx"><b>영수증 1장</b><br>탭하면 원본을 크게 볼 수 있습니다</div></div>
   <div class="sec">기본</div>
   <div class="card">
     <div class="row"><span class="lb">소속날짜</span><span class="vl">2026-08-05</span></div>
-    <div class="row warn"><span class="lb">지출날짜</span>
-      <span class="vl">2026-08-05</span><span class="badge">확인</span></div>
+    <div class="row"><span class="lb">지출날짜</span><span class="vl">2026-08-05</span></div>
     <div class="row"><span class="lb">업체명</span><span class="vl">영풍문고</span></div>
-    <div class="row warn"><span class="lb">내역</span>
-      <span class="vl">8월 도서</span><span class="badge">확인</span></div>
+    <div class="row"><span class="lb">내역</span><span class="vl">8월 도서</span></div>
   </div>
-  <div class="note">지출날짜는 영수증에 없어 소속날짜로 채웠습니다. 실제 이체일이 다르면 고쳐주세요.</div>
+  <div class="sec">저장될 파일명</div>
+  <div class="card"><div style="padding:12px 14px;display:flex;gap:10px;
+       justify-content:space-between;align-items:center">
+    <span class="mono" style="flex:1">260805_[영풍문고]_[8월 도서]_영수증_19,000</span>
+    <span style="color:#007AFF;font-size:14px;font-weight:600;white-space:nowrap">수정</span>
+  </div></div>
+  <div class="note">위 항목을 고치면 파일명도 따라 바뀝니다. 직접 고칠 수도 있습니다.</div>
 </div>''')
 
-screen('06-suggest', '검토 폼 ② — 비목·분류코드는 과거 이력으로 추천 + 근거 표시', f'''
+screen('06-review-many', '검토 폼 ① — 여러 건을 한 번에 찍었을 때', f'''
+{nav('검토 · 3건', left='취소', right='전체 제출')}
+<div class="body">
+  <div class="sec">읽은 증빙 3건</div>
+  <div class="card">
+    <div class="row"><div><div style="font-weight:600">영풍문고 · 19,000</div>
+      <div style="font-size:12px;color:#8A8A8E">도서인쇄비 · 8월 도서</div></div>
+      <span class="pill p-ok">확인됨</span></div>
+    <div class="row"><div><div style="font-weight:600">스타벅스 · 12,400</div>
+      <div style="font-size:12px;color:#8A8A8E">회의비 · 팀 미팅</div></div>
+      <span class="pill p-ok">확인됨</span></div>
+    <div class="row"><div><div style="font-weight:600">GS칼텍스 · 80,000</div>
+      <div style="font-size:12px;color:#8A8A8E">차량유지비 · 주유</div></div>
+      <span class="pill p-wt">확인 전</span></div>
+  </div>
+  <div class="note">한 건씩 눌러서 확인합니다. 3건 모두 확인하면 한 번에 제출됩니다.</div>
+  <div class="sec">저장될 파일명</div>
+  <div class="card"><div style="padding:11px 14px">
+    <div class="mono" style="color:#5A5A5F">260805_[영풍문고]_[8월 도서]_영수증_19,000<br>
+      260805_[스타벅스]_[팀 미팅]_영수증_12,400<br>
+      260805_[GS칼텍스]_[주유]_영수증_80,000</div></div></div>
+  <div style="height:12px"></div>
+  <div class="btn">3건 전체 제출</div>
+</div>''')
+
+screen('07-suggest', '검토 폼 ② — 비목·분류코드는 과거 이력으로 추천 + 근거 표시', f'''
 {nav('검토', left='취소', right='제출')}
 <div class="body">
   <div class="sec">분류 — 영수증에 없는 항목</div>
@@ -232,7 +255,7 @@ screen('06-suggest', '검토 폼 ② — 비목·분류코드는 과거 이력�
     <b>처음 보는 업체만</b> 직접 고르면 됩니다. 쓸수록 손댈 일이 줄어듭니다.</div></div>
 </div>''')
 
-screen('07-picker', '비목 선택 — 추천·최근순으로 정렬된 검색 목록', f"""
+screen('08-picker', '비목 선택 — 추천·최근순으로 정렬된 검색 목록', f"""
 {nav('검토', left='취소', right='제출')}
 <div style="position:relative;flex:1;overflow:hidden">
   <div class="body" style="height:100%">
@@ -267,7 +290,7 @@ screen('07-picker', '비목 선택 — 추천·최근순으로 정렬된 검색 
   </div>
 </div>""")
 
-screen('08-amount', '검토 폼 ③ — 금액. 부가세는 자동 계산하지 않고 물어본다', f'''
+screen('09-amount', '검토 폼 ③ — 금액. 부가세는 자동 계산하지 않고 물어본다', f'''
 {nav('검토', left='취소', right='제출')}
 <div class="body">
   <div class="sec">금액</div>
@@ -291,7 +314,7 @@ screen('08-amount', '검토 폼 ③ — 금액. 부가세는 자동 계산하지
   <div class="btn">제출</div>
 </div>''')
 
-screen('09-submitting', '제출 — 세 곳에 동시에 올라간다', f'''
+screen('10-submitting', '제출 — 세 곳에 동시에 올라간다', f'''
 {nav('제출 중')}
 <div class="body">
   <div class="sec">전송</div>
@@ -309,7 +332,7 @@ screen('09-submitting', '제출 — 세 곳에 동시에 올라간다', f'''
   <div class="note">업체명·내역은 대괄호로 감싸 값에 <b>_</b> 가 들어가도 경계가 안 무너집니다.</div>
 </div>''')
 
-screen('10-done', '완료 — Slack 에 올라간 모습까지 확인', f'''
+screen('11-done', '완료 — Slack 에 올라간 모습까지 확인', f'''
 {nav('완료')}
 <div class="body">
   <div style="text-align:center;padding:14px 0 20px">
@@ -338,7 +361,7 @@ screen('10-done', '완료 — Slack 에 올라간 모습까지 확인', f'''
   </div>
 </div>''')
 
-screen('11-list', '내 제출 목록 — 부분 실패(Slack 만 실패)가 여기서 보인다', f'''
+screen('12-list', '내 제출 목록 — 부분 실패(Slack 만 실패)가 여기서 보인다', f'''
 {nav('내 제출')}
 <div class="body">
   <div class="sec">오늘</div>
@@ -365,12 +388,13 @@ screen('11-list', '내 제출 목록 — 부분 실패(Slack 만 실패)가 여�
 </div>
 {tabbar('list')}''')
 
-screen('12-offline', '오프라인 — 로컬에 쌓아두고 연결되면 자동 전송 (해외 출장)', f'''
+screen('13-offline', '오프라인·약한 연결 — 기기에 임시저장. 대기 목록은 시간순', f'''
 {nav('매입내역')}
 <div class="body">
-  <div style="background:#4A4A4F;color:#fff;border-radius:10px;padding:10px 12px;
-       font-size:13px;display:flex;gap:8px;align-items:center">
-    <span>✈️</span><span>오프라인입니다. 지금 등록한 건은 저장해뒀다가 자동으로 보냅니다.</span></div>
+  <div style="background:#4A4A4F;color:#fff;border-radius:10px;padding:11px 13px;
+       font-size:13px;line-height:1.55;display:flex;gap:9px">
+    <span>✈️</span><span>지금 등록한 건은 기기에 임시저장합니다.<br>
+      인터넷 연결이 원활해지면 전송 시도해주세요.</span></div>
   <div style="height:13px"></div>
   <div style="display:flex;gap:11px">
     <div class="big" style="flex:1"><span class="ic">📷</span>
@@ -378,16 +402,23 @@ screen('12-offline', '오프라인 — 로컬에 쌓아두고 연결되면 자�
     <div class="big" style="flex:1"><span class="ic">🖼</span>
       <div class="t">파일 선택</div><div class="s">PDF·JPG·PNG</div></div>
   </div>
-  <div class="sec">전송 대기 3건</div>
+  <div class="sec">전송 대기 3건 · 최근순</div>
   <div class="card">
-    <div class="row"><span>GS칼텍스 · 80,000</span><span class="pill p-wt">대기</span></div>
-    <div class="row"><span>하네다공항 · ¥1,200</span><span class="pill p-wt">대기</span></div>
-    <div class="row"><span>택시 · ¥3,400</span><span class="pill p-wt">대기</span></div>
+    <div class="row"><div><div style="font-weight:600">택시 · ¥3,400</div>
+      <div style="font-size:12px;color:#8A8A8E">오늘 18:40</div></div>
+      <span class="pill p-wt">대기</span></div>
+    <div class="row"><div><div style="font-weight:600">하네다공항 · ¥1,200</div>
+      <div style="font-size:12px;color:#8A8A8E">오늘 11:05</div></div>
+      <span class="pill p-wt">대기</span></div>
+    <div class="row"><div><div style="font-weight:600">GS칼텍스 · 80,000</div>
+      <div style="font-size:12px;color:#8A8A8E">어제 09:12</div></div>
+      <span class="pill p-wt">대기</span></div>
   </div>
-  <div class="note">오프라인에서는 항목 자동 추출이 안 됩니다. 사진만 찍어두고
-    나중에 연결되면 그때 읽어서 채웁니다.</div>
-</div>
-{tabbar('home')}''')
+  <div style="height:12px"></div>
+  <div class="btn">전송 시도</div>
+  <div class="note" style="text-align:center">오프라인에서는 항목 자동 추출이 안 됩니다.
+    사진만 찍어두고 연결되면 그때 읽어서 채웁니다.</div>
+</div>''')
 
 # ══════════════════════════════════════════════════════════════════════════
 # 렌더
@@ -420,7 +451,7 @@ def render():
 # 흐름도 한 장 (공유용 컨택트 시트)
 # ══════════════════════════════════════════════════════════════════════════
 def contact_sheet():
-    PW, COLS = 200, 6
+    PW, COLS = 200, 5
     PH = round(PW * H / W)
     PAGEW = COLS*PW + (COLS-1)*18 + 60
     cells = ""
@@ -455,11 +486,13 @@ def contact_sheet():
     <div class="grid">{cells}</div>
     <div class="ft">
       <b>이 시안이 보여주려는 것</b><br>
-      · 15개 필드를 처음부터 채우지 않는다 — OCR 로 읽고(③④), 확신 낮은 것만 노란색으로 묻는다(⑤)<br>
-      · 비목·분류코드는 영수증에 없다 — <b>과거에 같은 업체를 어떻게 처리했는지</b> 보고 제안한다(⑥⑦)<br>
-      · 부가세는 자동 계산하지 않는다 — 면세가 있어서 물어본다(⑧)<br>
-      · 목적지가 3곳이라 <b>하나만 실패</b>할 수 있다. 실패한 곳만 다시 보낸다(⑨⑪)<br>
-      · 오프라인(해외 출장)에서는 찍어두고 연결되면 자동 전송한다(⑫)
+      · 15개 필드를 처음부터 채우지 않는다 — OCR 로 읽어서 미리 채워둔다(③④⑤)<br>
+      · <b>한 번에 여러 장</b>을 찍어도 된다 — 건별로 확인하고 한 번에 제출한다(⑥)<br>
+      · <b>저장될 파일명</b>을 검토 화면에서 보고 직접 고칠 수 있다(⑤⑥)<br>
+      · 비목·분류코드는 영수증에 없다 — <b>과거에 같은 업체를 어떻게 처리했는지</b> 보고 제안한다(⑦⑧)<br>
+      · 부가세는 자동 계산하지 않는다 — 면세가 있어서 물어본다(⑨)<br>
+      · 목적지가 3곳이라 <b>하나만 실패</b>할 수 있다. 실패한 곳만 다시 보낸다(⑩⑫)<br>
+      · 오프라인·약한 연결에서는 <b>기기에 임시저장</b>한다(⑬)
     </div></body>'''
     # 문서 실제 높이를 먼저 재고(1차 dump-dom) 그 크기로 캡처한다(2차).
     # Chrome 은 --window-size 만큼만 찍으므로 안 재면 아래가 잘리거나 여백이 남는다.
