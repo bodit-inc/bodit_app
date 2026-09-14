@@ -27,7 +27,7 @@ List<File> _sourceFiles() {
 
 /// 그 파일이 import 하는 우리 프로젝트 경로들.
 List<String> _internalImports(File f) {
-  final re = RegExp(r"import 'package:bodit_app/([^']+)'");
+  final re = RegExp("import 'package:bodit_app/([^']+)'");
   return re
       .allMatches(f.readAsStringSync())
       .map((m) => m.group(1)!)
