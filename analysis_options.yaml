@@ -25,3 +25,7 @@ linter:
     # 유효하지만 대부분의 Flutter 예제·다른 사내 프로젝트(3.16·3.27)와 형태가
     # 달라져 읽는 비용만 늘어난다. 관습적인 `const ClassName(...)` 을 쓴다.
     unnecessary_type_name_in_constructor: false
+    # private 필드(`_apiKey`)에 public named parameter(`apiKey`)를 받는 패턴을
+    # 막는다. 그런데 private 이름은 named parameter 로 쓸 수 없어서
+    # (호출부가 `_apiKey:` 를 써야 한다) 제안대로 고칠 수가 없다.
+    prefer_initializing_formals: false

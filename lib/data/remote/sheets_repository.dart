@@ -1,0 +1,165 @@
+/// 매입내역 시트 읽기·쓰기.
+///
+/// 컬럼 계약의 단일 원천은 위키다:
+///   ~/llm-wiki-template/wiki/projects/bodit-app/sheet-schema.md
+///
+/// **append 만 한다.** 기존 행을 고치거나 지우지 않는다(ADR Decision 2).
+/// 그래서 행을 지목할 일이 없고 UUID 키 컬럼도 없다.
+/// 예외는 읽기다 — 비목·분류코드 추천을 위해 과거 행을 **읽는** 것은 한다.
+library;
+
+import 'package:bodit_app/models/purchase_entry.dart';
+import 'package:googleapis/sheets/v4.dart' as sheets;
+import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
+
+/// 과거 이력에서 뽑은 추천. 근거를 같이 들고 다닌다 —
+/// 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
+class VendorSuggestion {
+  const VendorSuggestion({
+    required this.expenseCategory,
+    required this.classCode,
+    required this.className,
+    required this.matchCount,
+  });
+
+  final String expenseCategory;
+  final int classCode;
+  final String className;
+
+  /// 같은 업체를 이렇게 처리한 과거 건수. 화면에 "지난 N건" 으로 보여준다.
+  final int matchCount;
+
+  String get reason => '$matchCount건 모두 $expenseCategory였습니다';
+}
+
+class SheetsRepository {
+  const SheetsRepository({
+    required this.spreadsheetId,
+    this.dataSheetName = '매입내역',
+  });
+
+  final String spreadsheetId;
+  final String dataSheetName;
+
+  /// 매입내역 한 건을 시트 맨 아래에 붙인다.
+  ///
+  /// `values.append` 는 서버가 마지막 행을 찾아 붙이므로,
+  /// 읽고→계산하고→쓰는 방식과 달리 동시 제출에서 서로 덮어쓰지 않는다.
+  Future<void> appendEntry({
+    required gapis.AuthClient client,
+    required PurchaseEntry entry,
+  }) async {
+    final api = sheets.SheetsApi(client);
+    await api.spreadsheets.values.append(
+      sheets.ValueRange(values: <List<Object>>[entry.toSheetRow()]),
+      spreadsheetId,
+      dataSheetName,
+      // USER_ENTERED = 시트가 날짜·숫자로 해석하게 둔다.
+      // RAW 로 하면 전부 문자열이 돼서 회계 담당자의 수식·필터가 깨진다.
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+    );
+  }
+
+  /// 업체명으로 과거 처리를 찾아 비목·분류코드를 제안한다.
+  ///
+  /// **자동완성의 실제 승부처가 여기다.** OCR 은 비목을 못 뽑는다 —
+  /// 영수증에 안 적혀 있다. 이 조회가 잘 되면 사용자가 34개 중에서 고를 일이 없다.
+  ///
+  /// 시트 전체를 매번 읽지 않도록 [maxRows] 로 최근 구간만 본다.
+  Future<VendorSuggestion?> suggestForVendor({
+    required gapis.AuthClient client,
+    required String vendor,
+    int maxRows = 2000,
+  }) async {
+    final api = sheets.SheetsApi(client);
+    // E:I = 비목 · 내역 · 업체명 · 분류코드 · 분류명
+    final res = await api.spreadsheets.values.get(
+      spreadsheetId,
+      '$dataSheetName!E2:I${maxRows + 1}',
+    );
+
+    final rows = res.values;
+    if (rows == null || rows.isEmpty) return null;
+
+    final needle = _normalize(vendor);
+    if (needle.isEmpty) return null;
+
+    // (비목, 분류코드, 분류명) 조합별 등장 횟수를 센다.
+    final counts = <String, int>{};
+    final samples = <String, (String, int, String)>{};
+
+    for (final row in rows) {
+      if (row.length < 5) continue;
+      if (_normalize('${row[2]}') != needle) continue;
+
+      final category = '${row[0]}'.trim();
+      final code = int.tryParse('${row[3]}'.trim());
+      final className = '${row[4]}'.trim();
+      if (category.isEmpty || code == null) continue;
+
+      final key = '$category|$code|$className';
+      counts[key] = (counts[key] ?? 0) + 1;
+      samples[key] = (category, code, className);
+    }
+
+    if (counts.isEmpty) return null;
+
+    // 가장 많이 쓴 조합을 고른다.
+    final best = counts.entries.reduce((a, b) => a.value >= b.value ? a : b);
+    final (category, code, className) = samples[best.key]!;
+
+    return VendorSuggestion(
+      expenseCategory: category,
+      classCode: code,
+      className: className,
+      matchCount: best.value,
+    );
+  }
+
+  /// 업체명 비교용 정규화. 공백·괄호 표기 차이로 못 찾는 걸 막는다.
+  static String _normalize(String s) =>
+      s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '');
+}
+
+/// 비목·분류 마스터. **하드코딩하지 않는다** — 사업이 하나 생길 때마다
+/// 앱을 재배포하게 된다. 시트의 별도 탭에서 읽어 캐시한다.
+class MasterDataRepository {
+  const MasterDataRepository({
+    required this.spreadsheetId,
+    this.categorySheet = '_비목마스터',
+    this.classSheet = '_분류마스터',
+  });
+
+  final String spreadsheetId;
+  final String categorySheet;
+  final String classSheet;
+
+  /// 비목 34개(늘어날 수 있다).
+  Future<List<String>> categories(gapis.AuthClient client) async {
+    final api = sheets.SheetsApi(client);
+    final res =
+        await api.spreadsheets.values.get(spreadsheetId, '$categorySheet!A2:A');
+    return (res.values ?? <List<Object?>>[])
+        .where((r) => r.isNotEmpty)
+        .map((r) => '${r[0]}'.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+  }
+
+  /// 분류코드 → 분류명.
+  ///
+  /// 시트에 수식을 두지 않으므로(위키 참조) **앱이 이걸로 분류명을 채운다.**
+  Future<Map<int, String>> classNames(gapis.AuthClient client) async {
+    final api = sheets.SheetsApi(client);
+    final res =
+        await api.spreadsheets.values.get(spreadsheetId, '$classSheet!A2:B');
+    final out = <int, String>{};
+    for (final r in res.values ?? <List<Object?>>[]) {
+      if (r.length < 2) continue;
+      final code = int.tryParse('${r[0]}'.trim());
+      if (code != null) out[code] = '${r[1]}'.trim();
+    }
+    return out;
+  }
+}
