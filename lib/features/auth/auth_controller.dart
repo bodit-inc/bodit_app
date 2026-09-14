@@ -1,12 +1,12 @@
+import 'package:bodit_app/data/providers.dart';
 import 'package:bodit_app/data/remote/google_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
-final googleAuthProvider = Provider<GoogleAuthService>((ref) {
-  return GoogleAuthService();
-});
-
 /// 로그인 상태. null 이면 로그아웃.
+///
+/// `GoogleAuthService` 자체는 `data` 계층 소유다(`googleAuthProvider`).
+/// 저장소들이 전부 그걸 쓰므로 화면 기능에 두면 의존 방향이 거꾸로 된다.
 class AuthController extends AsyncNotifier<GoogleSignInAccount?> {
   GoogleAuthService get _svc => ref.read(googleAuthProvider);
 

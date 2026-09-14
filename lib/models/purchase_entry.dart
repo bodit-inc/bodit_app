@@ -1,3 +1,4 @@
+import 'package:bodit_app/models/sheet_row.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'purchase_entry.freezed.dart';
@@ -20,7 +21,7 @@ part 'purchase_entry.g.dart';
 /// 수식 컬럼만 건너뛰고 쓰는 방법은 없다(A·B·I 가 떨어져 있어 연속 범위가 아니다).
 /// 앱이 유일한 writer 이므로 앱이 다 계산하는 쪽이 맞다. 수식을 아예 쓰지 않는다.
 @freezed
-abstract class PurchaseEntry with _$PurchaseEntry {
+abstract class PurchaseEntry with _$PurchaseEntry implements SheetRow {
   const factory({
     /// 계산서 발행일 또는 카드 결제일. 해당년도·해당월의 기준이 된다.
     required DateTime belongDate,
@@ -79,7 +80,11 @@ abstract class PurchaseEntry with _$PurchaseEntry {
   /// 소속날짜에서 파생. 시트 2번 컬럼.
   int get belongMonth => belongDate.month;
 
+  @override
+  String get sheetName => '매입내역';
+
   /// 시트에 append 할 한 행. **컬럼 순서가 곧 계약이다** — 바꾸려면 위키부터.
+  @override
   List<Object> toSheetRow() => [
         belongYear, //          1  해당년도
         belongMonth, //         2  해당월

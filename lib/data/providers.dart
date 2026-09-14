@@ -7,12 +7,18 @@ library;
 import 'package:bodit_app/core/config.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
 import 'package:bodit_app/data/remote/drive_repository.dart';
+import 'package:bodit_app/data/remote/google_auth.dart';
 import 'package:bodit_app/data/remote/ocr_service.dart';
 import 'package:bodit_app/data/remote/sheets_repository.dart';
 import 'package:bodit_app/data/remote/slack_repository.dart';
 import 'package:bodit_app/data/submission_sender.dart';
-import 'package:bodit_app/features/auth/auth_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+/// Google 로그인·인가. **모든 저장소가 이걸 쓰므로 data 계층이 소유한다.**
+/// 화면(`features/auth`)은 이 위에 로그인 상태를 얹을 뿐이다.
+final googleAuthProvider = Provider<GoogleAuthService>((ref) {
+  return GoogleAuthService();
+});
 
 final queueDbProvider = Provider<QueueDb>((ref) {
   final db = QueueDb();
