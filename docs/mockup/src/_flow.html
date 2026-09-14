@@ -1,0 +1,68 @@
+<!doctype html><meta charset="utf-8"><style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font:400 13px/1.5 -apple-system,'Apple SD Gothic Neo',sans-serif;color:#111;
+         background:#fff;padding:34px 30px 30px;width:1350px}
+    h1{font-size:25px;font-weight:800;letter-spacing:-.5px}
+    .sub{font-size:13px;color:#767680;margin:7px 0 4px;line-height:1.6}
+    .meta{font-size:11px;color:#9A9AA0;margin-bottom:24px}
+    .grid{display:grid;grid-template-columns:repeat(6,200px);gap:26px 18px}
+    .c{width:200px}
+    .hd{display:flex;gap:6px;margin-bottom:7px;min-height:46px}
+    .no{flex:0 0 19px;height:19px;border-radius:50%;background:#111;color:#fff;
+        font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+    .cp{font-size:11px;line-height:1.45;color:#3A3A40}
+    img{width:200px;height:435px;border:1px solid #DDD;border-radius:11px;display:block}
+    .ft{margin-top:26px;padding-top:16px;border-top:1px solid #E5E5EA;
+        font-size:11px;color:#8A8A90;line-height:1.8}
+    .ft b{color:#3A3A40}
+    </style><body>
+    <h1>bodit app — 매입내역 자동완성 화면 흐름</h1>
+    <div class="sub">증빙을 올리면 항목을 자동으로 채우고, 확인 후 제출하면
+      <b>Google Sheets · Google Drive · Slack</b> 세 곳에 동시에 올라간다.
+      승인 단계는 없다 — 회계 담당자는 Sheets 를 읽기만 한다.</div>
+    <div class="meta">동작 흐름 공유용 시안 · 디자인 확정본 아님 · iPhone 17 Pro (402×874pt) · 2026-09-14</div>
+    <div class="grid"><div class="c">
+          <div class="hd"><span class="no">1</span><span class="cp">회사 Google 계정으로 로그인 (@bodit.co 만)</span></div>
+          <img src="file:///Users/jamesum/bodit_app/docs/mockup/01-login.png">
+        </div><div class="c">
+          <div class="hd"><span class="no">2</span><span class="cp">홈 — 촬영 / 파일 선택, 전송 대기 큐, Sheets·Drive 바로가기</span></div>
+          <img src="file:///Users/jamesum/bodit_app/docs/mockup/02-home.png">
+        </div><div class="c">
+          <div class="hd"><span class="no">3</span><span class="cp">촬영 — 프레임 가이드</span></div>
+          <img src="file:///Users/jamesum/bodit_app/docs/mockup/03-capture.png">
+        </div><div class="c">
+          <div class="hd"><span class="no">4</span><span class="cp">OCR — 이미지에서 항목을 추출하고 과거 이력을 조회</span></div>
+          <img src="file:///Users/jamesum/bodit_app/docs/mockup/04-analyzing.png">
+        </div><div class="c">
+          <div class="hd"><span class="no">5</span><span class="cp">검토 폼 ① — 프리필된 값. 확신이 낮은 항목만 노란색</span></div>
+          <img src="file:///Users/jamesum/bodit_app/docs/mockup/05-review-top.png">
+        </div><div class="c">
+          <div class="hd"><span class="no">6</span><span class="cp">검토 폼 ② — 비목·분류코드는 과거 이력으로 추천 + 근거 표시</span></div>
+          <img src="file:///Users/jamesum/bodit_app/docs/mockup/06-suggest.png">
+        </div><div class="c">
+          <div class="hd"><span class="no">7</span><span class="cp">비목 선택 — 추천·최근순으로 정렬된 검색 목록</span></div>
+          <img src="file:///Users/jamesum/bodit_app/docs/mockup/07-picker.png">
+        </div><div class="c">
+          <div class="hd"><span class="no">8</span><span class="cp">검토 폼 ③ — 금액. 부가세는 자동 계산하지 않고 물어본다</span></div>
+          <img src="file:///Users/jamesum/bodit_app/docs/mockup/08-amount.png">
+        </div><div class="c">
+          <div class="hd"><span class="no">9</span><span class="cp">제출 — 세 곳에 동시에 올라간다</span></div>
+          <img src="file:///Users/jamesum/bodit_app/docs/mockup/09-submitting.png">
+        </div><div class="c">
+          <div class="hd"><span class="no">10</span><span class="cp">완료 — Slack 에 올라간 모습까지 확인</span></div>
+          <img src="file:///Users/jamesum/bodit_app/docs/mockup/10-done.png">
+        </div><div class="c">
+          <div class="hd"><span class="no">11</span><span class="cp">내 제출 목록 — 부분 실패(Slack 만 실패)가 여기서 보인다</span></div>
+          <img src="file:///Users/jamesum/bodit_app/docs/mockup/11-list.png">
+        </div><div class="c">
+          <div class="hd"><span class="no">12</span><span class="cp">오프라인 — 로컬에 쌓아두고 연결되면 자동 전송 (해외 출장)</span></div>
+          <img src="file:///Users/jamesum/bodit_app/docs/mockup/12-offline.png">
+        </div></div>
+    <div class="ft">
+      <b>이 시안이 보여주려는 것</b><br>
+      · 15개 필드를 처음부터 채우지 않는다 — OCR 로 읽고(③④), 확신 낮은 것만 노란색으로 묻는다(⑤)<br>
+      · 비목·분류코드는 영수증에 없다 — <b>과거에 같은 업체를 어떻게 처리했는지</b> 보고 제안한다(⑥⑦)<br>
+      · 부가세는 자동 계산하지 않는다 — 면세가 있어서 물어본다(⑧)<br>
+      · 목적지가 3곳이라 <b>하나만 실패</b>할 수 있다. 실패한 곳만 다시 보낸다(⑨⑪)<br>
+      · 오프라인(해외 출장)에서는 찍어두고 연결되면 자동 전송한다(⑫)
+    </div></body>
