@@ -1,0 +1,27 @@
+# very_good_analysis = 엄격한 린트 세트. 사내 앱이지만 혼자 오래 유지할 코드라
+# 느슨하게 두면 나중에 못 읽는다.
+include: package:very_good_analysis/analysis_options.11.0.0.yaml
+
+analyzer:
+  plugins:
+    - custom_lint          # riverpod_lint 가 여기 붙는다
+  exclude:
+    - "**/*.g.dart"        # build_runner 생성물 — 린트 대상 아님
+    - "**/*.freezed.dart"
+    - "**/*.drift.dart"
+    - build/**
+    - android/**
+    - ios/**
+  errors:
+    # 생성 코드가 아직 없을 때 IDE 가 빨개지는 걸 막는다 (build_runner 전)
+    uri_has_not_been_generated: ignore
+
+linter:
+  rules:
+    # 한국어 주석을 많이 다는 코드베이스라 문서 주석 강제는 끈다.
+    public_member_api_docs: false
+    lines_longer_than_80_chars: false
+    # Dart 3.13 의 `const new(...)` 축약 문법을 강제하는 규칙.
+    # 유효하지만 대부분의 Flutter 예제·다른 사내 프로젝트(3.16·3.27)와 형태가
+    # 달라져 읽는 비용만 늘어난다. 관습적인 `const ClassName(...)` 을 쓴다.
+    unnecessary_type_name_in_constructor: false
