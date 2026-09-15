@@ -23,6 +23,9 @@
 /// → 매 작업마다 `authorizedClient` 를 새로 얻는다.
 library;
 
+import 'dart:io';
+
+import 'package:bodit_app/core/config.dart';
 import 'package:bodit_app/core/log.dart';
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -48,11 +51,29 @@ class GoogleAuthService {
   /// 앱 시작 시 한 번. 두 번 부르면 플러그인이 예외를 던진다.
   Future<void> ensureInitialized() async {
     if (_initialized) return;
+    // Android 는 Credential Manager 를 쓰는데, 거기서 **serverClientId 가 필수**다.
+    // 없으면 `clientConfigurationError: serverClientId must be provided on Android`.
+    //
+    // 주의: serverClientId 는 Android 클라이언트 ID 가 **아니다.**
+    // GCP 콘솔에서 만든 **웹 애플리케이션** 유형 클라이언트 ID 다.
+    // Android 클라이언트(패키지명 + SHA-1)는 따로 등록해두되 코드에 넣지 않는다 —
+    // 서명으로 매칭되므로 전달할 필요가 없다.
+    final serverClientId = Config.googleServerClientId;
+    final iosClientId = Config.googleIosClientId;
+    if (serverClientId.isEmpty && Platform.isAndroid) {
+      throw StateError(
+        'GOOGLE_SERVER_CLIENT_ID 가 비어 있습니다.\n'
+        'GCP 콘솔에서 "웹 애플리케이션" 유형 OAuth 클라이언트를 만들고 '
+        '.env 에 넣은 뒤 build_runner 를 다시 돌리세요.',
+      );
+    }
+
     await GoogleSignIn.instance.initialize(
-      // 사내 계정만 계정 선택기에 뜨게 한다.
+      // iOS 전용. Android 에서는 무시된다.
+      clientId: iosClientId.isEmpty ? null : iosClientId,
+      serverClientId: serverClientId.isEmpty ? null : serverClientId,
+      // 사내 계정만 계정 선택기에 뜨게 한다. Android 도 지원한다.
       hostedDomain: 'bodit.co',
-      // TODO(james): iOS 는 clientId, Android 는 serverClientId 를 콘솔에서 발급 후 주입.
-      //   envied 로 컴파일 타임 주입 예정 — 지금은 플랫폼 설정 파일에서 읽힌다.
     );
     _initialized = true;
   }
