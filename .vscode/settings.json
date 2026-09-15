@@ -1,0 +1,30 @@
+{
+  // fvm 으로 이 프로젝트에 고정한 SDK 를 쓰게 한다.
+  // 이게 없으면 Cursor/VS Code 가 PATH 의 flutter 를 쓰는데,
+  // 그건 fvm 전역 기본값(3.27.1 · Dart 3.6)이라 이 프로젝트가 요구하는
+  // Dart 3.13.3 에 한참 못 미친다 → 파일 전체가 빨개진다.
+  "dart.flutterSdkPath": ".fvm/flutter_sdk",
+
+  // .fvm 안에는 SDK 전체(1.6GB)가 심볼릭 링크로 들어 있다.
+  // 검색·파일감시 대상에서 빼지 않으면 Cursor 가 느려진다.
+  "search.exclude": {
+    "**/.fvm": true
+  },
+  "files.watcherExclude": {
+    "**/.fvm": true
+  },
+  "files.exclude": {
+    "**/.fvm": true
+  },
+
+  // build_runner 생성물은 읽을 일이 거의 없다. 검색에서 빼둔다.
+  "search.useIgnoreFiles": true,
+
+  "[dart]": {
+    "editor.formatOnSave": true,
+    "editor.rulers": [80],
+    "editor.selectionHighlight": false,
+    "editor.tabCompletion": "onlySnippets",
+    "editor.wordBasedSuggestions": "off"
+  }
+}

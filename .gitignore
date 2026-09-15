@@ -10,7 +10,10 @@ pubspec.lock
 
 # IDE
 .idea/
-.vscode/
+# .vscode 는 통째로 무시하되 settings.json 은 공유한다 —
+# fvm SDK 경로가 여기 있어서 없으면 다른 사람이 열었을 때 전부 빨개진다.
+.vscode/*
+!.vscode/settings.json
 *.iml
 *.iws
 
