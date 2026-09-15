@@ -154,6 +154,8 @@ Never _explainSheetsError(Object e, String spreadsheetId, String range) {
       '원문: ${e.message}',
     );
   }
+  // 400 이 아니면 원래 예외를 그대로 올린다 — 여기서 감싸면 원인이 가려진다.
+  // ignore: only_throw_errors — 받은 예외를 그대로 다시 던지는 것이라 안전하다.
   throw e;
 }
 
