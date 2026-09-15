@@ -31,15 +31,11 @@ import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sig
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
 
-
 /// 앱이 요구하는 스코프.
 ///
 /// `drive.file` 은 **앱이 만든 파일만** 접근한다 — 남의 증빙을 읽거나 지우는 게
 /// 원천적으로 불가능하다. 넓히지 않는다(ADR Decision 5).
-const googleScopes = <String>[
-  'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/spreadsheets',
-];
+const googleScopes = <String>['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/spreadsheets'];
 
 class GoogleAuthService {
   GoogleSignInAccount? _account;
@@ -52,7 +48,7 @@ class GoogleAuthService {
   Future<void> ensureInitialized() async {
     if (_initialized) return;
     // Android 는 Credential Manager 를 쓰는데, 거기서 **serverClientId 가 필수**다.
-    // 없으면 `clientConfigurationError: serverClientId must be provided on Android`.
+    // 없으면 `clientConfigurationError: serverClientId must be provided on Android`.f
     //
     // 주의: serverClientId 는 Android 클라이언트 ID 가 **아니다.**
     // GCP 콘솔에서 만든 **웹 애플리케이션** 유형 클라이언트 ID 다.
@@ -99,8 +95,7 @@ class GoogleAuthService {
       await ensureInitialized();
       // 반환 타입이 `Future<GoogleSignInAccount?>?` 다 — Future 자체가 널일 수 있다.
       // (플랫폼이 이 기능을 지원하지 않으면 null 을 준다.)
-      return _account =
-          await GoogleSignIn.instance.attemptLightweightAuthentication();
+      return _account = await GoogleSignIn.instance.attemptLightweightAuthentication();
     } on Object catch (e) {
       log.i('조용한 로그인 복구 실패 (로그인 화면으로 간다): $e');
       return _account = null;

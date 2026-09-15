@@ -1,0 +1,23 @@
+# build_runner 설정.
+#
+# ## 왜 필요한가
+#
+# envied 는 `.env` 를 build_runner 의 에셋 그래프가 아니라 dart:io 로 **직접**
+# 읽는다. 그래서 `.env` 만 고치면 build_runner 가 "바뀐 게 없다" 고 판단하고
+# `wrote 0 outputs` 를 내며 아무것도 안 한다. `touch` 도 안 통한다 —
+# mtime 이 아니라 내용 해시로 판단하기 때문이다.
+#
+# 아래 `sources` 에 `.env` 를 넣어 build_runner 가 이 파일을 입력으로
+# 추적하게 한다. 이러면 `.env` 를 고치는 것만으로 재생성된다.
+#
+# 그래도 안 잡히면 마지막 수단:
+#   fvm dart run build_runner clean && \
+#   fvm dart run build_runner build --delete-conflicting-outputs
+targets:
+  $default:
+    sources:
+      - lib/**
+      - test/**
+      - .env
+      - $package$
+      - pubspec.yaml
