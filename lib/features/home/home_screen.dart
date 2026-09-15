@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:bodit_app/core/config.dart';
+import 'package:bodit_app/core/links.dart';
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/providers.dart';
@@ -11,6 +13,7 @@ import 'package:bodit_app/router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// 시안 ②·⑬ — 촬영/파일 선택 + 전송 대기 큐 + 원본 바로가기.
 ///
@@ -97,10 +100,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           const SectionHeader('바로가기'),
           AppCard(
             children: [
-              // TODO(james): url_launcher 로 실제 Sheets·Drive·Slack URL 을 연다.
-              LabeledRow(label: '스프레드시트', value: '매입내역', onTap: () {}),
-              LabeledRow(label: '드라이브', value: '증빙 폴더', onTap: () {}),
-              LabeledRow(label: 'Slack', value: '#purchase', onTap: () {}),
+              _ShortcutRow(
+                label: '스프레드시트',
+                value: '매입내역',
+                id: Config.spreadsheetId,
+                url: spreadsheetUrl,
+              ),
+              _ShortcutRow(
+                label: '드라이브',
+                value: '증빙 폴더',
+                id: Config.driveFolderId,
+                url: driveFolderUrl,
+              ),
+              _ShortcutRow(
+                label: 'Slack',
+                value: '#purchase',
+                id: Config.slackChannelId,
+                url: slackChannelUrl,
+              ),
             ],
           ),
           const NoteText('조회는 앱에서 다시 만들지 않고 원본으로 연결합니다.'),
@@ -213,5 +230,49 @@ class _AccountMenu extends ConsumerWidget {
         ),
       ],
     );
+  }
+}
+
+
+/// 원본으로 가는 바로가기 한 줄.
+///
+/// 설정값이 비어 있으면 **누를 수 없게** 하고 왜 그런지 말한다.
+/// 눌렀는데 아무 일도 안 일어나면 앱이 고장 난 줄 안다.
+class _ShortcutRow extends StatelessWidget {
+  const _ShortcutRow({
+    required this.label,
+    required this.value,
+    required this.id,
+    required this.url,
+  });
+
+  final String label;
+  final String value;
+  final String id;
+  final String Function(String) url;
+
+  @override
+  Widget build(BuildContext context) {
+    final configured = id.isNotEmpty;
+
+    return LabeledRow(
+      label: label,
+      value: configured ? value : null,
+      placeholder: '설정 안 됨',
+      subtitle: configured ? null : '.env 에 값을 넣고 build_runner 를 다시 돌리세요',
+      onTap: configured ? () => _open(context) : null,
+    );
+  }
+
+  Future<void> _open(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final uri = Uri.parse(url(id));
+    // 외부 앱(시트·드라이브·Slack)이 깔려 있으면 그쪽이 받아간다.
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('$label 을(를) 열지 못했습니다.')),
+      );
+    }
   }
 }

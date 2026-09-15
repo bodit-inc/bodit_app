@@ -21,6 +21,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:bodit_app/core/links.dart';
 import 'package:bodit_app/core/utils/filename.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -129,9 +130,6 @@ class SlackRepository {
     required String submittedBy,
     required String driveUrl,
   }) {
-    final sheetUrl =
-        'https://docs.google.com/spreadsheets/d/$spreadsheetId/edit';
-
     return [
       [
         formatDateForFilename(belongDate),
@@ -143,7 +141,7 @@ class SlackRepository {
       submittedBy,
       // Slack 링크 문법은 <url|보일 글자> 다.
       '<$driveUrl|드라이브에서보기>',
-      '<$sheetUrl|스프레드시트에서보기>',
+      '<${spreadsheetUrl(spreadsheetId)}|스프레드시트에서보기>',
     ].join('\n');
   }
 
