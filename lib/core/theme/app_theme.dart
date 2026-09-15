@@ -1,4 +1,5 @@
 import 'package:bodit_app/core/theme/tokens.dart';
+import 'package:bodit_app/core/theme/typography.dart';
 import 'package:flutter/material.dart';
 
 /// 앱 테마. Material 3 기본값을 쓰고 토큰만 얹는다.
@@ -14,6 +15,10 @@ abstract final class AppTheme {
 
     return ThemeData(
       colorScheme: scheme,
+      // fh-front-app 과 같은 스케일. 공통 위젯이 전부 textTheme 을 쓰므로
+      // 여기 한 줄로 앱 전체 폰트가 바뀐다.
+      fontFamily: AppTypography.fontFamily,
+      textTheme: AppTypography.textTheme,
       scaffoldBackgroundColor: const Color(0xFFF2F2F7),
       appBarTheme: const AppBarTheme(centerTitle: false, scrolledUnderElevation: 0),
       cardTheme: CardThemeData(
