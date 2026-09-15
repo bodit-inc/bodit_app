@@ -23,6 +23,8 @@ class SignInScreen extends ConsumerWidget {
               const SizedBox(height: Gap.lg),
               Text('매입내역', style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 56),
+              // 앱 시작 시의 조용한 복구는 네이티브 스플래시가 가려주므로
+              // 여기 스피너는 **사용자가 버튼을 눌렀을 때만** 보인다.
               if (auth.isLoading)
                 const CircularProgressIndicator()
               else

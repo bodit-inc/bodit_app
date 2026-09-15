@@ -23,6 +23,7 @@ import 'dart:io';
 
 import 'package:bodit_app/core/links.dart';
 import 'package:bodit_app/core/utils/filename.dart';
+import 'package:bodit_app/core/utils/korean_amount.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -135,7 +136,7 @@ class SlackRepository {
         formatDateForFilename(belongDate),
         vendor,
         description,
-        '${_won(totalAmount)}원',
+        '${formatWon(totalAmount)}원',
         className,
       ].join(' / '),
       submittedBy,
@@ -144,12 +145,6 @@ class SlackRepository {
       '<${spreadsheetUrl(spreadsheetId)}|스프레드시트에서보기>',
     ].join('\n');
   }
-
-  /// 천 단위 쉼표.
-  static String _won(int v) => v.toString().replaceAllMapped(
-        RegExp(r'(\d)(?=(\d{3})+$)'),
-        (m) => '${m[1]},',
-      );
 
   /// Slack 은 실패해도 **HTTP 200** 을 준다. 본문의 `ok` 를 봐야 한다.
   Map<String, dynamic> _decode(http.Response res, String method) {
