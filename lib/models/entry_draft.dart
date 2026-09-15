@@ -41,6 +41,11 @@ abstract class EntryDraft with _$EntryDraft {
 
     /// 과거 이력 추천의 근거. 화면에 그대로 보여준다.
     String? suggestionReason,
+
+    /// 같은 업체로 과거에 쓴 내역 후보. **자동으로 채우지 않는다** —
+    /// 내역은 건마다 달라서("8월 도서" → "9월 도서") 지난 값을 넣으면
+    /// 9월에 8월 것이 조용히 들어간다. 고르는 건 사용자가 한다.
+    @Default(<String>[]) List<String> descriptionSuggestions,
   }) = _EntryDraft;
 
   /// 이미 제출해 큐에 들어간 건을 다시 편집할 때. 전송 전이라면 고칠 수 있다.

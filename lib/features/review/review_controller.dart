@@ -148,6 +148,8 @@ class ReviewController extends Notifier<ReviewState> {
               className: s.className,
               // 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
               suggestionReason: '$vendor는 지난 ${s.reason}',
+              // 내역은 채우지 않고 후보로만 넘긴다(위 주석 참조).
+              descriptionSuggestions: s.recentDescriptions,
             );
           }
         } on Object {

@@ -20,6 +20,7 @@ class VendorSuggestion {
     required this.classCode,
     required this.className,
     required this.matchCount,
+    this.recentDescriptions = const <String>[],
   });
 
   final String expenseCategory;
@@ -28,6 +29,15 @@ class VendorSuggestion {
 
   /// 같은 업체를 이렇게 처리한 과거 건수. 화면에 "지난 N건" 으로 보여준다.
   final int matchCount;
+
+  /// 이 업체로 과거에 쓴 **내역** 들. 최근 것부터, 중복 제거.
+  ///
+  /// **자동으로 채우지 않는다.** 비목과 성격이 다르다 —
+  /// 비목은 업체가 정해지면 거의 안 바뀌지만("영풍문고 = 도서인쇄비"),
+  /// 내역은 건마다 달라진다("8월 도서" → "9월 도서").
+  /// 지난 값을 자동으로 넣으면 **9월에 8월 도서가 조용히 들어간다.**
+  /// 그래서 후보로만 보여주고 고르는 건 사용자가 한다.
+  final List<String> recentDescriptions;
 
   String get reason => '$matchCount건 모두 $expenseCategory였습니다';
 }
@@ -92,6 +102,9 @@ class SheetsRepository {
     // (비목, 분류코드, 분류명) 조합별 등장 횟수를 센다.
     final counts = <String, int>{};
     final samples = <String, (String, int, String)>{};
+    // 내역은 세지 않고 **등장 순서**대로 모은다 — 시트가 append-only 라
+    // 뒤에 있는 게 최근이다. LinkedHashMap 의 삽입 순서로 중복을 지운다.
+    final descriptions = <String, void>{};
 
     for (final row in rows) {
       if (row.length < 5) continue;
@@ -105,6 +118,13 @@ class SheetsRepository {
       final key = '$category|$code|$className';
       counts[key] = (counts[key] ?? 0) + 1;
       samples[key] = (category, code, className);
+
+      final desc = '${row[1]}'.trim();
+      if (desc.isNotEmpty) {
+        // 다시 넣어 최신 등장 위치로 끌어올린다.
+        descriptions.remove(desc);
+        descriptions[desc] = null;
+      }
     }
 
     if (counts.isEmpty) return null;
@@ -118,6 +138,9 @@ class SheetsRepository {
       classCode: code,
       className: className,
       matchCount: best.value,
+      // 최근 것부터 최대 6개. 더 보여주면 고르는 게 일이 된다.
+      recentDescriptions:
+          descriptions.keys.toList().reversed.take(6).toList(),
     );
   }
 

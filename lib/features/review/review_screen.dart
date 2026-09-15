@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/utils/filename.dart';
@@ -57,6 +58,11 @@ class ReviewScreen extends ConsumerWidget {
       body: ListView(
         padding: screenPadding,
         children: [
+          // 무엇을 올리는지 보고 확인해야 한다 — 값만 보고는 OCR 이 엉뚱한
+          // 영수증을 읽었는지 알 수 없다. 다건일 때는 특히 그렇다.
+          _EvidencePreview(draft.evidencePath),
+          const SizedBox(height: Gap.md),
+
           // 시안 ⑥ — 여러 건일 때 건별 목록
           if (state.isMulti) ...[
             SectionHeader('읽은 증빙 ${state.drafts.length}건'),
@@ -107,6 +113,37 @@ class ReviewScreen extends ConsumerWidget {
                   (d, v) => d.copyWith(description: v),
                 ),
               ),
+              // 같은 업체로 과거에 쓴 내역. **자동으로 안 채운다** —
+              // 내역은 건마다 달라서("8월 도서" → "9월 도서") 지난 값을
+              // 넣으면 9월에 8월 것이 조용히 들어간다. 눌러서 고른다.
+              if (draft.descriptionSuggestions.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.md),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '이 업체로 전에 쓴 내역',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                      const SizedBox(height: Gap.sm),
+                      Wrap(
+                        spacing: Gap.sm,
+                        runSpacing: Gap.sm,
+                        children: [
+                          for (final d in draft.descriptionSuggestions)
+                            SuggestChip(
+                              d,
+                              selected: d == draft.description,
+                              onTap: () => ref
+                                  .read(reviewControllerProvider.notifier)
+                                  .update((x) => x.copyWith(description: d)),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
 
@@ -673,6 +710,121 @@ class _ClassPickerSheetState extends ConsumerState<_ClassPickerSheet> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+
+/// 올라갈 증빙 미리보기. 눌러서 전체 화면으로 본다.
+///
+/// 값만 보고는 OCR 이 **엉뚱한 영수증**을 읽었는지 알 수 없다.
+/// 여러 장을 한 번에 찍었을 때 특히 그렇다 — 금액이 그럴듯하면 그냥 넘어간다.
+class _EvidencePreview extends StatelessWidget {
+  const _EvidencePreview(this.path);
+
+  final String path;
+
+  bool get _isPdf => path.toLowerCase().endsWith('.pdf');
+
+  @override
+  Widget build(BuildContext context) {
+    // PDF 는 Image.file 로 못 그린다. 파일이 있다는 것만 알려준다.
+    if (_isPdf) {
+      return AppCard(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(Gap.lg),
+            child: Row(
+              children: [
+                const Icon(Icons.picture_as_pdf_outlined, size: 28),
+                const SizedBox(width: Gap.md),
+                Expanded(
+                  child: Text(
+                    'PDF 증빙 · 미리보기 없음',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    final file = File(path);
+    if (!file.existsSync()) {
+      return const NoticeBanner(child: Text('증빙 원본을 찾을 수 없습니다.'));
+    }
+
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => _FullScreenEvidence(file)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(Radii.card),
+        child: Stack(
+          alignment: Alignment.bottomRight,
+          children: [
+            // 세로로 긴 영수증이 화면을 다 먹지 않게 높이를 묶는다.
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: SizedBox(
+                width: double.infinity,
+                child: Image.file(file, fit: BoxFit.cover),
+              ),
+            ),
+            Container(
+              margin: const EdgeInsets.all(Gap.sm),
+              padding: const EdgeInsets.symmetric(
+                horizontal: Gap.sm,
+                vertical: 3,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(Radii.pill),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.zoom_in, size: 14, color: Colors.white),
+                  SizedBox(width: 4),
+                  Text(
+                    '크게 보기',
+                    style: TextStyle(fontSize: 11, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 전체 화면 증빙. 확대해서 글씨를 확인할 수 있어야 한다 —
+/// OCR 이 읽은 금액이 맞는지 보려면 결국 원본을 키워봐야 한다.
+class _FullScreenEvidence extends StatelessWidget {
+  const _FullScreenEvidence(this.file);
+
+  final File file;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: const Text('증빙 원본'),
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 1,
+          maxScale: 6,
+          child: Image.file(file),
+        ),
       ),
     );
   }
