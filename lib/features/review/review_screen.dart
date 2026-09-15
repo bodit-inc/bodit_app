@@ -15,11 +15,30 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// 확신 낮은 필드를 표시하지 않는다(ADR Decision 11). 어차피 전부 훑어야 하는데
 /// 특정 필드만 찍으면 나머지를 안 보게 된다. 대신 **비어 있는 칸**은 알려준다 —
 /// 그건 확신의 문제가 아니라 제출이 막히는 문제다.
-class ReviewScreen extends ConsumerWidget {
+class ReviewScreen extends ConsumerStatefulWidget {
   const ReviewScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ReviewScreen> createState() => _ReviewScreenState();
+}
+
+class _ReviewScreenState extends ConsumerState<ReviewScreen> {
+  /// 비어 있을 수 있는 칸들의 화면상 위치.
+  ///
+  /// 제출을 눌렀는데 덜 찼을 때 **그 칸으로 데려가려면** 필요하다.
+  /// 키 이름은 `EntryDraft.missingFields` 가 내는 문자열과 같아야 한다 —
+  /// 그래야 "무엇이 비었는지" 와 "어디로 갈지" 가 따로 놀지 않는다.
+  final _fieldKeys = <String, GlobalKey>{
+    '소속날짜': GlobalKey(),
+    '업체명': GlobalKey(),
+    '내역': GlobalKey(),
+    '비목': GlobalKey(),
+    '분류코드': GlobalKey(),
+    '총금액': GlobalKey(),
+  };
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(reviewControllerProvider);
 
     // 시안 ④ — OCR 진행 중
@@ -49,8 +68,11 @@ class ReviewScreen extends ConsumerWidget {
               ),
             )
           else
+            // 비어 있어도 **누를 수 있게** 둔다. 비활성 버튼은 왜 안 되는지
+            // 말해주지 않아서, 사용자는 위쪽만 들여다보다 막힌다.
+            // 누르면 첫 빈 칸으로 데려간다.
             TextButton(
-              onPressed: state.allComplete ? () => _submit(context, ref) : null,
+              onPressed: () => _submit(context, ref),
               child: Text(state.isMulti ? '전체 제출' : '제출'),
             ),
         ],
@@ -95,6 +117,7 @@ class ReviewScreen extends ConsumerWidget {
           AppCard(
             children: [
               LabeledRow(
+                key: _fieldKeys['소속날짜'],
                 label: '소속날짜',
                 value: _fmtDate(draft.belongDate),
                 placeholder: '입력 필요',
@@ -107,6 +130,7 @@ class ReviewScreen extends ConsumerWidget {
                 onTap: () {},
               ),
               LabeledRow(
+                key: _fieldKeys['업체명'],
                 label: '업체명',
                 value: draft.vendor,
                 placeholder: '입력 필요',
@@ -116,6 +140,7 @@ class ReviewScreen extends ConsumerWidget {
                 ),
               ),
               LabeledRow(
+                key: _fieldKeys['내역'],
                 label: '내역',
                 value: draft.description,
                 placeholder: '입력 필요',
@@ -167,7 +192,11 @@ class ReviewScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('비목', style: Theme.of(context).textTheme.bodySmall),
+                    Text(
+                      '비목',
+                      key: _fieldKeys['비목'],
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                     const SizedBox(height: Gap.sm),
                     Wrap(
                       spacing: Gap.sm,
@@ -190,7 +219,11 @@ class ReviewScreen extends ConsumerWidget {
                       SuggestReason(draft.suggestionReason!),
 
                     const SizedBox(height: Gap.lg),
-                    Text('분류', style: Theme.of(context).textTheme.bodySmall),
+                    Text(
+                      '분류',
+                      key: _fieldKeys['분류코드'],
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                     const SizedBox(height: Gap.sm),
                     // 분류코드와 분류명은 따로 받지 않는다 — 마스터에서 하나를
                     // 고르면 둘 다 정해진다. 코드를 손으로 치게 하면 마스터에
@@ -221,6 +254,7 @@ class ReviewScreen extends ConsumerWidget {
           AppCard(
             children: [
               LabeledRow(
+                key: _fieldKeys['총금액'],
                 label: '총금액',
                 value: _fmtAmount(draft.totalAmount),
                 placeholder: '입력 필요',
@@ -313,8 +347,16 @@ class ReviewScreen extends ConsumerWidget {
     );
   }
 
+  /// 제출. 덜 찼으면 보내지 않고 **첫 빈 칸으로 데려간다.**
   Future<void> _submit(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
+    final state = ref.read(reviewControllerProvider);
+
+    if (!state.allComplete) {
+      await _goToFirstMissing(state);
+      return;
+    }
+
     final navigator = Navigator.of(context);
     try {
       // 저장하고 바로 보낸다. 실패한 건만 전송 대기에 남는다.
@@ -357,6 +399,47 @@ class ReviewScreen extends ConsumerWidget {
     } on Object catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('$e')));
     }
+  }
+
+  /// 덜 채운 건으로 옮기고, 그 건의 첫 빈 칸을 화면에 띄운다.
+  Future<void> _goToFirstMissing(ReviewState state) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    // 다건이면 덜 채운 건을 먼저 띄운다 — 보고 있는 건은 다 찼는데
+    // 다른 건이 비어 있을 수 있다.
+    final index = state.drafts.indexWhere((d) => !d.isComplete);
+    if (index < 0) return;
+    if (index != state.selected) {
+      ref.read(reviewControllerProvider.notifier).select(index);
+      // 화면이 그 건으로 다시 그려진 뒤에야 키가 제자리를 가리킨다.
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+    }
+
+    final field = state.drafts[index].missingFields.first;
+    // GlobalKey 가 가리키는 건 이 State 가 아니라 그 칸의 엘리먼트다.
+    // 위에서 건을 바꿨다면 그 사이 사라졌을 수 있으니 따로 확인한다.
+    final ctx = _fieldKeys[field]?.currentContext;
+    if (ctx != null && ctx.mounted) {
+      await Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        // 화면 맨 위에 딱 붙이면 떠 있는 안내 바에 가린다. 조금 내려서 띄운다.
+        alignment: 0.25,
+      );
+    }
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          state.isMulti
+              ? '${index + 1}번째 건의 $field 을(를) 채워주세요.'
+              : '$field 을(를) 채워주세요.',
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> _pickCategory(BuildContext context, WidgetRef ref) async {
