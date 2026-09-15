@@ -36,6 +36,9 @@ class ReviewState {
 
   /// OCR 진행 중 (시안 ④).
   final bool isReading;
+
+  /// 예외 **원문**. 사람이 읽을 문구는 화면이 붙인다
+  /// (`ErrorDisclosure` 가 한 줄 + 접힌 원문으로 보여준다).
   final String? error;
 
   EntryDraft? get current =>
@@ -110,7 +113,8 @@ class ReviewController extends Notifier<ReviewState> {
             cardLast4: r.cardLast4,
           );
         } on Object catch (err) {
-          state = state.copyWith(error: '항목을 읽지 못했습니다: $err');
+          // 한 장이 실패해도 나머지는 계속 읽는다. 사용자가 직접 채우면 된다.
+          state = state.copyWith(error: '$err');
         }
       }
 

@@ -212,6 +212,15 @@ class ReviewScreen extends ConsumerWidget {
           ),
           const NoteText('위 항목을 고치면 파일명도 따라 바뀝니다. 직접 고칠 수도 있습니다.'),
 
+          // OCR 이 실패해도 폼은 그대로 쓴다(직접 채우면 된다). 다만 왜 비었는지는
+          // 알려줘야 한다 — 지금까지 이 값이 화면에 안 나와서 조용히 삼켜졌다.
+          if (state.error != null) ...[
+            const SizedBox(height: Gap.lg),
+            ErrorDisclosure(
+              '증빙에서 항목을 읽지 못했습니다. 직접 채워주세요.',
+              detail: state.error!,
+            ),
+          ],
           if (draft.missingFields.isNotEmpty) ...[
             const SizedBox(height: Gap.lg),
             NoticeBanner(
@@ -417,7 +426,12 @@ class _CategoryPickerSheet extends ConsumerWidget {
       initialChildSize: 0.7,
       builder: (_, controller) => categories.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('비목을 불러오지 못했습니다.\n$e')),
+        error: (e, _) => Center(
+          child: Padding(
+            padding: screenPadding,
+            child: ErrorDisclosure('비목을 불러오지 못했습니다.', detail: '$e'),
+          ),
+        ),
         data: (list) {
           if (list.isEmpty) {
             return const Center(

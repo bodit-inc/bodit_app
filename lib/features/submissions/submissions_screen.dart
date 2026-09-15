@@ -20,7 +20,12 @@ class SubmissionsScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('내 제출')),
       body: rows.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('목록을 불러오지 못했습니다.\n$e')),
+        error: (e, _) => Center(
+          child: Padding(
+            padding: screenPadding,
+            child: ErrorDisclosure('목록을 불러오지 못했습니다.', detail: '$e'),
+          ),
+        ),
         data: (list) {
           if (list.isEmpty) {
             return const Center(child: Text('아직 제출한 건이 없습니다.'));
