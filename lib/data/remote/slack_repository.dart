@@ -21,18 +21,24 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:bodit_app/core/utils/filename.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class SlackRepository {
   SlackRepository({
     required String botToken,
     required this.channelId,
+    required this.spreadsheetId,
     http.Client? client,
   })  : _token = botToken,
         _client = client ?? http.Client();
 
   final String _token;
   final String channelId;
+
+  /// 메시지에 "스프레드시트에서보기" 링크를 넣으려면 필요하다.
+  final String spreadsheetId;
   final http.Client _client;
 
   Map<String, String> get _auth => <String, String>{
@@ -43,20 +49,20 @@ class SlackRepository {
   Future<void> postEvidence({
     required File image,
     required String filename,
+    required DateTime belongDate,
     required String vendor,
-    required int totalAmount,
-    required String expenseCategory,
     required String description,
-    required String cardLast4,
+    required int totalAmount,
+    required String className,
     required String submittedBy,
     required String driveUrl,
   }) async {
-    final comment = _comment(
+    final comment = buildComment(
+      belongDate: belongDate,
       vendor: vendor,
-      totalAmount: totalAmount,
-      expenseCategory: expenseCategory,
       description: description,
-      cardLast4: cardLast4,
+      totalAmount: totalAmount,
+      className: className,
       submittedBy: submittedBy,
       driveUrl: driveUrl,
     );
@@ -102,24 +108,50 @@ class SlackRepository {
     _decode(step3, 'files.completeUploadExternal');
   }
 
-  String _comment({
+  /// 채널에 붙는 메시지.
+  ///
+  /// 한 줄로 요약하고 링크는 아래에 둔다 — `#purchase` 는 흘러가는 채널이라
+  /// 스크롤하면서 훑을 수 있어야 한다. 사람이 손으로 던지던 시절의 형태에 맞춘다.
+  ///
+  /// ```text
+  /// 260910 / 드림디포(에이스) / 뽁뽁이 / 8,000원 / 법인(이체)
+  /// james@bodit.co
+  /// 드라이브에서보기
+  /// 스프레드시트에서보기
+  /// ```
+  @visibleForTesting
+  String buildComment({
+    required DateTime belongDate,
     required String vendor,
-    required int totalAmount,
-    required String expenseCategory,
     required String description,
-    required String cardLast4,
+    required int totalAmount,
+    required String className,
     required String submittedBy,
     required String driveUrl,
   }) {
-    final amount = totalAmount.toString().replaceAllMapped(
-          RegExp(r'(\d)(?=(\d{3})+$)'),
-          (m) => '${m[1]},',
-        );
-    return '*$vendor* · $amount원\n'
-        '$expenseCategory · $description · 카드 ••••$cardLast4\n'
-        '등록 $submittedBy\n'
-        '<$driveUrl|Drive 에서 보기>';
+    final sheetUrl =
+        'https://docs.google.com/spreadsheets/d/$spreadsheetId/edit';
+
+    return [
+      [
+        formatDateForFilename(belongDate),
+        vendor,
+        description,
+        '${_won(totalAmount)}원',
+        className,
+      ].join(' / '),
+      submittedBy,
+      // Slack 링크 문법은 <url|보일 글자> 다.
+      '<$driveUrl|드라이브에서보기>',
+      '<$sheetUrl|스프레드시트에서보기>',
+    ].join('\n');
   }
+
+  /// 천 단위 쉼표.
+  static String _won(int v) => v.toString().replaceAllMapped(
+        RegExp(r'(\d)(?=(\d{3})+$)'),
+        (m) => '${m[1]},',
+      );
 
   /// Slack 은 실패해도 **HTTP 200** 을 준다. 본문의 `ok` 를 봐야 한다.
   Map<String, dynamic> _decode(http.Response res, String method) {

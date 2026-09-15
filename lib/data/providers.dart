@@ -44,6 +44,7 @@ final slackRepositoryProvider = Provider<SlackRepository>((ref) {
   return SlackRepository(
     botToken: Config.slackBotToken,
     channelId: Config.slackChannelId,
+    spreadsheetId: Config.spreadsheetId,
   );
 });
 
