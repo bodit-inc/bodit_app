@@ -125,6 +125,7 @@ class SubmissionSender {
           vendor: entry.vendor,
           description: entry.description,
           totalAmount: entry.totalAmount,
+          currency: entry.currency,
           className: entry.className,
           submittedBy: entry.createdBy,
           driveUrl: driveUrl,

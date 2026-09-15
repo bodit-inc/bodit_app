@@ -1,3 +1,4 @@
+import 'package:bodit_app/core/utils/currency.dart';
 import 'package:bodit_app/models/sheet_row.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
@@ -48,16 +49,15 @@ abstract class PurchaseEntry with _$PurchaseEntry implements SheetRow {
     /// 카드 뒤 4자리만. **앞자리는 OCR 결과에서도 즉시 버린다.**
     required String cardLast4,
 
-    /// 공급가액 + 부가세.
-    required int totalAmount,
-    required int supplyAmount,
-
-    /// **0원인 경우가 있다** (도서 등 면세). 자동 계산하지 않는다.
-    required int vatAmount,
-
-    /// 제출자 계정. OAuth 로그인에서 가져온다.
-    required String createdBy,
-    required DateTime createdAt,
+    required int totalAmount, required int supplyAmount, /// **0원인 경우가 있다** (도서 등 면세). 자동 계산하지 않는다.
+    required int vatAmount, /// 제출자 계정. OAuth 로그인에서 가져온다.
+    required String createdBy, required DateTime createdAt, /// 공급가액 + 부가세.
+    /// ISO 4217 코드. 기본은 원화다.
+    ///
+    /// **금액 세 칸은 이 통화의 최소 단위**로 들고 있다 —
+    /// 원화는 소수점이 0 이라 그대로지만 달러는 센트다.
+    /// 시트에 쓸 때 `Currency.toSheetValue` 로 나눈다.
+    @Default('KRW') String currency,
 
     /// 일부 비목(금형제작비·재료비)에 한해 `FH` / `BS`.
     @Default('') String note,
@@ -83,6 +83,21 @@ abstract class PurchaseEntry with _$PurchaseEntry implements SheetRow {
   @override
   String get sheetName => '매입내역';
 
+  Currency get _cur => currencyOf(currency);
+
+  /// 외화면 비고 앞에 통화를 붙인다.
+  ///
+  /// 시트에 통화 컬럼이 없다(18칸 계약). 그렇다고 `12.99` 만 적어두면 회계
+  /// 담당자가 원화로 읽는다 — **금액 칸만 보고는 구분할 수 없다.**
+  /// 비고는 자유 입력 칸이라 여기에 얹는 게 계약을 안 깨는 유일한 자리다.
+  ///
+  /// 제대로 하려면 통화 컬럼을 하나 더 두는 게 맞다. 회계 담당자와 합의가
+  /// 필요해서 지금은 이렇게 둔다 — 위키의 열린 질문에 올려뒀다.
+  String get _noteWithCurrency {
+    if (currency == 'KRW') return note;
+    return note.isEmpty ? '[$currency]' : '[$currency] $note';
+  }
+
   /// 시트에 append 할 한 행. **컬럼 순서가 곧 계약이다** — 바꾸려면 위키부터.
   @override
   List<Object> toSheetRow() => [
@@ -96,10 +111,10 @@ abstract class PurchaseEntry with _$PurchaseEntry implements SheetRow {
         classCode, //           8  분류코드
         className, //           9  분류명
         cardLast4, //          10  카드번호
-        totalAmount, //        11  총금액
-        supplyAmount, //       12  공급가액
-        vatAmount, //          13  부가세
-        note, //               14  비고
+        _cur.toSheetValue(totalAmount), //  11  총금액
+        _cur.toSheetValue(supplyAmount), // 12  공급가액
+        _cur.toSheetValue(vatAmount), //    13  부가세
+        _noteWithCurrency, //  14  비고
         settlementAccount, //  15  결산계정
         createdBy, //          16
         createdAt.toIso8601String(), // 17

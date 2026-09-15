@@ -13,29 +13,49 @@ library;
 import 'dart:async';
 
 import 'package:bodit_app/core/theme/tokens.dart';
+import 'package:bodit_app/core/utils/currency.dart';
 import 'package:bodit_app/core/utils/korean_amount.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+/// 키패드가 돌려주는 것. 금액과 **어느 통화인지**를 같이 준다.
+class AmountResult {
+  const AmountResult(this.minor, this.currencyCode);
+
+  /// 통화의 최소 단위 정수. 원화는 원, 달러는 센트.
+  final int minor;
+  final String currencyCode;
+}
+
 /// 금액 입력 시트를 띄우고 확정된 값을 돌려준다. 취소하면 null.
-Future<int?> showAmountKeypad(
+Future<AmountResult?> showAmountKeypad(
   BuildContext context, {
   required String title,
   int? initial,
+  String currencyCode = 'KRW',
 }) {
-  return showModalBottomSheet<int>(
+  return showModalBottomSheet<AmountResult>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (_) => _AmountKeypadSheet(title: title, initial: initial),
+    builder: (_) => _AmountKeypadSheet(
+      title: title,
+      initial: initial,
+      currencyCode: currencyCode,
+    ),
   );
 }
 
 class _AmountKeypadSheet extends StatefulWidget {
-  const _AmountKeypadSheet({required this.title, this.initial});
+  const _AmountKeypadSheet({
+    required this.title,
+    required this.currencyCode,
+    this.initial,
+  });
 
   final String title;
   final int? initial;
+  final String currencyCode;
 
   @override
   State<_AmountKeypadSheet> createState() => _AmountKeypadSheetState();
@@ -43,6 +63,7 @@ class _AmountKeypadSheet extends StatefulWidget {
 
 class _AmountKeypadSheetState extends State<_AmountKeypadSheet> {
   late int _value = widget.initial ?? 0;
+  late Currency _currency = currencyOf(widget.currencyCode);
 
   /// 원 단위 정수라 자리수 상한을 둔다. 조 단위를 넘길 일은 없고,
   /// 넘기면 int 연산과 화면이 같이 깨진다.
@@ -83,42 +104,60 @@ class _AmountKeypadSheetState extends State<_AmountKeypadSheet> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.baseline,
                 textBaseline: TextBaseline.alphabetic,
-                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  // 통화 선택. 해외 증빙이 있어서 원화 고정으로 둘 수 없다.
+                  _CurrencyButton(
+                    currency: _currency,
+                    onChanged: (c) => setState(() => _currency = c),
+                  ),
                   Expanded(
                     child: Text(
-                      formatWon(_value),
+                      _currency.format(_value),
                       textAlign: TextAlign.end,
                       style: const TextStyle(
-                        fontSize: 40,
+                        fontSize: 36,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -1,
                       ),
                     ),
                   ),
-                  const SizedBox(width: Gap.sm),
-                  const Text('원', style: TextStyle(fontSize: 20)),
                 ],
               ),
             ),
 
             // 0 하나 틀리면 10배다. 숫자만 보면 안 걸리는 실수가 여기서 걸린다.
-            const SizedBox(height: Gap.xs),
-            Text(
-              readKoreanAmount(_value),
-              textAlign: TextAlign.end,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: AppColors.suggestFg,
+            // **원화일 때만** 보여준다 — 외화를 한글로 읽어주면 오히려 헷갈린다.
+            if (_currency.code == 'KRW') ...[
+              const SizedBox(height: Gap.xs),
+              Text(
+                readKoreanAmount(_value),
+                textAlign: TextAlign.end,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.suggestFg,
+                ),
               ),
-            ),
+            ],
+            // 소수점 통화는 오른쪽부터 채워진다. 처음 보면 헷갈려서 알려준다.
+            if (_currency.decimals > 0) ...[
+              const SizedBox(height: Gap.xs),
+              Text(
+                '뒤에서부터 채워집니다 — 1·2·9·9 를 누르면 12.99',
+                textAlign: TextAlign.end,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: AppColors.neutralFg,
+                      fontWeight: FontWeight.w400,
+                    ),
+              ),
+            ],
 
             const SizedBox(height: Gap.lg),
             _Keypad(onDigits: _push, onBackspace: _backspace),
             const SizedBox(height: Gap.md),
             FilledButton(
-              onPressed: () => Navigator.pop(context, _value),
+              onPressed: () =>
+                  Navigator.pop(context, AmountResult(_value, _currency.code)),
               child: const Text('확인'),
             ),
           ],
@@ -201,6 +240,91 @@ class _Key extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+
+/// 통화 선택 버튼. 누르면 목록이 뜬다.
+class _CurrencyButton extends StatelessWidget {
+  const _CurrencyButton({required this.currency, required this.onChanged});
+
+  final Currency currency;
+  final ValueChanged<Currency> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: () async {
+        final picked = await showModalBottomSheet<Currency>(
+          context: context,
+          showDragHandle: true,
+          builder: (_) => _CurrencyPicker(selected: currency),
+        );
+        if (picked != null) onChanged(picked);
+      },
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 40),
+        padding: const EdgeInsets.symmetric(horizontal: Gap.md),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            currency.code,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+          const Icon(Icons.expand_more, size: 18),
+        ],
+      ),
+    );
+  }
+}
+
+class _CurrencyPicker extends StatelessWidget {
+  const _CurrencyPicker({required this.selected});
+
+  final Currency selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      builder: (_, controller) => ListView.builder(
+        controller: controller,
+        itemCount: currencies.length + 1,
+        itemBuilder: (_, i) {
+          if (i == 0) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.sm),
+              child: Text(
+                '통화 선택',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            );
+          }
+          final c = currencies[i - 1];
+          return ListTile(
+            dense: true,
+            leading: SizedBox(
+              width: 46,
+              child: Text(
+                c.code,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            title: Text(c.name),
+            trailing: c.code == selected.code
+                ? const Icon(Icons.check, size: 18)
+                : null,
+            onTap: () => Navigator.pop(context, c),
+          );
+        },
       ),
     );
   }

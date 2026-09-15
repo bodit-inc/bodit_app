@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:bodit_app/core/theme/tokens.dart';
+import 'package:bodit_app/core/utils/currency.dart';
 import 'package:bodit_app/core/utils/filename.dart';
 import 'package:bodit_app/core/utils/korean_amount.dart';
 import 'package:bodit_app/core/widgets/amount_keypad.dart';
@@ -272,12 +273,14 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                     LabeledRow(
                       key: _fieldKeys['총금액'],
                       label: '총금액',
-                      value: _fmtAmount(draft.totalAmount),
+                      value: _fmtAmount(draft.totalAmount, draft.currency),
                       placeholder: '입력 필요',
                       // 0 하나 틀리면 10배다. 숫자 옆에 한글로 같이 보여준다.
-                      subtitle: draft.totalAmount == null
-                          ? null
-                          : readKoreanAmount(draft.totalAmount!),
+                      // **원화일 때만** — 외화를 한글로 읽으면 오히려 헷갈린다.
+                      subtitle: _koreanOrNull(
+                        draft.totalAmount,
+                        draft.currency,
+                      ),
                       onTap: () => _editAmount(
                         context,
                         ref,
@@ -288,16 +291,20 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                     ),
                     LabeledRow(
                       label: '공급가액',
-                      value: _fmtAmount(draft.supplyAmount),
+                      value: _fmtAmount(draft.supplyAmount, draft.currency),
                       placeholder: '총금액과 동일',
-                      subtitle: draft.supplyAmount == null
-                          ? null
-                          : readKoreanAmount(draft.supplyAmount!),
+                      subtitle: _koreanOrNull(
+                        draft.supplyAmount,
+                        draft.currency,
+                      ),
                     ),
                     LabeledRow(
                       label: '부가세',
-                      value: _fmtAmount(draft.vatAmount ?? 0),
-                      subtitle: readKoreanAmount(draft.vatAmount ?? 0),
+                      value: _fmtAmount(draft.vatAmount ?? 0, draft.currency),
+                      subtitle: _koreanOrNull(
+                        draft.vatAmount ?? 0,
+                        draft.currency,
+                      ),
                     ),
                   ],
                 ),
@@ -528,9 +535,18 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     int? initial,
     EntryDraft Function(EntryDraft, int) apply,
   ) async {
-    final v = await showAmountKeypad(context, title: label, initial: initial);
-    if (v == null) return;
-    ref.read(reviewControllerProvider.notifier).update((d) => apply(d, v));
+    final draft = ref.read(reviewControllerProvider).current;
+    final r = await showAmountKeypad(
+      context,
+      title: label,
+      initial: initial,
+      currencyCode: draft?.currency ?? 'KRW',
+    );
+    if (r == null) return;
+    // 통화를 바꿨으면 같이 반영한다 — 금액만 바꾸면 단위가 어긋난다.
+    ref
+        .read(reviewControllerProvider.notifier)
+        .update((d) => apply(d.copyWith(currency: r.currencyCode), r.minor));
   }
 
   Future<void> _editFilename(
@@ -583,7 +599,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       : '${d.year}-${d.month.toString().padLeft(2, '0')}-'
             '${d.day.toString().padLeft(2, '0')}';
 
-  static String? _fmtAmount(int? v) => v == null ? null : formatWon(v);
+  static String? _fmtAmount(int? v, String code) =>
+      v == null ? null : currencyOf(code).formatWithCode(v);
+
+  /// 한글 풀이는 **원화일 때만** 붙인다.
+  static String? _koreanOrNull(int? v, String code) =>
+      (v == null || code != 'KRW') ? null : readKoreanAmount(v);
 }
 
 /// 시안 ④ — OCR 진행 중.

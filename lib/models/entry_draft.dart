@@ -26,6 +26,8 @@ abstract class EntryDraft with _$EntryDraft {
     int? classCode,
     String? className,
     String? cardLast4,
+    /// ISO 4217 코드. 금액 세 칸은 이 통화의 **최소 단위**로 들고 있다.
+    @Default('KRW') String currency,
     int? totalAmount,
     int? supplyAmount,
     int? vatAmount,
@@ -70,6 +72,7 @@ abstract class EntryDraft with _$EntryDraft {
       classCode: e.classCode,
       className: e.className,
       cardLast4: e.cardLast4,
+      currency: e.currency,
       totalAmount: e.totalAmount,
       supplyAmount: e.supplyAmount,
       vatAmount: e.vatAmount,
@@ -134,6 +137,7 @@ abstract class EntryDraft with _$EntryDraft {
       classCode: classCode!,
       className: className ?? '',
       cardLast4: cardLast4 ?? '',
+      currency: currency,
       totalAmount: total,
       // 공급가액이 안 찍혀 있으면 총액을 그대로 둔다. 1.1로 나누지 않는다 —
       // 면세면 그게 맞고, 과세면 사용자가 [1.1로 나누기] 를 누른다.
