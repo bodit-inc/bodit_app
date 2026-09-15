@@ -23,49 +23,79 @@ abstract final class AppTypography {
   /// fh-front-app 의 스케일과 동일. 값을 바꾸려면 저쪽과 같이 봐야 한다.
   static const textTheme = TextTheme(
     displayLarge: TextStyle(
-      fontFamily: fontFamily, fontSize: 40, fontWeight: FontWeight.w600,
+      fontFamily: fontFamily,
+      fontSize: 40,
+      fontWeight: FontWeight.w600,
     ),
     displayMedium: TextStyle(
-      fontFamily: fontFamily, fontSize: 36, fontWeight: FontWeight.w600,
+      fontFamily: fontFamily,
+      fontSize: 36,
+      fontWeight: FontWeight.w600,
     ),
     displaySmall: TextStyle(
-      fontFamily: fontFamily, fontSize: 32, fontWeight: FontWeight.w600,
+      fontFamily: fontFamily,
+      fontSize: 32,
+      fontWeight: FontWeight.w600,
     ),
     headlineLarge: TextStyle(
-      fontFamily: fontFamily, fontSize: 28, fontWeight: FontWeight.w600,
+      fontFamily: fontFamily,
+      fontSize: 28,
+      fontWeight: FontWeight.w600,
     ),
     headlineMedium: TextStyle(
-      fontFamily: fontFamily, fontSize: 24, fontWeight: FontWeight.w600,
+      fontFamily: fontFamily,
+      fontSize: 24,
+      fontWeight: FontWeight.w600,
     ),
     headlineSmall: TextStyle(
-      fontFamily: fontFamily, fontSize: 18, fontWeight: FontWeight.w600,
+      fontFamily: fontFamily,
+      fontSize: 18,
+      fontWeight: FontWeight.w600,
     ),
     titleLarge: TextStyle(
-      fontFamily: fontFamily, fontSize: 24, fontWeight: FontWeight.w600,
+      fontFamily: fontFamily,
+      fontSize: 24,
+      fontWeight: FontWeight.w600,
     ),
     titleMedium: TextStyle(
-      fontFamily: fontFamily, fontSize: 22, fontWeight: FontWeight.w600,
+      fontFamily: fontFamily,
+      fontSize: 22,
+      fontWeight: FontWeight.w600,
     ),
     titleSmall: TextStyle(
-      fontFamily: fontFamily, fontSize: 20, fontWeight: FontWeight.w600,
+      fontFamily: fontFamily,
+      fontSize: 20,
+      fontWeight: FontWeight.w600,
     ),
     bodyLarge: TextStyle(
-      fontFamily: fontFamily, fontSize: 18, fontWeight: FontWeight.w500,
+      fontFamily: fontFamily,
+      fontSize: 18,
+      fontWeight: FontWeight.w500,
     ),
     bodyMedium: TextStyle(
-      fontFamily: fontFamily, fontSize: 17, fontWeight: FontWeight.w500,
+      fontFamily: fontFamily,
+      fontSize: 17,
+      fontWeight: FontWeight.w500,
     ),
     bodySmall: TextStyle(
-      fontFamily: fontFamily, fontSize: 16, fontWeight: FontWeight.w400,
+      fontFamily: fontFamily,
+      fontSize: 16,
+      fontWeight: FontWeight.w400,
     ),
     labelLarge: TextStyle(
-      fontFamily: fontFamily, fontSize: 18, fontWeight: FontWeight.w600,
+      fontFamily: fontFamily,
+      fontSize: 18,
+      fontWeight: FontWeight.w600,
     ),
     labelMedium: TextStyle(
-      fontFamily: fontFamily, fontSize: 16, fontWeight: FontWeight.w600,
+      fontFamily: fontFamily,
+      fontSize: 16,
+      fontWeight: FontWeight.w600,
     ),
     labelSmall: TextStyle(
-      fontFamily: fontFamily, fontSize: 14, fontWeight: FontWeight.w600,
+      fontFamily: fontFamily,
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
     ),
   );
 }

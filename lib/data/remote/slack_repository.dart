@@ -33,8 +33,8 @@ class SlackRepository {
     required this.channelId,
     required this.spreadsheetId,
     http.Client? client,
-  })  : _token = botToken,
-        _client = client ?? http.Client();
+  }) : _token = botToken,
+       _client = client ?? http.Client();
 
   final String _token;
   final String channelId;
@@ -44,8 +44,8 @@ class SlackRepository {
   final http.Client _client;
 
   Map<String, String> get _auth => <String, String>{
-        'Authorization': 'Bearer $_token',
-      };
+    'Authorization': 'Bearer $_token',
+  };
 
   /// 증빙사진 + 매입 내용을 채널에 올린다.
   Future<void> postEvidence({

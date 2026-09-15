@@ -60,7 +60,8 @@ class DriveRepository {
   /// 폴더는 회계 담당자가 먼저 만들어두는 운영이라면, 그 ID 를 설정으로 받는 편이 낫다.
   Future<String> _ensureMonthFolder(drive.DriveApi api, DateTime d) async {
     final name = '${d.year}-${d.month.toString().padLeft(2, '0')}';
-    final q = "name = '$name' and '$rootFolderId' in parents "
+    final q =
+        "name = '$name' and '$rootFolderId' in parents "
         "and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
 
     final found = await api.files.list(

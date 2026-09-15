@@ -10,7 +10,6 @@ library;
 
 import 'package:flutter/material.dart';
 
-
 /// 간격. 4의 배수로 통일한다.
 abstract final class Gap {
   static const xs = 4.0;

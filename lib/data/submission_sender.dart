@@ -31,11 +31,7 @@ import 'package:drift/drift.dart' show Value;
 
 /// 한 건의 전송 결과.
 class SendOutcome {
-  const SendOutcome({
-    required this.id,
-    required this.allDone,
-    this.error,
-  });
+  const SendOutcome({required this.id, required this.allDone, this.error});
 
   final int id;
   final bool allDone;
@@ -112,7 +108,10 @@ class SubmissionSender {
           client: client,
           row: entry.copyWith(evidenceUrl: driveUrl),
         );
-        current = current.copyWith(sheetsDone: true, lastError: const Value(null));
+        current = current.copyWith(
+          sheetsDone: true,
+          lastError: const Value(null),
+        );
         await db.updateRow(current);
       }
 
@@ -130,7 +129,10 @@ class SubmissionSender {
           submittedBy: entry.createdBy,
           driveUrl: driveUrl,
         );
-        current = current.copyWith(slackDone: true, lastError: const Value(null));
+        current = current.copyWith(
+          slackDone: true,
+          lastError: const Value(null),
+        );
         await db.updateRow(current);
       }
 

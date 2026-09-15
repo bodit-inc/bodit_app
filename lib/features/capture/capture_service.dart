@@ -87,7 +87,9 @@ class CaptureService {
     );
     if (!dir.existsSync()) await dir.create(recursive: true);
 
-    final dest = File(p.join(dir.path, '${_uuid.v4()}${p.extension(source.path)}'));
+    final dest = File(
+      p.join(dir.path, '${_uuid.v4()}${p.extension(source.path)}'),
+    );
     await source.copy(dest.path);
     return CapturedEvidence(file: dest, isImage: isImage);
   }

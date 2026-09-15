@@ -1,4 +1,3 @@
-
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/providers.dart';
@@ -26,9 +25,7 @@ class SubmissionsScreen extends ConsumerWidget {
               final messenger = ScaffoldMessenger.of(context);
               final n = await confirmClearAll(context, ref);
               if (n == null) return;
-              messenger.showSnackBar(
-                SnackBar(content: Text('$n건을 지웠습니다.')),
-              );
+              messenger.showSnackBar(SnackBar(content: Text('$n건을 지웠습니다.')));
             },
             child: const Text('전체 삭제'),
           ),
@@ -49,9 +46,7 @@ class SubmissionsScreen extends ConsumerWidget {
           return ListView(
             padding: screenPadding,
             children: [
-              AppCard(
-                children: [for (final s in list) SubmissionRow(s)],
-              ),
+              AppCard(children: [for (final s in list) SubmissionRow(s)]),
               const NoteText(
                 '목적지가 3곳이라 하나만 실패할 수 있습니다. '
                 '실패한 곳만 다시 보내므로 시트에 같은 행이 두 번 들어가지 않습니다.\n'

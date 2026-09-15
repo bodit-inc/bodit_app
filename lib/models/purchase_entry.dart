@@ -49,9 +49,17 @@ abstract class PurchaseEntry with _$PurchaseEntry implements SheetRow {
     /// 카드 뒤 4자리만. **앞자리는 OCR 결과에서도 즉시 버린다.**
     required String cardLast4,
 
-    required int totalAmount, required int supplyAmount, /// **0원인 경우가 있다** (도서 등 면세). 자동 계산하지 않는다.
-    required int vatAmount, /// 제출자 계정. OAuth 로그인에서 가져온다.
-    required String createdBy, required DateTime createdAt, /// 공급가액 + 부가세.
+    required int totalAmount,
+    required int supplyAmount,
+
+    /// **0원인 경우가 있다** (도서 등 면세). 자동 계산하지 않는다.
+    required int vatAmount,
+
+    /// 제출자 계정. OAuth 로그인에서 가져온다.
+    required String createdBy,
+    required DateTime createdAt,
+
+    /// 공급가액 + 부가세.
     /// ISO 4217 코드. 기본은 원화다.
     ///
     /// **금액 세 칸은 이 통화의 최소 단위**로 들고 있다 —
@@ -71,8 +79,7 @@ abstract class PurchaseEntry with _$PurchaseEntry implements SheetRow {
 
   const new _();
 
-  factory fromJson(Map<String, dynamic> json) =>
-      _$PurchaseEntryFromJson(json);
+  factory fromJson(Map<String, dynamic> json) => _$PurchaseEntryFromJson(json);
 
   /// 소속날짜에서 파생. 시트 1번 컬럼.
   int get belongYear => belongDate.year;
@@ -101,25 +108,25 @@ abstract class PurchaseEntry with _$PurchaseEntry implements SheetRow {
   /// 시트에 append 할 한 행. **컬럼 순서가 곧 계약이다** — 바꾸려면 위키부터.
   @override
   List<Object> toSheetRow() => [
-        belongYear, //          1  해당년도
-        belongMonth, //         2  해당월
-        _date(belongDate), //   3  소속날짜
-        _date(spendDate), //    4  지출날짜
-        expenseCategory, //     5  비목
-        description, //         6  내역
-        vendor, //              7  업체명
-        classCode, //           8  분류코드
-        className, //           9  분류명
-        cardLast4, //          10  카드번호
-        _cur.toSheetValue(totalAmount), //  11  총금액
-        _cur.toSheetValue(supplyAmount), // 12  공급가액
-        _cur.toSheetValue(vatAmount), //    13  부가세
-        _noteWithCurrency, //  14  비고
-        settlementAccount, //  15  결산계정
-        createdBy, //          16
-        createdAt.toIso8601String(), // 17
-        evidenceUrl, //        18
-      ];
+    belongYear, //          1  해당년도
+    belongMonth, //         2  해당월
+    _date(belongDate), //   3  소속날짜
+    _date(spendDate), //    4  지출날짜
+    expenseCategory, //     5  비목
+    description, //         6  내역
+    vendor, //              7  업체명
+    classCode, //           8  분류코드
+    className, //           9  분류명
+    cardLast4, //          10  카드번호
+    _cur.toSheetValue(totalAmount), //  11  총금액
+    _cur.toSheetValue(supplyAmount), // 12  공급가액
+    _cur.toSheetValue(vatAmount), //    13  부가세
+    _noteWithCurrency, //  14  비고
+    settlementAccount, //  15  결산계정
+    createdBy, //          16
+    createdAt.toIso8601String(), // 17
+    evidenceUrl, //        18
+  ];
 
   static String _date(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'

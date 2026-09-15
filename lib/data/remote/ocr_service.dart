@@ -73,8 +73,8 @@ class OcrResult {
 
 class OcrService {
   OcrService({required String apiKey, http.Client? client})
-      : _apiKey = apiKey,
-        _client = client ?? http.Client();
+    : _apiKey = apiKey,
+      _client = client ?? http.Client();
 
   final String _apiKey;
   final http.Client _client;
@@ -192,7 +192,8 @@ class OcrService {
     }
 
     // utf8 로 직접 디코딩한다 — http 의 기본 latin1 해석이 한글을 깬다.
-    final decoded = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    final decoded =
+        jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
 
     // 안전 정책상 거절되면 content 가 비어 있을 수 있다.
     if (decoded['stop_reason'] == 'refusal') {
@@ -200,9 +201,11 @@ class OcrService {
     }
 
     final content = decoded['content'] as List<dynamic>;
-    final text = content
-        .cast<Map<String, dynamic>>()
-        .firstWhere((b) => b['type'] == 'text')['text'] as String;
+    final text =
+        content.cast<Map<String, dynamic>>().firstWhere(
+              (b) => b['type'] == 'text',
+            )['text']
+            as String;
 
     return OcrResult.fromJson(jsonDecode(text) as Map<String, dynamic>);
   }

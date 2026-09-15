@@ -117,36 +117,40 @@ Future<gapis.AuthClient> _requireClient(Ref ref) async {
 ///     다시 열 때 처음부터 읽는다
 final FutureProvider<List<String>> expenseCategoriesProvider =
     FutureProvider.autoDispose<List<String>>((ref) async {
-  final client = await _requireClient(ref);
-  final master = ref.watch(masterDataRepositoryProvider);
-  log.d('비목 마스터 읽기 시작 (sheet=${Config.spreadsheetId})');
-  final list = await master.categories(client).timeout(
-    const Duration(seconds: 20),
-    onTimeout: () => throw StateError(
-      '시트를 20초 안에 읽지 못했습니다.\n'
-      'SPREADSHEET_ID 와 네트워크를 확인해 주세요.',
-    ),
-  );
-  log.d('비목 마스터 읽기 끝: ${list.length}개');
-  // 여기까지 와야 캐시한다. 위에서 던지면 캐시가 안 남고 다음에 다시 읽는다.
-  ref.keepAlive();
-  if (list.isEmpty) {
-    // 여기까지 왔으면 인가·시트 접근은 성공했다. 탭이 비어 있는 것이다.
-    throw StateError(
-      '시트의 `_비목마스터` 탭이 비어 있습니다.\n'
-      'A2 부터 비목을 한 줄에 하나씩 넣어주세요.',
-    );
-  }
-  return list;
-});
+      final client = await _requireClient(ref);
+      final master = ref.watch(masterDataRepositoryProvider);
+      log.d('비목 마스터 읽기 시작 (sheet=${Config.spreadsheetId})');
+      final list = await master
+          .categories(client)
+          .timeout(
+            const Duration(seconds: 20),
+            onTimeout: () => throw StateError(
+              '시트를 20초 안에 읽지 못했습니다.\n'
+              'SPREADSHEET_ID 와 네트워크를 확인해 주세요.',
+            ),
+          );
+      log.d('비목 마스터 읽기 끝: ${list.length}개');
+      // 여기까지 와야 캐시한다. 위에서 던지면 캐시가 안 남고 다음에 다시 읽는다.
+      ref.keepAlive();
+      if (list.isEmpty) {
+        // 여기까지 왔으면 인가·시트 접근은 성공했다. 탭이 비어 있는 것이다.
+        throw StateError(
+          '시트의 `_비목마스터` 탭이 비어 있습니다.\n'
+          'A2 부터 비목을 한 줄에 하나씩 넣어주세요.',
+        );
+      }
+      return list;
+    });
 
 /// 분류코드 → 분류명. 시트에 수식을 안 두므로 앱이 이걸로 채운다.
 ///
 /// 비목과 같은 규칙 — 성공만 캐시, 실패는 항상 재시도.
 final FutureProvider<Map<int, String>> classNamesProvider =
     FutureProvider.autoDispose<Map<int, String>>((ref) async {
-  final client = await _requireClient(ref);
-  final map = await ref.watch(masterDataRepositoryProvider).classNames(client);
-  ref.keepAlive();
-  return map;
-});
+      final client = await _requireClient(ref);
+      final map = await ref
+          .watch(masterDataRepositoryProvider)
+          .classNames(client);
+      ref.keepAlive();
+      return map;
+    });

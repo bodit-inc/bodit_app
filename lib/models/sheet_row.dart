@@ -38,7 +38,7 @@ enum EntryKind {
   final String wireName;
 
   static EntryKind fromWire(String v) => EntryKind.values.firstWhere(
-        (e) => e.wireName == v,
-        orElse: () => throw ArgumentError('알 수 없는 항목 종류: $v'),
-      );
+    (e) => e.wireName == v,
+    orElse: () => throw ArgumentError('알 수 없는 항목 종류: $v'),
+  );
 }

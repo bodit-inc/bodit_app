@@ -52,8 +52,7 @@ class ReviewState {
   /// (`ErrorDisclosure` 가 한 줄 + 접힌 원문으로 보여준다).
   final String? error;
 
-  EntryDraft? get current =>
-      selected < drafts.length ? drafts[selected] : null;
+  EntryDraft? get current => selected < drafts.length ? drafts[selected] : null;
 
   bool get isMulti => drafts.length > 1;
 
@@ -102,9 +101,9 @@ class ReviewController extends Notifier<ReviewState> {
     final ocr = ref.read(ocrServiceProvider);
     final sheets = ref.read(sheetsRepositoryProvider);
     // 추천을 위해 시트를 읽어야 한다. 인가가 없으면 OCR 만 하고 넘어간다.
-    final client = await ref.read(googleAuthProvider).authorizedClient(
-          interactive: false,
-        );
+    final client = await ref
+        .read(googleAuthProvider)
+        .authorizedClient(interactive: false);
 
     final out = <EntryDraft>[];
     for (var i = 0; i < evidence.length; i++) {
@@ -201,7 +200,11 @@ class ReviewController extends Notifier<ReviewState> {
       final total = d.totalAmount;
       if (total == null) return d;
       final r = splitVat(total);
-      return d.copyWith(supplyAmount: r.supply, vatAmount: r.vat, vatPrinted: true);
+      return d.copyWith(
+        supplyAmount: r.supply,
+        vatAmount: r.vat,
+        vatPrinted: true,
+      );
     });
   }
 
@@ -282,11 +285,7 @@ class ReviewController extends Notifier<ReviewState> {
     }
 
     state = const ReviewState();
-    return SubmitSummary(
-      total: ids.length,
-      sent: sent,
-      firstError: firstError,
-    );
+    return SubmitSummary(total: ids.length, sent: sent, firstError: firstError);
   }
 }
 
