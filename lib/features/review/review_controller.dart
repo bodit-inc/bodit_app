@@ -26,6 +26,7 @@ class ReviewState {
     this.drafts = const <EntryDraft>[],
     this.selected = 0,
     this.isReading = false,
+    this.isSubmitting = false,
     this.error,
   });
 
@@ -36,6 +37,9 @@ class ReviewState {
 
   /// OCR 진행 중 (시안 ④).
   final bool isReading;
+
+  /// 제출 후 전송 시도 중.
+  final bool isSubmitting;
 
   /// 예외 **원문**. 사람이 읽을 문구는 화면이 붙인다
   /// (`ErrorDisclosure` 가 한 줄 + 접힌 원문으로 보여준다).
@@ -54,6 +58,7 @@ class ReviewState {
     List<EntryDraft>? drafts,
     int? selected,
     bool? isReading,
+    bool? isSubmitting,
     String? error,
     bool clearError = false,
   }) {
@@ -61,6 +66,7 @@ class ReviewState {
       drafts: drafts ?? this.drafts,
       selected: selected ?? this.selected,
       isReading: isReading ?? this.isReading,
+      isSubmitting: isSubmitting ?? this.isSubmitting,
       error: clearError ? null : (error ?? this.error),
     );
   }
@@ -168,17 +174,32 @@ class ReviewController extends Notifier<ReviewState> {
     });
   }
 
-  /// 전부 큐에 넣는다. **전송은 하지 않는다** — 사용자가 [전송 시도] 를 눌러야 나간다.
-  Future<int> enqueueAll() async {
+  /// 저장하고 **바로 전송을 시도한다.** 실패한 건만 전송 대기에 남는다.
+  ///
+  /// ## 순서가 중요하다: 큐에 먼저 넣고, 그다음 보낸다
+  ///
+  /// 전송부터 하고 실패했을 때 큐에 넣으면, 전송 도중 앱이 죽거나 강제 종료될 때
+  /// **건이 통째로 사라진다.** 사용자는 증빙을 다시 찍어야 한다.
+  ///
+  /// 먼저 큐에 넣으면 최악의 경우에도 "전송 대기" 로 남는다. 다시 켜서
+  /// [전송 시도] 를 누르면 된다. 큐 쓰기는 로컬이라 거의 실패하지 않는다.
+  ///
+  /// ## 재전송은 여전히 수동이다 (ADR 12a)
+  ///
+  /// 바뀐 건 **첫 시도를 자동으로 한다**는 것뿐이다. 실패한 건을 앱이 알아서
+  /// 다시 보내지 않는다 — 백그라운드 워커도 connectivity 리스너도 없다.
+  Future<SubmitSummary> submitAll() async {
     final account = ref.read(authControllerProvider).value;
     final email = account?.email;
     if (email == null) throw StateError('로그인이 필요합니다.');
 
     final db = ref.read(queueDbProvider);
-    var count = 0;
+    final ids = <int>[];
+
+    // ── 1. 먼저 전부 큐에 넣는다 (유실 방지) ──────────────────────
     for (final d in state.drafts) {
       final entry = d.toEntry(createdBy: email);
-      await db.enqueue(
+      final id = await db.enqueue(
         SubmissionsCompanion.insert(
           localId: _uuid.v4(),
           entryKind: Value(EntryKind.purchase.wireName),
@@ -189,11 +210,55 @@ class ReviewController extends Notifier<ReviewState> {
           driveUrl: const Value(null),
         ),
       );
-      count++;
+      ids.add(id);
     }
+
+    // ── 2. 방금 넣은 것만 바로 보낸다 ──────────────────────────────
+    //    sendPending() 이 아니라 id 를 짚어 보낸다 — 예전에 실패해 쌓여 있던
+    //    건까지 같이 나가면 사용자가 방금 낸 것의 결과를 알 수 없다.
+    state = state.copyWith(isSubmitting: true);
+    final sender = ref.read(submissionSenderProvider);
+    var sent = 0;
+    String? firstError;
+
+    for (final id in ids) {
+      final row = await db.byId(id);
+      if (row == null) continue;
+      final outcome = await sender.sendOne(row);
+      if (outcome.allDone) {
+        sent++;
+      } else {
+        firstError ??= outcome.error;
+      }
+    }
+
     state = const ReviewState();
-    return count;
+    return SubmitSummary(
+      total: ids.length,
+      sent: sent,
+      firstError: firstError,
+    );
   }
+}
+
+/// 제출 결과. 화면이 이걸로 문구를 만든다.
+class SubmitSummary {
+  const SubmitSummary({
+    required this.total,
+    required this.sent,
+    this.firstError,
+  });
+
+  final int total;
+
+  /// 세 목적지 전부 성공한 건수.
+  final int sent;
+
+  /// 실패가 있었다면 첫 사유. 조용히 넘기지 않는다.
+  final String? firstError;
+
+  int get failed => total - sent;
+  bool get allSent => failed == 0;
 }
 
 final reviewControllerProvider =

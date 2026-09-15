@@ -89,7 +89,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   : const Text('전송 시도'),
             ),
             const NoteText(
-              '지금 등록한 건은 기기에 임시저장합니다. '
+              '제출할 때 보내지 못한 건입니다. 기기에 보관돼 있으니 '
               '인터넷 연결이 원활해지면 전송 시도해주세요.',
             ),
           ],
