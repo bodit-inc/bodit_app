@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:bodit_app/core/log.dart';
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
@@ -102,6 +105,35 @@ class QueueDb extends _$QueueDb {
   Future<Submission?> byId(int id) =>
       (select(submissions)..where((t) => t.id.equals(id)))
           .getSingleOrNull();
+
+  /// 한 건을 큐에서 지우고 **기기에 복사해 둔 증빙 원본도 같이 지운다.**
+  ///
+  /// 행만 지우면 앱 디렉토리에 증빙 파일이 영영 남는다 — 아무도 참조하지 않는데
+  /// 용량만 먹는다(`CaptureService` 가 촬영마다 한 장씩 복사해 둔다).
+  ///
+  /// **이미 전송된 것은 되돌리지 않는다.** Drive 에 올라간 파일도, 시트에 들어간
+  /// 행도 그대로 남는다. 앱은 append 만 하고 원격을 지우지 않는다(ADR Decision 2).
+  /// 여기서 지우는 건 "보낼 목록" 에서 빼는 것뿐이다.
+  Future<void> discard(Submission row) async {
+    await remove(row.id);
+    try {
+      final f = File(row.evidencePath);
+      if (f.existsSync()) await f.delete();
+    } on Object catch (e) {
+      // 파일이 안 지워져도 행은 이미 빠졌다. 여기서 던지면 사용자는 "삭제
+      // 실패" 로 보는데 목록에서는 사라져 있어 더 헷갈린다.
+      log.w('증빙 파일을 지우지 못했다 (행은 삭제됨): $e');
+    }
+  }
+
+  /// 큐를 비운다. 완료된 건까지 전부.
+  Future<int> discardAll() async {
+    final rows = await select(submissions).get();
+    for (final r in rows) {
+      await discard(r);
+    }
+    return rows.length;
+  }
 
   Future<int> remove(int id) =>
       (delete(submissions)..where((t) => t.id.equals(id))).go();

@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
+import 'package:bodit_app/data/providers.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
 import 'package:bodit_app/router.dart';
 import 'package:flutter/material.dart';
@@ -62,6 +63,68 @@ class SubmissionRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 왼쪽으로 밀어 삭제. 되돌릴 수 없으므로 반드시 확인을 받는다.
+    return Dismissible(
+      key: ValueKey('submission-${row.id}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: Gap.lg),
+        color: AppColors.danger,
+        child: const Icon(Icons.delete_outline, color: Colors.white),
+      ),
+      confirmDismiss: (_) => _confirmDelete(context),
+      onDismissed: (_) async {
+        await ref.read(queueDbProvider).discard(row);
+      },
+      child: _body(context, ref),
+    );
+  }
+
+  /// 삭제 확인. **무엇이 지워지고 무엇이 안 지워지는지** 분명히 말한다.
+  Future<bool> _confirmDelete(BuildContext context) async {
+    final sent = <String>[
+      if (row.driveDone) '드라이브',
+      if (row.sheetsDone) '스프레드시트',
+      if (row.slackDone) '슬랙',
+    ];
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('이 건을 목록에서 지울까요?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(row.filename, style: const TextStyle(fontSize: 12)),
+            const SizedBox(height: Gap.md),
+            if (sent.isEmpty)
+              const Text('아직 아무 곳에도 전송되지 않았습니다. 기기에서 완전히 지워집니다.')
+            else
+              Text(
+                '이미 ${sent.join('·')}에 올라간 것은 그대로 남습니다.\n'
+                '앱은 보낸 것을 되돌리지 않습니다 — 목록에서만 사라집니다.\n'
+                '되돌리려면 시트와 드라이브에서 직접 지워야 합니다.',
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('지우기'),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
+  Widget _body(BuildContext context, WidgetRef ref) {
     final (label, tone) = _allDone
         ? ('완료', PillTone.ok)
         : _hasError
@@ -158,4 +221,44 @@ class _LegChip extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// 큐 전체 비우기. 홈과 `내 제출` 이 같이 쓴다.
+///
+/// 지운 건수를 돌려준다. 취소하면 null.
+Future<int?> confirmClearAll(BuildContext context, WidgetRef ref) async {
+  final rows = await ref.read(queueDbProvider).pending();
+  final total = rows.length;
+  if (total == 0) return null;
+
+  final anySent = rows.any((r) => r.driveDone || r.sheetsDone || r.slackDone);
+
+  if (!context.mounted) return null;
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text('$total건을 전부 지울까요?'),
+      content: Text(
+        anySent
+            ? '일부는 이미 전송됐습니다. 올라간 파일과 시트 행은 그대로 남고 '
+                '목록에서만 사라집니다.\n\n되돌릴 수 없습니다.'
+            : '아직 전송되지 않은 건들입니다. 기기에서 완전히 지워집니다.\n\n'
+                '되돌릴 수 없습니다.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('취소'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+          child: const Text('전부 지우기'),
+        ),
+      ],
+    ),
+  );
+  if (ok != true) return null;
+  return await ref.read(queueDbProvider).discardAll();
 }

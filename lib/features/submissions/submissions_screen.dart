@@ -18,7 +18,22 @@ class SubmissionsScreen extends ConsumerWidget {
     final rows = ref.watch(pendingSubmissionsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('내 제출')),
+      appBar: AppBar(
+        title: const Text('내 제출'),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              final n = await confirmClearAll(context, ref);
+              if (n == null) return;
+              messenger.showSnackBar(
+                const SnackBar(content: Text(r'$n건을 지웠습니다.')),
+              );
+            },
+            child: const Text('전체 삭제'),
+          ),
+        ],
+      ),
       body: rows.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
@@ -39,7 +54,9 @@ class SubmissionsScreen extends ConsumerWidget {
               ),
               const NoteText(
                 '목적지가 3곳이라 하나만 실패할 수 있습니다. '
-                '실패한 곳만 다시 보내므로 시트에 같은 행이 두 번 들어가지 않습니다.',
+                '실패한 곳만 다시 보내므로 시트에 같은 행이 두 번 들어가지 않습니다.\n'
+                '행을 왼쪽으로 밀면 목록에서 지울 수 있습니다 — '
+                '이미 올라간 파일과 시트 행은 지워지지 않습니다.',
               ),
             ],
           );
