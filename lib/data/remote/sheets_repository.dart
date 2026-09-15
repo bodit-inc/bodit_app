@@ -80,7 +80,7 @@ class SheetsRepository {
     // E:I = 비목 · 내역 · 업체명 · 분류코드 · 분류명
     final res = await api.spreadsheets.values.get(
       spreadsheetId,
-      '$dataSheetName!E2:I${maxRows + 1}',
+      "'$dataSheetName'!E2:I${maxRows + 1}",
     );
 
     final rows = res.values;
@@ -142,8 +142,10 @@ class MasterDataRepository {
   /// 비목 34개(늘어날 수 있다).
   Future<List<String>> categories(gapis.AuthClient client) async {
     final api = sheets.SheetsApi(client);
-    final res =
-        await api.spreadsheets.values.get(spreadsheetId, '$categorySheet!A2:A');
+    // 시트 이름은 작은따옴표로 감싼다. 밑줄로 시작하거나 한글·공백이 섞이면
+    // 따옴표 없이는 A1 표기가 깨진다.
+    final res = await api.spreadsheets.values
+        .get(spreadsheetId, "'$categorySheet'!A2:A");
     return (res.values ?? <List<Object?>>[])
         .where((r) => r.isNotEmpty)
         .map((r) => '${r[0]}'.trim())
@@ -156,8 +158,8 @@ class MasterDataRepository {
   /// 시트에 수식을 두지 않으므로(위키 참조) **앱이 이걸로 분류명을 채운다.**
   Future<Map<int, String>> classNames(gapis.AuthClient client) async {
     final api = sheets.SheetsApi(client);
-    final res =
-        await api.spreadsheets.values.get(spreadsheetId, '$classSheet!A2:B');
+    final res = await api.spreadsheets.values
+        .get(spreadsheetId, "'$classSheet'!A2:B");
     final out = <int, String>{};
     for (final r in res.values ?? <List<Object?>>[]) {
       if (r.length < 2) continue;

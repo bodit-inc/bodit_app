@@ -5,6 +5,7 @@
 library;
 
 import 'package:bodit_app/core/config.dart';
+import 'package:bodit_app/core/log.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
 import 'package:bodit_app/data/remote/drive_repository.dart';
 import 'package:bodit_app/data/remote/google_auth.dart';
@@ -77,7 +78,18 @@ Future<gapis.AuthClient> _requireClient(Ref ref) async {
   }
   // 여기서 interactive 를 켠다 — 로그인 때 인가를 거부했거나 스코프가 늘어난
   // 경우에도 다시 물어볼 수 있어야 한다.
-  final client = await auth.authorizedClient();
+  //
+  // 타임아웃을 건다. 네트워크나 플랫폼 채널이 응답하지 않으면 Future 가 영원히
+  // 안 끝나고 화면은 스피너만 돈다 — 그건 "조용히 실패" 와 똑같이 나쁘다.
+  log.d('인가 확인 시작');
+  final client = await auth.authorizedClient().timeout(
+    const Duration(seconds: 20),
+    onTimeout: () => throw StateError(
+      'Google 인가 확인이 20초 안에 끝나지 않았습니다.\n'
+      '네트워크를 확인하고 다시 시도해 주세요.',
+    ),
+  );
+  log.d('인가 확인 끝: ${client != null ? "OK" : "null"}');
   if (client == null) {
     throw StateError(
       'Google 시트·드라이브 접근 권한이 없습니다.\n'
@@ -90,7 +102,16 @@ Future<gapis.AuthClient> _requireClient(Ref ref) async {
 /// 비목 마스터. **하드코딩하지 않는다** — 시트에서 읽어 캐시한다.
 final expenseCategoriesProvider = FutureProvider<List<String>>((ref) async {
   final client = await _requireClient(ref);
-  final list = await ref.watch(masterDataRepositoryProvider).categories(client);
+  final master = ref.watch(masterDataRepositoryProvider);
+  log.d('비목 마스터 읽기 시작 (sheet=${Config.spreadsheetId})');
+  final list = await master.categories(client).timeout(
+    const Duration(seconds: 20),
+    onTimeout: () => throw StateError(
+      '시트를 20초 안에 읽지 못했습니다.\n'
+      'SPREADSHEET_ID 와 네트워크를 확인해 주세요.',
+    ),
+  );
+  log.d('비목 마스터 읽기 끝: ${list.length}개');
   if (list.isEmpty) {
     // 여기까지 왔으면 인가·시트 접근은 성공했다. 탭이 비어 있는 것이다.
     throw StateError(
