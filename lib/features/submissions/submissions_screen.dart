@@ -27,7 +27,7 @@ class SubmissionsScreen extends ConsumerWidget {
               final n = await confirmClearAll(context, ref);
               if (n == null) return;
               messenger.showSnackBar(
-                const SnackBar(content: Text(r'$n건을 지웠습니다.')),
+                SnackBar(content: Text('$n건을 지웠습니다.')),
               );
             },
             child: const Text('전체 삭제'),
