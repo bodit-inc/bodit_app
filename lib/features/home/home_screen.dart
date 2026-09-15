@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/providers.dart';
+import 'package:bodit_app/features/auth/auth_controller.dart';
 import 'package:bodit_app/features/capture/capture_service.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
 import 'package:bodit_app/router.dart';
@@ -31,7 +32,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         const [];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('매입내역')),
+      appBar: AppBar(
+        title: const Text('매입내역'),
+        actions: [_AccountMenu()],
+      ),
       body: ListView(
         padding: screenPadding,
         children: [
@@ -149,5 +153,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+}
+
+/// 앱바의 계정 메뉴 — 누가 로그인했는지 + 로그아웃.
+///
+/// ## 로그아웃이 왜 필요한가
+///
+/// "쓸 일 없는 기능" 처럼 보이지만 아니다. google_sign_in 7.x 는 인증과 인가가
+/// 별개라서, **인가 동의를 거부했거나 스코프가 늘어나면 다시 로그인하는 것이
+/// 유일한 복구 경로**다. 버튼이 없으면 앱 데이터를 지우는 수밖에 없다.
+///
+/// 등록자(`createdBy`)로 시트에 박히는 계정이라 누구로 로그인했는지도 보여준다.
+class _AccountMenu extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final email = ref.watch(authControllerProvider).value?.email;
+
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.account_circle_outlined),
+      tooltip: '계정',
+      onSelected: (v) {
+        if (v == 'signOut') {
+          unawaited(ref.read(authControllerProvider.notifier).signOut());
+        }
+      },
+      itemBuilder: (_) => [
+        if (email != null)
+          PopupMenuItem<String>(
+            enabled: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('등록자', style: Theme.of(context).textTheme.labelSmall),
+                const SizedBox(height: 2),
+                Text(email, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+        const PopupMenuDivider(),
+        const PopupMenuItem<String>(
+          value: 'signOut',
+          child: Row(
+            children: [
+              Icon(Icons.logout, size: 18),
+              SizedBox(width: Gap.sm),
+              Text('로그아웃'),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
