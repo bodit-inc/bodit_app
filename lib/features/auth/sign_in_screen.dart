@@ -43,10 +43,10 @@ class SignInScreen extends ConsumerWidget {
                 Text(
                   '로그인에 실패했습니다.\n${auth.error}',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.error,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.error,
+                        fontWeight: FontWeight.w400,
+                      ),
                 ),
               ],
             ],
