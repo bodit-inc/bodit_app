@@ -128,6 +128,29 @@ class ReviewScreen extends ConsumerWidget {
                     // 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
                     if (draft.suggestionReason != null)
                       SuggestReason(draft.suggestionReason!),
+
+                    const SizedBox(height: Gap.lg),
+                    Text('분류', style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: Gap.sm),
+                    // 분류코드와 분류명은 따로 받지 않는다 — 마스터에서 하나를
+                    // 고르면 둘 다 정해진다. 코드를 손으로 치게 하면 마스터에
+                    // 없는 번호가 들어가고, 그러면 시트의 분류명이 빈다.
+                    Wrap(
+                      spacing: Gap.sm,
+                      runSpacing: Gap.sm,
+                      children: [
+                        if (draft.classCode != null)
+                          SuggestChip(
+                            '${draft.classCode} ${draft.className ?? ''}'.trim(),
+                            selected: true,
+                            onTap: () => _pickClass(context, ref),
+                          ),
+                        SuggestChip(
+                          draft.classCode == null ? '선택하기' : '바꾸기',
+                          onTap: () => _pickClass(context, ref),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -254,6 +277,15 @@ class ReviewScreen extends ConsumerWidget {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (_) => const _CategoryPickerSheet(),
+    );
+  }
+
+  Future<void> _pickClass(BuildContext context, WidgetRef ref) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => const _ClassPickerSheet(),
     );
   }
 
@@ -473,6 +505,129 @@ class _CategoryPickerSheet extends ConsumerWidget {
                 },
               );
             },
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 분류 선택. `_분류마스터` 탭을 읽어 `코드 이름` 으로 보여준다.
+///
+/// 고르면 **분류코드와 분류명이 한 번에** 정해진다. 코드를 손으로 치게 하면
+/// 마스터에 없는 번호가 들어갈 수 있고, 그러면 시트의 분류명 칸이 빈다
+/// (시트에 수식을 안 두므로 앱이 채우는 유일한 경로다).
+///
+/// 항목이 44개라 검색을 붙였다 — 스크롤로 찾기엔 많다.
+class _ClassPickerSheet extends ConsumerStatefulWidget {
+  const _ClassPickerSheet();
+
+  @override
+  ConsumerState<_ClassPickerSheet> createState() => _ClassPickerSheetState();
+}
+
+class _ClassPickerSheetState extends ConsumerState<_ClassPickerSheet> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final names = ref.watch(classNamesProvider);
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.75,
+      builder: (_, controller) => names.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(
+          child: Padding(
+            padding: screenPadding,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ErrorDisclosure('분류를 불러오지 못했습니다.', detail: '$e'),
+                const SizedBox(height: Gap.lg),
+                OutlinedButton.icon(
+                  onPressed: () => ref.invalidate(classNamesProvider),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('다시 시도'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        data: (map) {
+          final q = _query.trim().toLowerCase();
+          final entries = map.entries
+              .where(
+                (e) =>
+                    q.isEmpty ||
+                    '${e.key}'.contains(q) ||
+                    e.value.toLowerCase().contains(q),
+              )
+              .toList()
+            ..sort((a, b) => a.key.compareTo(b.key));
+
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.sm),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '분류 선택',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: Gap.sm),
+                    TextField(
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: '코드나 이름으로 검색 (예: 23, CTS)',
+                        prefixIcon: Icon(Icons.search, size: 20),
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (v) => setState(() => _query = v),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: entries.isEmpty
+                    ? const Center(child: Text('검색 결과가 없습니다.'))
+                    : ListView.builder(
+                        controller: controller,
+                        itemCount: entries.length,
+                        itemBuilder: (_, i) {
+                          final e = entries[i];
+                          return ListTile(
+                            dense: true,
+                            leading: SizedBox(
+                              width: 34,
+                              child: Text(
+                                '${e.key}',
+                                textAlign: TextAlign.end,
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            title: Text(e.value),
+                            onTap: () {
+                              ref.read(reviewControllerProvider.notifier).update(
+                                    (d) => d.copyWith(
+                                      classCode: e.key,
+                                      className: e.value,
+                                    ),
+                                  );
+                              Navigator.pop(context);
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
           );
         },
       ),
