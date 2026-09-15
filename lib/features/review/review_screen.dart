@@ -348,11 +348,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                           Expanded(
                             child: Text(
                               draft.filename,
-                              style: const TextStyle(
-                                fontFamily: 'monospace',
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(fontFamily: 'monospace'),
                             ),
                           ),
                           TextButton(
@@ -615,21 +614,24 @@ class _ReadingView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('분석 중')),
-      body: const Center(
+      body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: Gap.lg),
-            Text('영수증을 읽는 중…'),
-            SizedBox(height: Gap.sm),
+            const CircularProgressIndicator(),
+            const SizedBox(height: Gap.lg),
+            const Text('영수증을 읽는 중…'),
+            const SizedBox(height: Gap.sm),
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: Gap.xxl),
+              padding: const EdgeInsets.symmetric(horizontal: Gap.xxl),
               child: Text(
                 '비목과 분류코드는 영수증에 없습니다.\n'
                 '과거에 같은 업체를 어떻게 처리했는지 보고 제안합니다.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: AppColors.neutralFg),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: AppColors.neutralFg),
               ),
             ),
           ],
@@ -705,11 +707,11 @@ class _CategoryPickerSheet extends ConsumerWidget {
             itemCount: list.length + 1,
             itemBuilder: (_, i) {
               if (i == 0) {
-                return const Padding(
-                  padding: EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.sm),
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.sm),
                   child: Text(
                     '비목 선택',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
                 );
               }
@@ -827,10 +829,10 @@ class _ClassPickerSheetState extends ConsumerState<_ClassPickerSheet> {
                               child: Text(
                                 '${e.key}',
                                 textAlign: TextAlign.end,
-                                style: const TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelMedium
+                                    ?.copyWith(fontFamily: 'monospace'),
                               ),
                             ),
                             title: Text(e.value),
@@ -925,14 +927,17 @@ class _EvidencePreview extends StatelessWidget {
                 color: Colors.black54,
                 borderRadius: BorderRadius.circular(Radii.pill),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.zoom_in, size: 14, color: Colors.white),
-                  SizedBox(width: 4),
+                  const Icon(Icons.zoom_in, size: 14, color: Colors.white),
+                  const SizedBox(width: 4),
                   Text(
                     '크게 보기',
-                    style: TextStyle(fontSize: 11, color: Colors.white),
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelSmall
+                        ?.copyWith(color: Colors.white),
                   ),
                 ],
               ),
@@ -1006,11 +1011,10 @@ class _MissingFieldsBar extends StatelessWidget {
           Expanded(
             child: Text(
               '아직 비어 있는 항목: ${fields.join(', ')}',
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.noticeFg,
-              ),
+              style: Theme.of(context)
+                  .textTheme
+                  .labelSmall
+                  ?.copyWith(color: AppColors.noticeFg),
             ),
           ),
         ],

@@ -318,11 +318,11 @@ class NoticeBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(Radii.card),
       ),
       child: DefaultTextStyle.merge(
-        style: TextStyle(
-          fontSize: 13,
-          height: 1.5,
-          color: dark ? Colors.white : AppColors.noticeFg,
-        ),
+        // 문단이라 body 계열이다. 줄간격만 얹는다.
+        style: Theme.of(context).textTheme.bodySmall!.copyWith(
+              height: 1.5,
+              color: dark ? Colors.white : AppColors.noticeFg,
+            ),
         child: child,
       ),
     );
@@ -428,7 +428,10 @@ class _ErrorDisclosureState extends State<ErrorDisclosure> {
             // 붙여넣어 물어볼 수 있게 선택도 가능하게 둔다.
             child: SelectableText(
               widget.detail,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w400,
+                  ),
             ),
           ),
         ),

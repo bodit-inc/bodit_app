@@ -96,7 +96,10 @@ class SubmissionRow extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(row.filename, style: const TextStyle(fontSize: 12)),
+            Text(
+              row.filename,
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
             const SizedBox(height: Gap.md),
             if (sent.isEmpty)
               const Text('아직 아무 곳에도 전송되지 않았습니다. 기기에서 완전히 지워집니다.')
@@ -215,7 +218,7 @@ class _LegChip extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             '$name ${leg.label}',
-            style: TextStyle(fontSize: 11, color: fg, fontWeight: FontWeight.w600),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg),
           ),
         ],
       ),
