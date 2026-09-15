@@ -102,13 +102,34 @@ class GoogleAuthService {
     }
   }
 
-  /// 사용자가 로그인 버튼을 눌렀을 때. 계정 선택기를 띄운다.
+  /// 사용자가 로그인 버튼을 눌렀을 때. 계정 선택기 → **스코프 동의**까지 한 번에.
+  ///
+  /// ## 인증(authentication)과 인가(authorization)는 별개다
+  ///
+  /// v7 에서 갈라진 부분이고, 이걸 놓치면 증상이 아주 헷갈린다.
+  ///
+  ///   - `authenticate()` = **누구인지**. 이메일과 신원만 준다
+  ///   - `authorizeScopes()` = **무엇을 할 수 있는지**. Sheets·Drive 접근권
+  ///
+  /// `scopeHint` 는 말 그대로 힌트라 플랫폼이 무시할 수 있다. 로그인에 성공해도
+  /// 인가는 여전히 없을 수 있고, 그러면 시트 읽기가 조용히 null 을 돌려준다.
+  ///
+  /// 그래서 **로그인 버튼 안에서 인가까지 받아둔다.** 여기가 사용자 조작
+  /// 핸들러라 동의 화면을 띄울 수 있는 자리이기도 하다. 나중에 비목 목록을
+  /// 불러오다가 갑자기 동의 화면이 뜨는 것보다 낫다.
   Future<GoogleSignInAccount> signIn() async {
     await ensureInitialized();
     _account = await GoogleSignIn.instance.authenticate(
-      // 힌트일 뿐이다 — 플랫폼에 따라 무시된다. 인가는 따로 받아야 한다.
       scopeHint: googleScopes,
     );
+
+    // 인가는 실패해도 로그인 자체는 살린다 — 사용자가 동의를 거부했을 수 있다.
+    // 그때는 시트를 쓰는 시점에 다시 요청한다.
+    try {
+      await authorizedClient();
+    } on Object catch (e) {
+      log.w('로그인은 됐지만 스코프 인가를 못 받았다: $e');
+    }
     return _account!;
   }
 

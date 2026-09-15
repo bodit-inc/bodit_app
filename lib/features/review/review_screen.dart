@@ -432,19 +432,9 @@ class _CategoryPickerSheet extends ConsumerWidget {
             child: ErrorDisclosure('비목을 불러오지 못했습니다.', detail: '$e'),
           ),
         ),
+        // 빈 목록은 provider 가 이미 걸러서 던진다(탭이 비었다고 알려준다).
+        // 여기 오는 list 는 항상 하나 이상이다.
         data: (list) {
-          if (list.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(Gap.xl),
-                child: Text(
-                  '비목 마스터를 읽지 못했습니다.\n'
-                  '로그인과 시트 설정을 확인해주세요.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            );
-          }
           return ListView.builder(
             controller: controller,
             itemCount: list.length + 1,
