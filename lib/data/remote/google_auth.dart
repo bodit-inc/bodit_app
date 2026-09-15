@@ -92,14 +92,21 @@ class GoogleAuthService {
   /// 원인은 로그에만 남긴다. 조용히 넘어가되 흔적은 남긴다.
   Future<GoogleSignInAccount?> restore() async {
     try {
-      await ensureInitialized();
-      // 반환 타입이 `Future<GoogleSignInAccount?>?` 다 — Future 자체가 널일 수 있다.
-      // (플랫폼이 이 기능을 지원하지 않으면 null 을 준다.)
-      return _account = await GoogleSignIn.instance.attemptLightweightAuthentication();
+      // 타임아웃이 없으면 플랫폼 채널이 안 돌아올 때 인증 상태가 영영 안 정해지고,
+      // 그러면 스플래시가 걷히지 않는다. 못 끝내면 로그인 화면으로 보낸다.
+      return await _restore().timeout(const Duration(seconds: 8));
     } on Object catch (e) {
       log.i('조용한 로그인 복구 실패 (로그인 화면으로 간다): $e');
       return _account = null;
     }
+  }
+
+  Future<GoogleSignInAccount?> _restore() async {
+    await ensureInitialized();
+    // 반환 타입이 `Future<GoogleSignInAccount?>?` 다 — Future 자체가 널일 수 있다.
+    // (플랫폼이 이 기능을 지원하지 않으면 null 을 준다.)
+    return _account =
+        await GoogleSignIn.instance.attemptLightweightAuthentication();
   }
 
   /// 사용자가 로그인 버튼을 눌렀을 때. 계정 선택기 → **스코프 동의**까지 한 번에.

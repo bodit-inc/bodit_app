@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/utils/filename.dart';
+import 'package:bodit_app/core/utils/korean_amount.dart';
+import 'package:bodit_app/core/widgets/amount_keypad.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/providers.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
@@ -272,6 +274,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       label: '총금액',
                       value: _fmtAmount(draft.totalAmount),
                       placeholder: '입력 필요',
+                      // 0 하나 틀리면 10배다. 숫자 옆에 한글로 같이 보여준다.
+                      subtitle: draft.totalAmount == null
+                          ? null
+                          : readKoreanAmount(draft.totalAmount!),
                       onTap: () => _editAmount(
                         context,
                         ref,
@@ -284,10 +290,14 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       label: '공급가액',
                       value: _fmtAmount(draft.supplyAmount),
                       placeholder: '총금액과 동일',
+                      subtitle: draft.supplyAmount == null
+                          ? null
+                          : readKoreanAmount(draft.supplyAmount!),
                     ),
                     LabeledRow(
                       label: '부가세',
                       value: _fmtAmount(draft.vatAmount ?? 0),
+                      subtitle: readKoreanAmount(draft.vatAmount ?? 0),
                     ),
                   ],
                 ),
@@ -509,6 +519,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     ref.read(reviewControllerProvider.notifier).update((d) => apply(d, v));
   }
 
+  /// 금액은 전용 키패드로 받는다. 시스템 키보드는 기기·IME 마다 배열이 달라
+  /// 오입력이 나고, 한글 자판이나 소수점이 섞여 들어온다.
   Future<void> _editAmount(
     BuildContext context,
     WidgetRef ref,
@@ -516,15 +528,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     int? initial,
     EntryDraft Function(EntryDraft, int) apply,
   ) async {
-    final v = await _prompt(
-      context,
-      label,
-      initial?.toString() ?? '',
-      keyboard: TextInputType.number,
-    );
-    final n = int.tryParse((v ?? '').replaceAll(RegExp('[^0-9-]'), ''));
-    if (n == null) return;
-    ref.read(reviewControllerProvider.notifier).update((d) => apply(d, n));
+    final v = await showAmountKeypad(context, title: label, initial: initial);
+    if (v == null) return;
+    ref.read(reviewControllerProvider.notifier).update((d) => apply(d, v));
   }
 
   Future<void> _editFilename(
@@ -577,10 +583,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       : '${d.year}-${d.month.toString().padLeft(2, '0')}-'
             '${d.day.toString().padLeft(2, '0')}';
 
-  static String? _fmtAmount(int? v) => v?.toString().replaceAllMapped(
-    RegExp(r'(\d)(?=(\d{3})+$)'),
-    (m) => '${m[1]},',
-  );
+  static String? _fmtAmount(int? v) => v == null ? null : formatWon(v);
 }
 
 /// 시안 ④ — OCR 진행 중.
