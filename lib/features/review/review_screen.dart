@@ -55,9 +55,20 @@ class ReviewScreen extends ConsumerWidget {
             ),
         ],
       ),
-      body: ListView(
-        padding: screenPadding,
-        children: [
+      body: CustomScrollView(
+        slivers: [
+          // 비어 있는 항목은 **화면 위에 붙여둔다.** 폼이 길어서 맨 아래에
+          // 두면 스크롤해야 보이고, 정작 제출이 왜 막히는지 모른 채
+          // 위쪽만 들여다보게 된다.
+          //
+          // floating 이라 위로 조금만 올려도 바로 다시 나타난다 —
+          // pinned 로 항상 띄우면 좁은 화면에서 폼을 계속 가린다.
+          if (draft.missingFields.isNotEmpty)
+            _MissingFieldsBar(draft.missingFields),
+          SliverPadding(
+            padding: screenPadding,
+            sliver: SliverList.list(
+              children: [
           // 무엇을 올리는지 보고 확인해야 한다 — 값만 보고는 OCR 이 엉뚱한
           // 영수증을 읽었는지 알 수 없다. 다건일 때는 특히 그렇다.
           _EvidencePreview(draft.evidencePath),
@@ -293,13 +304,10 @@ class ReviewScreen extends ConsumerWidget {
               detail: state.error!,
             ),
           ],
-          if (draft.missingFields.isNotEmpty) ...[
-            const SizedBox(height: Gap.lg),
-            NoticeBanner(
-              child: Text('아직 비어 있는 항목: ${draft.missingFields.join(', ')}'),
-            ),
-          ],
           const SizedBox(height: Gap.xl),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -824,6 +832,63 @@ class _FullScreenEvidence extends StatelessWidget {
           minScale: 1,
           maxScale: 6,
           child: Image.file(file),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// 아직 비어 있는 항목을 화면 위에 띄워두는 바.
+///
+/// ## 왜 위에 붙이나
+///
+/// 검토 폼이 길다(증빙·기본·분류·금액·파일명). 비어 있는 항목을 맨 아래에 두면
+/// **스크롤해야 보인다.** 제출 버튼은 위에 있는데 왜 눌리지 않는지 모른 채
+/// 위쪽만 들여다보게 된다.
+///
+/// `floating` 이라 위로 조금만 올려도 바로 다시 나타난다.
+/// `pinned` 로 항상 띄우지 않는 이유는, 좁은 화면에서 폼을 계속 가려서
+/// 정작 채워야 할 칸이 안 보이기 때문이다. 채우면 스스로 사라진다.
+class _MissingFieldsBar extends StatelessWidget {
+  const _MissingFieldsBar(this.fields);
+
+  final List<String> fields;
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverAppBar(
+      floating: true,
+      // Scaffold 가 이미 AppBar 를 갖고 있다. 상태바 여백을 두 번 잡거나
+      // 뒤로가기 화살표가 또 생기지 않게 끈다.
+      primary: false,
+      automaticallyImplyLeading: false,
+      backgroundColor: AppColors.noticeBg,
+      elevation: 0,
+      toolbarHeight: 44,
+      titleSpacing: 0,
+      title: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Gap.lg),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.error_outline,
+              size: 17,
+              color: AppColors.noticeFg,
+            ),
+            const SizedBox(width: Gap.sm),
+            Expanded(
+              child: Text(
+                '아직 비어 있는 항목: ${fields.join(', ')}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.noticeFg,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ),
     );
