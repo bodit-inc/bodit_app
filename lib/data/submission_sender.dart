@@ -121,11 +121,11 @@ class SubmissionSender {
         await slack.postEvidence(
           image: file,
           filename: current.filename,
+          belongDate: entry.belongDate,
           vendor: entry.vendor,
-          totalAmount: entry.totalAmount,
-          expenseCategory: entry.expenseCategory,
           description: entry.description,
-          cardLast4: entry.cardLast4,
+          totalAmount: entry.totalAmount,
+          className: entry.className,
           submittedBy: entry.createdBy,
           driveUrl: driveUrl,
         );
