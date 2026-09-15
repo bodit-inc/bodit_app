@@ -22,6 +22,29 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<!-- ── Google 로그인 OAuth 콜백 ──────────────────────────────────
+	     Dart 에서 clientId 를 넘기므로 GIDClientID 키는 필요 없다.
+	     그런데 이 URL scheme 은 **생략할 수 없다** — 구글이 로그인 후
+	     앱으로 되돌아오는 통로다.
+
+	     값은 iOS 클라이언트 ID 를 '뒤집은' 것이다:
+	       123456-abc.apps.googleusercontent.com
+	       → com.googleusercontent.apps.123456-abc
+
+	     TODO(james): 아래 REPLACE_ME 를 실제 값으로 바꿀 것.
+	     GCP 콘솔 → OAuth 클라이언트(iOS, 번들 ID co.bodit.boditApp) 에서 받는다.
+	──────────────────────────────────────────────────────────── -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.768953981137-9b2dmd95dbg8bru00qf06d3th7k38ui9</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>

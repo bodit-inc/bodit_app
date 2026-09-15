@@ -60,11 +60,20 @@ class GoogleAuthService {
     // 서명으로 매칭되므로 전달할 필요가 없다.
     final serverClientId = Config.googleServerClientId;
     final iosClientId = Config.googleIosClientId;
-    if (serverClientId.isEmpty && Platform.isAndroid) {
+    if (Platform.isAndroid && serverClientId.isEmpty) {
       throw StateError(
         'GOOGLE_SERVER_CLIENT_ID 가 비어 있습니다.\n'
         'GCP 콘솔에서 "웹 애플리케이션" 유형 OAuth 클라이언트를 만들고 '
         '.env 에 넣은 뒤 build_runner 를 다시 돌리세요.',
+      );
+    }
+    if (Platform.isIOS && iosClientId.isEmpty) {
+      throw StateError(
+        'GOOGLE_IOS_CLIENT_ID 가 비어 있습니다.\n'
+        'GCP 콘솔에서 "iOS" 유형 OAuth 클라이언트(번들 ID co.bodit.boditApp)를 '
+        '만들어 .env 에 넣고 build_runner 를 다시 돌리세요.\n'
+        '그리고 ios/Runner/Info.plist 의 REPLACE_ME 를 '
+        '뒤집은 클라이언트 ID 로 바꿔야 로그인 후 앱으로 돌아옵니다.',
       );
     }
 
