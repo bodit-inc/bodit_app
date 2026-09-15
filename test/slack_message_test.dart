@@ -16,6 +16,7 @@ void main() {
       vendor: '드림디포(에이스)',
       description: '뽁뽁이',
       totalAmount: 8000,
+      currency: 'KRW',
       className: '법인(이체)',
       submittedBy: 'james@bodit.co',
       driveUrl: 'https://drive.google.com/file/d/ABC/view',
@@ -34,6 +35,7 @@ james@bodit.co
       vendor: '업체',
       description: '내역',
       totalAmount: 1234567,
+      currency: 'KRW',
       className: '법인(신용)',
       submittedBy: 'a@bodit.co',
       driveUrl: 'https://x',
@@ -47,10 +49,25 @@ james@bodit.co
       vendor: '업체',
       description: '내역',
       totalAmount: 900,
+      currency: 'KRW',
       className: '법인(체크)',
       submittedBy: 'a@bodit.co',
       driveUrl: 'https://x',
     );
     expect(msg.split('\n').first, '261231 / 업체 / 내역 / 900원 / 법인(체크)');
+  });
+
+  test('외화는 코드가 뒤에 붙는다 — 원화로 읽히면 안 된다', () {
+    final msg = repo.buildComment(
+      belongDate: DateTime(2026, 3, 2),
+      vendor: 'Apple Store',
+      description: '어댑터',
+      totalAmount: 1299, // 센트 단위로 들고 있다
+      currency: 'USD',
+      className: '법인(신용)',
+      submittedBy: 'a@bodit.co',
+      driveUrl: 'https://x',
+    );
+    expect(msg.split('\n').first, '260302 / Apple Store / 어댑터 / 12.99 USD / 법인(신용)');
   });
 }

@@ -22,8 +22,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:bodit_app/core/links.dart';
+import 'package:bodit_app/core/utils/currency.dart';
 import 'package:bodit_app/core/utils/filename.dart';
-import 'package:bodit_app/core/utils/korean_amount.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -55,6 +55,7 @@ class SlackRepository {
     required String vendor,
     required String description,
     required int totalAmount,
+    required String currency,
     required String className,
     required String submittedBy,
     required String driveUrl,
@@ -64,6 +65,7 @@ class SlackRepository {
       vendor: vendor,
       description: description,
       totalAmount: totalAmount,
+      currency: currency,
       className: className,
       submittedBy: submittedBy,
       driveUrl: driveUrl,
@@ -127,6 +129,7 @@ class SlackRepository {
     required String vendor,
     required String description,
     required int totalAmount,
+    required String currency,
     required String className,
     required String submittedBy,
     required String driveUrl,
@@ -136,7 +139,7 @@ class SlackRepository {
         formatDateForFilename(belongDate),
         vendor,
         description,
-        '${formatWon(totalAmount)}원',
+        currencyOf(currency).formatWithCode(totalAmount),
         className,
       ].join(' / '),
       submittedBy,

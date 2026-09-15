@@ -98,4 +98,46 @@ void main() {
       expect(row[10], 19000); //        총금액
     });
   });
+
+  group('통화 — 해외 증빙', () {
+    EntryDraft usd() => _full().copyWith(
+          currency: 'USD',
+          totalAmount: 1299, // 센트 단위
+          supplyAmount: 1299,
+          vatAmount: 0,
+        );
+
+    test('시트에는 나눈 값이 들어간다 — 회계가 보는 칸이다', () {
+      final row = usd().toEntry(createdBy: 'a@bodit.co').toSheetRow();
+      expect(row[10], 12.99); // 총금액
+      expect(row[11], 12.99); // 공급가액
+      expect(row[12], 0); //     부가세
+    });
+
+    test('외화는 비고에 통화가 붙는다 — 금액 칸만 보고는 구분 못 한다', () {
+      final row = usd().toEntry(createdBy: 'a@bodit.co').toSheetRow();
+      expect(row[13], '[USD]');
+    });
+
+    test('비고가 이미 있으면 앞에 붙는다', () {
+      final row = usd()
+          .copyWith(note: 'FH')
+          .toEntry(createdBy: 'a@bodit.co')
+          .toSheetRow();
+      expect(row[13], '[USD] FH');
+    });
+
+    test('원화는 아무것도 안 붙는다 — 기존 동작 그대로', () {
+      final row = _full()
+          .copyWith(note: 'FH')
+          .toEntry(createdBy: 'a@bodit.co')
+          .toSheetRow();
+      expect(row[13], 'FH');
+      expect(row[10], 19000); // 정수 그대로
+    });
+
+    test('기본값은 원화다', () {
+      expect(_full().currency, 'KRW');
+    });
+  });
 }
