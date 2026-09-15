@@ -25,8 +25,7 @@ class Submissions extends Table {
   ///
   /// **꺼낼 때 어떤 타입으로 되살릴지** 알려면 이게 필요하다.
   /// 2차 사업비가 오면 값 하나만 늘리면 된다 — 지금 넣어두는 이유가 그거다.
-  TextColumn get entryKind =>
-      text().withDefault(const Constant('purchase'))();
+  TextColumn get entryKind => text().withDefault(const Constant('purchase'))();
 
   /// 항목을 JSON 으로 직렬화해 둔 것. 되살리는 방법은 [entryKind] 가 정한다.
   TextColumn get entryJson => text()();
@@ -56,7 +55,7 @@ class Submissions extends Table {
 @DriftDatabase(tables: [Submissions])
 class QueueDb extends _$QueueDb {
   QueueDb([QueryExecutor? executor])
-      : super(executor ?? driftDatabase(name: 'bodit_queue'));
+    : super(executor ?? driftDatabase(name: 'bodit_queue'));
 
   @override
   int get schemaVersion => 2;
@@ -67,16 +66,18 @@ class QueueDb extends _$QueueDb {
   /// 1차에는 매입내역밖에 없었으므로 기본값 `purchase` 가 정답이다.
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
-        onUpgrade: (m, from, to) async {
-          if (from < 2) await m.addColumn(submissions, submissions.entryKind);
-        },
-      );
+    onCreate: (m) => m.createAll(),
+    onUpgrade: (m, from, to) async {
+      if (from < 2) await m.addColumn(submissions, submissions.entryKind);
+    },
+  );
 
   /// 아직 세 곳 다 못 보낸 건. **최근순** — 시안 ⑬번의 정렬 규칙이다.
   Future<List<Submission>> pending() {
     return (select(submissions)
-          ..where((t) => t.sheetsDone.not() | t.driveDone.not() | t.slackDone.not())
+          ..where(
+            (t) => t.sheetsDone.not() | t.driveDone.not() | t.slackDone.not(),
+          )
           ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
         .get();
   }
@@ -91,9 +92,9 @@ class QueueDb extends _$QueueDb {
   }
 
   Stream<List<Submission>> watchAll() {
-    return (select(submissions)
-          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
-        .watch();
+    return (select(
+      submissions,
+    )..orderBy([(t) => OrderingTerm.desc(t.createdAt)])).watch();
   }
 
   Future<int> enqueue(SubmissionsCompanion row) =>
@@ -103,8 +104,7 @@ class QueueDb extends _$QueueDb {
 
   /// 방금 넣은 건을 바로 전송하려고 꺼낼 때 쓴다.
   Future<Submission?> byId(int id) =>
-      (select(submissions)..where((t) => t.id.equals(id)))
-          .getSingleOrNull();
+      (select(submissions)..where((t) => t.id.equals(id))).getSingleOrNull();
 
   /// 한 건을 큐에서 지우고 **기기에 복사해 둔 증빙 원본도 같이 지운다.**
   ///

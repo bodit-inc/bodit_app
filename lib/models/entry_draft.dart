@@ -26,6 +26,7 @@ abstract class EntryDraft with _$EntryDraft {
     int? classCode,
     String? className,
     String? cardLast4,
+
     /// ISO 4217 코드. 금액 세 칸은 이 통화의 **최소 단위**로 들고 있다.
     @Default('KRW') String currency,
     int? totalAmount,
@@ -113,13 +114,13 @@ abstract class EntryDraft with _$EntryDraft {
 
   /// 아직 비어 있는 칸의 이름들. 제출 버튼 옆에 그대로 보여준다.
   List<String> get missingFields => <String>[
-        if (belongDate == null) '소속날짜',
-        if ((vendor ?? '').isEmpty) '업체명',
-        if ((description ?? '').isEmpty) '내역',
-        if ((expenseCategory ?? '').isEmpty) '비목',
-        if (classCode == null) '분류코드',
-        if (totalAmount == null) '총금액',
-      ];
+    if (belongDate == null) '소속날짜',
+    if ((vendor ?? '').isEmpty) '업체명',
+    if ((description ?? '').isEmpty) '내역',
+    if ((expenseCategory ?? '').isEmpty) '비목',
+    if (classCode == null) '분류코드',
+    if (totalAmount == null) '총금액',
+  ];
 
   /// 시트에 넣을 완성 행으로 바꾼다. [isComplete] 가 false 면 던진다.
   PurchaseEntry toEntry({required String createdBy}) {

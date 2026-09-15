@@ -97,6 +97,28 @@ ErrorDisclosure('비목을 불러오지 못했습니다.', detail: '$e')
 - 원문은 고정폭 + 선택 가능이다 — 복사해서 붙여넣고 물어볼 수 있어야 한다
 - **예외: 스낵바처럼 사라지는 알림.** 접을 대상이 아니다
 
+## 컴포넌트
+
+**화면은 `core/widgets` 의 컴포넌트만 조립한다.** `showDialog`·`TextField`·
+`styleFrom` 을 화면에서 직접 쓰지 않는다 — `test/architecture_test.dart` 가 막는다.
+
+| 파일 | 담당 |
+|---|---|
+| `layout.dart` | `SectionHeader` · `AppCard` · `BigActionCard` |
+| `rows.dart` | `LabeledRow` |
+| `chips.dart` | `StatusPill` · `SuggestChip` |
+| `fields.dart` | `AppTextField` · `SearchField` |
+| `buttons.dart` | `RetryButton` · `DangerTextButton` · `InlineButton` |
+| `dialogs.dart` | `confirmDestructive` · `promptText` · `showDetailDialog` |
+| `feedback.dart` | `NoteText` · `SuggestReason` · `NoticeBanner` · `ErrorDisclosure` |
+| `amount_keypad.dart` | 금액 입력(통화 선택 포함) |
+
+화면은 배럴(`app_widgets.dart`) 하나만 import 한다.
+
+**Material 버튼을 통째로 감싸지 않는다.** 기본 모양은 `AppTheme` 이 정하고,
+`buttons.dart` 에는 **같은 조합이 두 번 이상 나온 것**만 둔다. 한 번뿐인 버튼까지
+이름을 붙이면 이름만 늘고 읽기는 더 어려워진다.
+
 ## 글자
 
 **크기를 직접 적지 않는다.** `Theme.of(context).textTheme` 의 15개 슬롯에서만 온다

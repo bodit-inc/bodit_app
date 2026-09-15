@@ -20,7 +20,10 @@ abstract final class AppTheme {
       fontFamily: AppTypography.fontFamily,
       textTheme: AppTypography.textTheme,
       scaffoldBackgroundColor: const Color(0xFFF2F2F7),
-      appBarTheme: const AppBarTheme(centerTitle: false, scrolledUnderElevation: 0),
+      appBarTheme: const AppBarTheme(
+        centerTitle: false,
+        scrolledUnderElevation: 0,
+      ),
       cardTheme: CardThemeData(
         elevation: 0,
         margin: EdgeInsets.zero,
@@ -46,7 +49,10 @@ abstract final class AppTheme {
         ),
       ),
       listTileTheme: const ListTileThemeData(
-        contentPadding: EdgeInsets.symmetric(horizontal: Gap.lg, vertical: Gap.xs),
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: Gap.lg,
+          vertical: Gap.xs,
+        ),
       ),
     );
   }

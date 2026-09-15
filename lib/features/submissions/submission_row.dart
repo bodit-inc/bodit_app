@@ -88,51 +88,34 @@ class SubmissionRow extends ConsumerWidget {
       if (row.sheetsDone) '스프레드시트',
       if (row.slackDone) '슬랙',
     ];
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('이 건을 목록에서 지울까요?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    return await confirmDestructive(
+      context,
+      title: '이 건을 목록에서 지울까요?',
+      message: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(row.filename, style: Theme.of(context).textTheme.labelSmall),
+          const SizedBox(height: Gap.md),
+          if (sent.isEmpty)
+            const Text('아직 아무 곳에도 전송되지 않았습니다. 기기에서 완전히 지워집니다.')
+          else
             Text(
-              row.filename,
-              style: Theme.of(context).textTheme.labelSmall,
+              '이미 ${sent.join('·')}에 올라간 것은 그대로 남습니다.\n'
+              '앱은 보낸 것을 되돌리지 않습니다 — 목록에서만 사라집니다.\n'
+              '되돌리려면 시트와 드라이브에서 직접 지워야 합니다.',
             ),
-            const SizedBox(height: Gap.md),
-            if (sent.isEmpty)
-              const Text('아직 아무 곳에도 전송되지 않았습니다. 기기에서 완전히 지워집니다.')
-            else
-              Text(
-                '이미 ${sent.join('·')}에 올라간 것은 그대로 남습니다.\n'
-                '앱은 보낸 것을 되돌리지 않습니다 — 목록에서만 사라집니다.\n'
-                '되돌리려면 시트와 드라이브에서 직접 지워야 합니다.',
-              ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-            child: const Text('지우기'),
-          ),
         ],
       ),
     );
-    return ok ?? false;
   }
 
   Widget _body(BuildContext context, WidgetRef ref) {
     final (label, tone) = _allDone
         ? ('완료', PillTone.ok)
         : _hasError
-            ? ('실패', PillTone.error)
-            : ('대기', PillTone.waiting);
+        ? ('실패', PillTone.error)
+        : ('대기', PillTone.waiting);
 
     return Container(
       decoration: _hasError
@@ -152,8 +135,8 @@ class SubmissionRow extends ConsumerWidget {
             subtitle: _allDone
                 ? '완료 · ${_time(row.createdAt)}'
                 : _editable
-                    ? '눌러서 내용을 고칠 수 있습니다'
-                    : null,
+                ? '눌러서 내용을 고칠 수 있습니다'
+                : null,
             onTap: _editable ? () => _edit(context, ref) : null,
           ),
           // 완료된 건은 목적지를 나열할 이유가 없다.
@@ -163,7 +146,9 @@ class SubmissionRow extends ConsumerWidget {
               child: Wrap(
                 spacing: Gap.sm,
                 runSpacing: Gap.xs,
-                children: [for (final (name, leg) in _legs) _LegChip(name, leg)],
+                children: [
+                  for (final (name, leg) in _legs) _LegChip(name, leg),
+                ],
               ),
             ),
           if (_hasError)
@@ -226,7 +211,6 @@ class _LegChip extends StatelessWidget {
   }
 }
 
-
 /// 큐 전체 비우기. 홈과 `내 제출` 이 같이 쓴다.
 ///
 /// 지운 건수를 돌려준다. 취소하면 null.
@@ -238,30 +222,18 @@ Future<int?> confirmClearAll(BuildContext context, WidgetRef ref) async {
   final anySent = rows.any((r) => r.driveDone || r.sheetsDone || r.slackDone);
 
   if (!context.mounted) return null;
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text('$total건을 전부 지울까요?'),
-      content: Text(
-        anySent
-            ? '일부는 이미 전송됐습니다. 올라간 파일과 시트 행은 그대로 남고 '
+  final ok = await confirmDestructive(
+    context,
+    title: '$total건을 전부 지울까요?',
+    confirmLabel: '전부 지우기',
+    message: Text(
+      anySent
+          ? '일부는 이미 전송됐습니다. 올라간 파일과 시트 행은 그대로 남고 '
                 '목록에서만 사라집니다.\n\n되돌릴 수 없습니다.'
-            : '아직 전송되지 않은 건들입니다. 기기에서 완전히 지워집니다.\n\n'
+          : '아직 전송되지 않은 건들입니다. 기기에서 완전히 지워집니다.\n\n'
                 '되돌릴 수 없습니다.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('취소'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, true),
-          style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-          child: const Text('전부 지우기'),
-        ),
-      ],
     ),
   );
-  if (ok != true) return null;
+  if (!ok) return null;
   return await ref.read(queueDbProvider).discardAll();
 }

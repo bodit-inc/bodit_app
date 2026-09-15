@@ -55,10 +55,8 @@ class Currency {
     return r;
   }
 
-  static String _comma(String digits) => digits.replaceAllMapped(
-        RegExp(r'(\d)(?=(\d{3})+$)'),
-        (m) => '${m[1]},',
-      );
+  static String _comma(String digits) =>
+      digits.replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
 }
 
 /// 기본값. 대부분의 증빙이 원화다.

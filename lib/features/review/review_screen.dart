@@ -321,17 +321,11 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                           '아래로 나눌 수 있습니다.',
                         ),
                         const SizedBox(height: Gap.sm),
-                        OutlinedButton(
+                        InlineButton(
                           onPressed: () => ref
                               .read(reviewControllerProvider.notifier)
                               .applyVatSplit(),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(0, 36),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: Gap.md,
-                            ),
-                          ),
-                          child: const Text('1.1로 나누기'),
+                          label: '1.1로 나누기',
                         ),
                       ],
                     ),
@@ -348,9 +342,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                           Expanded(
                             child: Text(
                               draft.filename,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
+                              style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(fontFamily: 'monospace'),
                             ),
                           ),
@@ -413,20 +405,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               ? null
               : SnackBarAction(
                   label: '사유 보기',
-                  onPressed: () => showDialog<void>(
-                    context: navigator.context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('전송 실패'),
-                      content: SingleChildScrollView(
-                        child: SelectableText(r.firstError!),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('확인'),
-                        ),
-                      ],
-                    ),
+                  onPressed: () => showDetailDialog(
+                    navigator.context,
+                    title: '전송 실패',
+                    detail: r.firstError!,
                   ),
                 ),
           duration: const Duration(seconds: 6),
@@ -520,7 +502,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     String? initial,
     EntryDraft Function(EntryDraft, String) apply,
   ) async {
-    final v = await _prompt(context, label, initial ?? '');
+    final v = await promptText(context, title: label, initial: initial ?? '');
     if (v == null) return;
     ref.read(reviewControllerProvider.notifier).update((d) => apply(d, v));
   }
@@ -553,44 +535,17 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     WidgetRef ref,
     EntryDraft draft,
   ) async {
-    final v = await _prompt(context, '파일명 수정', draft.filename, maxLines: 2);
+    final v = await promptText(
+      context,
+      title: '파일명 수정',
+      initial: draft.filename,
+      maxLines: 2,
+    );
     if (v == null) return;
     // 사용자가 직접 친 값에도 치환 규칙을 적용한다 — `/` 하나로 Drive 동기화가 깨진다.
     ref
         .read(reviewControllerProvider.notifier)
         .update((d) => d.copyWith(filenameOverride: sanitizeSegment(v)));
-  }
-
-  static Future<String?> _prompt(
-    BuildContext context,
-    String title,
-    String initial, {
-    TextInputType? keyboard,
-    int maxLines = 1,
-  }) {
-    final c = TextEditingController(text: initial);
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: c,
-          autofocus: true,
-          keyboardType: keyboard,
-          maxLines: maxLines,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, c.text.trim()),
-            child: const Text('확인'),
-          ),
-        ],
-      ),
-    );
   }
 
   static String? _fmtDate(DateTime? d) => d == null
@@ -628,9 +583,7 @@ class _ReadingView extends StatelessWidget {
                 '비목과 분류코드는 영수증에 없습니다.\n'
                 '과거에 같은 업체를 어떻게 처리했는지 보고 제안합니다.',
                 textAlign: TextAlign.center,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
+                style: Theme.of(context).textTheme.bodySmall
                     ?.copyWith(color: AppColors.neutralFg),
               ),
             ),
@@ -690,10 +643,8 @@ class _CategoryPickerSheet extends ConsumerWidget {
                 // 시트를 닫았다 열어도 다시 읽지만(autoDispose),
                 // 여기서 바로 눌러 재시도할 수 있으면 설정을 고치고
                 // 확인하는 왕복이 짧아진다.
-                OutlinedButton.icon(
+                RetryButton(
                   onPressed: () => ref.invalidate(expenseCategoriesProvider),
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('다시 시도'),
                 ),
               ],
             ),
@@ -767,10 +718,8 @@ class _ClassPickerSheetState extends ConsumerState<_ClassPickerSheet> {
               children: [
                 ErrorDisclosure('분류를 불러오지 못했습니다.', detail: '$e'),
                 const SizedBox(height: Gap.lg),
-                OutlinedButton.icon(
+                RetryButton(
                   onPressed: () => ref.invalidate(classNamesProvider),
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('다시 시도'),
                 ),
               ],
             ),
@@ -801,14 +750,8 @@ class _ClassPickerSheetState extends ConsumerState<_ClassPickerSheet> {
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
                     const SizedBox(height: Gap.sm),
-                    TextField(
-                      autofocus: true,
-                      decoration: const InputDecoration(
-                        hintText: '코드나 이름으로 검색 (예: 23, CTS)',
-                        prefixIcon: Icon(Icons.search, size: 20),
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
+                    SearchField(
+                      hintText: '코드나 이름으로 검색 (예: 23, CTS)',
                       onChanged: (v) => setState(() => _query = v),
                     ),
                   ],
@@ -829,9 +772,7 @@ class _ClassPickerSheetState extends ConsumerState<_ClassPickerSheet> {
                               child: Text(
                                 '${e.key}',
                                 textAlign: TextAlign.end,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelMedium
+                                style: Theme.of(context).textTheme.labelMedium
                                     ?.copyWith(fontFamily: 'monospace'),
                               ),
                             ),
@@ -934,9 +875,7 @@ class _EvidencePreview extends StatelessWidget {
                   const SizedBox(width: 4),
                   Text(
                     '크게 보기',
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelSmall
+                    style: Theme.of(context).textTheme.labelSmall
                         ?.copyWith(color: Colors.white),
                   ),
                 ],
@@ -1011,9 +950,7 @@ class _MissingFieldsBar extends StatelessWidget {
           Expanded(
             child: Text(
               '아직 비어 있는 항목: ${fields.join(', ')}',
-              style: Theme.of(context)
-                  .textTheme
-                  .labelSmall
+              style: Theme.of(context).textTheme.labelSmall
                   ?.copyWith(color: AppColors.noticeFg),
             ),
           ),

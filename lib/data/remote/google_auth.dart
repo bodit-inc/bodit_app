@@ -35,7 +35,10 @@ import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
 ///
 /// `drive.file` 은 **앱이 만든 파일만** 접근한다 — 남의 증빙을 읽거나 지우는 게
 /// 원천적으로 불가능하다. 넓히지 않는다(ADR Decision 5).
-const googleScopes = <String>['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/spreadsheets'];
+const googleScopes = <String>[
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/spreadsheets',
+];
 
 class GoogleAuthService {
   GoogleSignInAccount? _account;
@@ -105,8 +108,8 @@ class GoogleAuthService {
     await ensureInitialized();
     // 반환 타입이 `Future<GoogleSignInAccount?>?` 다 — Future 자체가 널일 수 있다.
     // (플랫폼이 이 기능을 지원하지 않으면 null 을 준다.)
-    return _account =
-        await GoogleSignIn.instance.attemptLightweightAuthentication();
+    return _account = await GoogleSignIn.instance
+        .attemptLightweightAuthentication();
   }
 
   /// 사용자가 로그인 버튼을 눌렀을 때. 계정 선택기 → **스코프 동의**까지 한 번에.

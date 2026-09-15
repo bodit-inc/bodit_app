@@ -139,8 +139,7 @@ class SheetsRepository {
       className: className,
       matchCount: best.value,
       // 최근 것부터 최대 6개. 더 보여주면 고르는 게 일이 된다.
-      recentDescriptions:
-          descriptions.keys.toList().reversed.take(6).toList(),
+      recentDescriptions: descriptions.keys.toList().reversed.take(6).toList(),
     );
   }
 
@@ -217,8 +216,10 @@ class MasterDataRepository {
   /// 시트에 수식을 두지 않으므로(위키 참조) **앱이 이걸로 분류명을 채운다.**
   Future<Map<int, String>> classNames(gapis.AuthClient client) async {
     final api = sheets.SheetsApi(client);
-    final res = await api.spreadsheets.values
-        .get(spreadsheetId, "'$classSheet'!A2:B");
+    final res = await api.spreadsheets.values.get(
+      spreadsheetId,
+      "'$classSheet'!A2:B",
+    );
     final out = <int, String>{};
     for (final r in res.values ?? <List<Object?>>[]) {
       if (r.length < 2) continue;

@@ -65,6 +65,6 @@ String _readGroup(int group) {
 
 /// 천 단위 쉼표. `8000` → `8,000`
 String formatWon(int amount) => amount.toString().replaceAllMapped(
-      RegExp(r'(\d)(?=(\d{3})+$)'),
-      (m) => '${m[1]},',
-    );
+  RegExp(r'(\d)(?=(\d{3})+$)'),
+  (m) => '${m[1]},',
+);

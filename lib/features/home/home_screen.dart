@@ -32,14 +32,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final queue = ref.watch(pendingSubmissionsProvider);
-    final pending = queue.value?.where((s) => !s.slackDone || !s.sheetsDone || !s.driveDone).toList() ??
+    final pending =
+        queue.value
+            ?.where((s) => !s.slackDone || !s.sheetsDone || !s.driveDone)
+            .toList() ??
         const [];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('매입내역'),
-        actions: [_AccountMenu()],
-      ),
+      appBar: AppBar(title: const Text('매입내역'), actions: [_AccountMenu()]),
       body: ListView(
         padding: screenPadding,
         children: [
@@ -172,7 +172,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final message = failed.isEmpty
           ? '${results.length}건을 모두 보냈습니다.'
           : '${results.length - failed.length}건 성공, '
-              '${failed.length}건 실패 — ${failed.first.error}';
+                '${failed.length}건 실패 — ${failed.first.error}';
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
     } finally {
@@ -233,7 +233,6 @@ class _AccountMenu extends ConsumerWidget {
   }
 }
 
-
 /// 원본으로 가는 바로가기 한 줄.
 ///
 /// 설정값이 비어 있으면 **누를 수 없게** 하고 왜 그런지 말한다.
@@ -270,9 +269,7 @@ class _ShortcutRow extends StatelessWidget {
     // 외부 앱(시트·드라이브·Slack)이 깔려 있으면 그쪽이 받아간다.
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('$label 을(를) 열지 못했습니다.')),
-      );
+      messenger.showSnackBar(SnackBar(content: Text('$label 을(를) 열지 못했습니다.')));
     }
   }
 }

@@ -100,7 +100,7 @@ void main() {
     for (final f in files) {
       // 스케일 자체를 정의하는 파일은 당연히 예외다.
       if (f.path.endsWith('core/theme/typography.dart')) continue;
-      final hits = RegExp(r'fontSize:').allMatches(f.readAsStringSync());
+      final hits = RegExp('fontSize:').allMatches(f.readAsStringSync());
       expect(
         hits,
         isEmpty,
@@ -109,6 +109,30 @@ void main() {
             '(displayLarge…labelSmall). 크기가 안 맞으면 슬롯 선택이 틀린 것이지 '
             '새 크기를 만들 일이 아니다.',
       );
+    }
+  });
+
+  test('화면은 기본 위젯을 조립하지 않는다 — 공통 컴포넌트를 쓴다', () {
+    // 같은 조합을 화면마다 손으로 만들면 조금씩 달라진다. 실제로 확인
+    // 다이얼로그의 버튼 색과 순서가 화면마다 달라질 뻔했다 —
+    // "위험한 동작" 이라는 신호가 화면마다 다르게 읽히면 안 된다.
+    //
+    // 화면은 core/widgets 의 컴포넌트만 조립한다. 새 조합이 필요하면
+    // 거기에 만들고 이름을 붙인다.
+    const banned = <String, String>{
+      'showDialog': 'confirmDestructive / promptText / showDetailDialog',
+      'TextField(': 'AppTextField / SearchField',
+      'styleFrom': '컴포넌트에 이름을 붙여 core/widgets 로',
+    };
+    for (final f in files.where((f) => f.path.startsWith('lib/features/'))) {
+      final src = f.readAsStringSync();
+      banned.forEach((needle, instead) {
+        expect(
+          src.contains(needle),
+          isFalse,
+          reason: '${f.path} 가 `$needle` 을 직접 쓴다. → $instead',
+        );
+      });
     }
   });
 

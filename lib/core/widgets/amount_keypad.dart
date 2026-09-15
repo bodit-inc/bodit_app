@@ -114,9 +114,7 @@ class _AmountKeypadSheetState extends State<_AmountKeypadSheet> {
                     child: Text(
                       _currency.format(_value),
                       textAlign: TextAlign.end,
-                      style: Theme.of(context)
-                          .textTheme
-                          .displayMedium
+                      style: Theme.of(context).textTheme.displayMedium
                           ?.copyWith(letterSpacing: -1),
                     ),
                   ),
@@ -131,9 +129,7 @@ class _AmountKeypadSheetState extends State<_AmountKeypadSheet> {
               Text(
                 readKoreanAmount(_value),
                 textAlign: TextAlign.end,
-                style: Theme.of(context)
-                    .textTheme
-                    .labelMedium
+                style: Theme.of(context).textTheme.labelMedium
                     ?.copyWith(color: AppColors.suggestFg),
               ),
             ],
@@ -144,9 +140,9 @@ class _AmountKeypadSheetState extends State<_AmountKeypadSheet> {
                 '뒤에서부터 채워집니다 — 1·2·9·9 를 누르면 12.99',
                 textAlign: TextAlign.end,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppColors.neutralFg,
-                      fontWeight: FontWeight.w400,
-                    ),
+                  color: AppColors.neutralFg,
+                  fontWeight: FontWeight.w400,
+                ),
               ),
             ],
 
@@ -243,7 +239,6 @@ class _Key extends StatelessWidget {
   }
 }
 
-
 /// 통화 선택 버튼. 누르면 목록이 뜬다.
 class _CurrencyButton extends StatelessWidget {
   const _CurrencyButton({required this.currency, required this.onChanged});
@@ -269,10 +264,7 @@ class _CurrencyButton extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            currency.code,
-            style: Theme.of(context).textTheme.labelMedium,
-          ),
+          Text(currency.code, style: Theme.of(context).textTheme.labelMedium),
           const Icon(Icons.expand_more, size: 18),
         ],
       ),
@@ -310,9 +302,7 @@ class _CurrencyPicker extends StatelessWidget {
               width: 46,
               child: Text(
                 c.code,
-                style: Theme.of(context)
-                    .textTheme
-                    .labelMedium
+                style: Theme.of(context).textTheme.labelMedium
                     ?.copyWith(fontFamily: 'monospace'),
               ),
             ),
