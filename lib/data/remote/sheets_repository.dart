@@ -128,6 +128,35 @@ class SheetsRepository {
 
 /// 비목·분류 마스터. **하드코딩하지 않는다** — 사업이 하나 생길 때마다
 /// 앱을 재배포하게 된다. 시트의 별도 탭에서 읽어 캐시한다.
+/// Sheets API 의 400 은 원인이 여럿인데 메시지가 불친절하다.
+/// 가장 흔한 두 가지를 짚어준다.
+Never _explainSheetsError(Object e, String spreadsheetId, String range) {
+  if (e is sheets.DetailedApiRequestError && e.status == 400) {
+    // 스프레드시트 ID 는 보통 44자다. 그보다 짧으면 **변환되지 않은 업로드 파일**일
+    // 가능성이 크다 — Drive 는 이제 xlsx 를 자동 변환하지 않는다.
+    // 그런 파일은 Sheets 에서 열려서 겉보기엔 멀쩡한데 Sheets API 는 못 읽는다.
+    if (spreadsheetId.length < 40) {
+      throw StateError(
+        '시트를 읽지 못했습니다 (400).\n\n'
+        'SPREADSHEET_ID 가 ${spreadsheetId.length}자입니다. '
+        'Google 스프레드시트 ID 는 보통 44자입니다.\n'
+        '엑셀 파일은 Drive 에 올려도 자동 변환되지 않습니다 — '
+        '겉보기엔 열리지만 Sheets API 는 읽지 못합니다.\n\n'
+        '그 파일을 열고 [파일] → [Google Sheets로 저장] 을 누른 뒤, '
+        '새로 생긴 파일의 ID 를 .env 에 넣어주세요.\n\n'
+        '원문: ${e.message}',
+      );
+    }
+    throw StateError(
+      '시트를 읽지 못했습니다 (400).\n'
+      '범위: $range\n'
+      '탭 이름이 정확한지 확인해 주세요.\n\n'
+      '원문: ${e.message}',
+    );
+  }
+  throw e;
+}
+
 class MasterDataRepository {
   const MasterDataRepository({
     required this.spreadsheetId,
@@ -144,8 +173,13 @@ class MasterDataRepository {
     final api = sheets.SheetsApi(client);
     // 시트 이름은 작은따옴표로 감싼다. 밑줄로 시작하거나 한글·공백이 섞이면
     // 따옴표 없이는 A1 표기가 깨진다.
-    final res = await api.spreadsheets.values
-        .get(spreadsheetId, "'$categorySheet'!A2:A");
+    final range = "'$categorySheet'!A2:A";
+    final sheets.ValueRange res;
+    try {
+      res = await api.spreadsheets.values.get(spreadsheetId, range);
+    } on Object catch (e) {
+      _explainSheetsError(e, spreadsheetId, range);
+    }
     return (res.values ?? <List<Object?>>[])
         .where((r) => r.isNotEmpty)
         .map((r) => '${r[0]}'.trim())
