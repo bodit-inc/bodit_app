@@ -19,7 +19,7 @@ class SignInScreen extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('🧾', style: TextStyle(fontSize: 46)),
+              Text('🧾', style: Theme.of(context).textTheme.displayLarge),
               const SizedBox(height: Gap.lg),
               Text('매입내역', style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 56),
@@ -31,8 +31,10 @@ class SignInScreen extends ConsumerWidget {
                 OutlinedButton.icon(
                   onPressed: () =>
                       ref.read(authControllerProvider.notifier).signIn(),
-                  icon: const Text('G',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  icon: Text(
+                    'G',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
                   label: const Text('Google 계정으로 로그인'),
                 ),
               // 재시도 중에도 AsyncValue 는 직전 에러를 들고 있다.

@@ -97,6 +97,26 @@ ErrorDisclosure('비목을 불러오지 못했습니다.', detail: '$e')
 - 원문은 고정폭 + 선택 가능이다 — 복사해서 붙여넣고 물어볼 수 있어야 한다
 - **예외: 스낵바처럼 사라지는 알림.** 접을 대상이 아니다
 
+## 글자
+
+**크기를 직접 적지 않는다.** `Theme.of(context).textTheme` 의 15개 슬롯에서만 온다
+(`displayLarge`…`labelSmall`). 스케일은 `core/theme/typography.dart` 에 있고
+`fh-front-app` 의 `FhTextStyleEnum` 과 값이 같다.
+
+```dart
+style: Theme.of(context).textTheme.labelSmall            // O
+style: Theme.of(context).textTheme.labelSmall?.copyWith( // O — 색·굵기·고정폭은 얹어도 된다
+      color: AppColors.noticeFg,
+    )
+style: const TextStyle(fontSize: 13)                     // X
+```
+
+크기가 안 맞으면 **슬롯 선택이 틀린 것**이지 새 크기를 만들 일이 아니다.
+`test/architecture_test.dart` 가 `fontSize:` 를 막는다.
+
+가장 작은 슬롯이 `labelSmall`(14px)이다. 그보다 작은 글자는 스케일에 없다 —
+필요하다고 느끼면 그 정보가 화면에 꼭 있어야 하는지 먼저 의심한다.
+
 ## 코드 규약
 
 - 주석을 충분히 단다. 특히 "왜 이렇게 했는지" — 위 제약에서 나온 코드는 ADR 을 참조로 남긴다

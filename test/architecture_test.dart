@@ -90,6 +90,28 @@ void main() {
     }
   });
 
+  test('글자 크기를 손으로 적지 않는다 — TextTheme 슬롯에서만 온다', () {
+    // 화면마다 크기를 적으면 스케일이 무의미해진다. 실제로 14곳이
+    // 제각각(11·12·13·15·17·22·36·46px)이었고, 그 상태로는 "디자인을 잡는다" 가
+    // 불가능하다 — 어디를 고쳐야 전체가 바뀌는지 알 수 없다.
+    //
+    // 크기는 AppTypography.textTheme 의 15개 슬롯에서만 온다.
+    // 색·굵기·고정폭은 copyWith 로 얹어도 된다. 크기만 고정이다.
+    for (final f in files) {
+      // 스케일 자체를 정의하는 파일은 당연히 예외다.
+      if (f.path.endsWith('core/theme/typography.dart')) continue;
+      final hits = RegExp(r'fontSize:').allMatches(f.readAsStringSync());
+      expect(
+        hits,
+        isEmpty,
+        reason: '${f.path} 가 fontSize 를 직접 적는다.\n'
+            'Theme.of(context).textTheme 의 슬롯을 쓰세요 '
+            '(displayLarge…labelSmall). 크기가 안 맞으면 슬롯 선택이 틀린 것이지 '
+            '새 크기를 만들 일이 아니다.',
+      );
+    }
+  });
+
   test('화면은 저장소를 직접 만들지 않는다 — providers 를 통해 받는다', () {
     final banned = RegExp(
       r'\b(SheetsRepository|DriveRepository|SlackRepository|OcrService|QueueDb)\(',
