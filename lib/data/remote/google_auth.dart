@@ -23,6 +23,7 @@
 /// → 매 작업마다 `authorizedClient` 를 새로 얻는다.
 library;
 
+import 'package:bodit_app/core/log.dart';
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
@@ -57,12 +58,23 @@ class GoogleAuthService {
   }
 
   /// 조용한 로그인 시도. 앱 재시작 시 먼저 부른다 — 계정 선택기를 안 띄운다.
+  ///
+  /// **실패는 정상 경로다.** 처음 켠 사용자, 로그아웃한 사용자, 클라이언트 ID 가
+  /// 아직 설정되지 않은 상태 모두 여기서 실패한다. 그래서 던지지 않고 null 을
+  /// 돌려준다 — 아무도 시도하지 않은 실패를 화면에 띄우면 안 된다.
+  ///
+  /// 원인은 로그에만 남긴다. 조용히 넘어가되 흔적은 남긴다.
   Future<GoogleSignInAccount?> restore() async {
-    await ensureInitialized();
-    // 반환 타입이 `Future<GoogleSignInAccount?>?` 다 — Future 자체가 널일 수 있다.
-    // (플랫폼이 이 기능을 지원하지 않으면 null 을 준다.)
-    return _account =
-        await GoogleSignIn.instance.attemptLightweightAuthentication();
+    try {
+      await ensureInitialized();
+      // 반환 타입이 `Future<GoogleSignInAccount?>?` 다 — Future 자체가 널일 수 있다.
+      // (플랫폼이 이 기능을 지원하지 않으면 null 을 준다.)
+      return _account =
+          await GoogleSignIn.instance.attemptLightweightAuthentication();
+    } on Object catch (e) {
+      log.i('조용한 로그인 복구 실패 (로그인 화면으로 간다): $e');
+      return _account = null;
+    }
   }
 
   /// 사용자가 로그인 버튼을 눌렀을 때. 계정 선택기를 띄운다.

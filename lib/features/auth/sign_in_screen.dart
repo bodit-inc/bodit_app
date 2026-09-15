@@ -32,7 +32,13 @@ class SignInScreen extends ConsumerWidget {
                       style: TextStyle(fontWeight: FontWeight.bold)),
                   label: const Text('Google 계정으로 로그인'),
                 ),
-              if (auth.hasError) ...[
+              // 재시도 중에도 AsyncValue 는 직전 에러를 들고 있다.
+              // `isLoading` 을 같이 보지 않으면 스피너와 에러 문구가 동시에 뜬다.
+              //
+              // 그리고 여기 뜨는 건 **사용자가 버튼을 눌러서 난 실패**뿐이다.
+              // 앱 시작 시의 조용한 복구 실패는 `GoogleAuthService.restore()` 가
+              // 삼키고 로그로만 남긴다 — 아무도 시도하지 않은 실패를 보여주면 안 된다.
+              if (auth.hasError && !auth.isLoading) ...[
                 const SizedBox(height: Gap.lg),
                 Text(
                   '로그인에 실패했습니다.\n${auth.error}',
