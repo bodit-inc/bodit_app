@@ -29,6 +29,9 @@ pubspec.lock
 *.jks
 *.keystore
 
+# Kotlin 컴파일러 부산물 — 빌드할 때마다 새로 생긴다
+android/.kotlin/
+
 # 빌드 산출물
 *.apk
 *.aab
