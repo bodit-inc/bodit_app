@@ -36,10 +36,22 @@ class ReviewScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(state.isMulti ? '검토 · ${state.drafts.length}건' : '검토'),
         actions: [
-          TextButton(
-            onPressed: state.allComplete ? () => _submit(context, ref) : null,
-            child: Text(state.isMulti ? '전체 제출' : '제출'),
-          ),
+          if (state.isSubmitting)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: Gap.lg),
+              child: Center(
+                child: SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else
+            TextButton(
+              onPressed: state.allComplete ? () => _submit(context, ref) : null,
+              child: Text(state.isMulti ? '전체 제출' : '제출'),
+            ),
         ],
       ),
       body: ListView(
@@ -260,12 +272,43 @@ class ReviewScreen extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     try {
-      final n = await ref.read(reviewControllerProvider.notifier).enqueueAll();
-      // 큐에 넣기만 한다 — 전송은 홈에서 [전송 시도] 를 눌러야 나간다.
-      messenger.showSnackBar(
-        SnackBar(content: Text('$n건을 저장했습니다. 홈에서 전송 시도를 눌러주세요.')),
-      );
+      // 저장하고 바로 보낸다. 실패한 건만 전송 대기에 남는다.
+      final r = await ref.read(reviewControllerProvider.notifier).submitAll();
       navigator.pop();
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            r.allSent
+                ? '${r.sent}건을 전송했습니다.'
+                : r.sent > 0
+                    ? '${r.sent}건 전송, ${r.failed}건은 전송 대기로 넘겼습니다.'
+                    : '전송하지 못해 전송 대기로 넘겼습니다.',
+          ),
+          // 실패했으면 사유를 볼 수 있어야 한다 — 조용히 넘기지 않는다.
+          action: r.firstError == null
+              ? null
+              : SnackBarAction(
+                  label: '사유 보기',
+                  onPressed: () => showDialog<void>(
+                    context: navigator.context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('전송 실패'),
+                      content: SingleChildScrollView(
+                        child: SelectableText(r.firstError!),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('확인'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
     } on Object catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('$e')));
     }

@@ -98,6 +98,11 @@ class QueueDb extends _$QueueDb {
 
   Future<bool> updateRow(Submission row) => update(submissions).replace(row);
 
+  /// 방금 넣은 건을 바로 전송하려고 꺼낼 때 쓴다.
+  Future<Submission?> byId(int id) =>
+      (select(submissions)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
   Future<int> remove(int id) =>
       (delete(submissions)..where((t) => t.id.equals(id))).go();
 }
