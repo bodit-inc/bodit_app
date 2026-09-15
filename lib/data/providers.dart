@@ -99,8 +99,19 @@ Future<gapis.AuthClient> _requireClient(Ref ref) async {
   return client;
 }
 
-/// 비목 마스터. **하드코딩하지 않는다** — 시트에서 읽어 캐시한다.
-final expenseCategoriesProvider = FutureProvider<List<String>>((ref) async {
+/// 비목 마스터. **하드코딩하지 않는다** — 시트에서 읽는다.
+///
+/// `autoDispose` 다. 비목 선택 시트가 닫히면 아무도 안 보게 되어 버려지고,
+/// 다시 열면 새로 읽는다.
+///
+/// **이게 없으면 실패가 캐시된다.** FutureProvider 는 성공뿐 아니라 에러도
+/// 들고 있어서, 한 번 실패하면 시트를 다시 열어도 시도조차 하지 않고
+/// 지난 에러를 그대로 보여준다. 설정을 고쳐도 앱을 껐다 켜야 반영됐다.
+///
+/// 마스터는 작고 자주 안 바뀌지만, 열 때마다 한 번 더 읽는 비용보다
+/// **고친 게 바로 반영되는 것**이 낫다.
+final FutureProvider<List<String>> expenseCategoriesProvider =
+    FutureProvider.autoDispose<List<String>>((ref) async {
   final client = await _requireClient(ref);
   final master = ref.watch(masterDataRepositoryProvider);
   log.d('비목 마스터 읽기 시작 (sheet=${Config.spreadsheetId})');
@@ -123,7 +134,10 @@ final expenseCategoriesProvider = FutureProvider<List<String>>((ref) async {
 });
 
 /// 분류코드 → 분류명. 시트에 수식을 안 두므로 앱이 이걸로 채운다.
-final classNamesProvider = FutureProvider<Map<int, String>>((ref) async {
+///
+/// 같은 이유로 `autoDispose` 다 — 실패를 붙들고 있지 않는다.
+final FutureProvider<Map<int, String>> classNamesProvider =
+    FutureProvider.autoDispose<Map<int, String>>((ref) async {
   final client = await _requireClient(ref);
   return await ref.watch(masterDataRepositoryProvider).classNames(client);
 });

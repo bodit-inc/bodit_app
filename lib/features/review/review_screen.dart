@@ -429,7 +429,21 @@ class _CategoryPickerSheet extends ConsumerWidget {
         error: (e, _) => Center(
           child: Padding(
             padding: screenPadding,
-            child: ErrorDisclosure('비목을 불러오지 못했습니다.', detail: '$e'),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ErrorDisclosure('비목을 불러오지 못했습니다.', detail: '$e'),
+                const SizedBox(height: Gap.lg),
+                // 시트를 닫았다 열어도 다시 읽지만(autoDispose),
+                // 여기서 바로 눌러 재시도할 수 있으면 설정을 고치고
+                // 확인하는 왕복이 짧아진다.
+                OutlinedButton.icon(
+                  onPressed: () => ref.invalidate(expenseCategoriesProvider),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('다시 시도'),
+                ),
+              ],
+            ),
           ),
         ),
         // 빈 목록은 provider 가 이미 걸러서 던진다(탭이 비었다고 알려준다).
