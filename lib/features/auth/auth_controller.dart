@@ -30,4 +30,9 @@ class AuthController extends AsyncNotifier<GoogleSignInAccount?> {
 final authControllerProvider =
     AsyncNotifierProvider<AuthController, GoogleSignInAccount?>(
   AuthController.new,
+  // Riverpod 3 은 실패한 provider 를 기본으로 자동 재시도한다
+  // (200ms 부터 2배씩, 최대 10회 · 6.4초). 그런데 여기서 나는 실패는
+  // 설정 누락이나 로그인 거부라 **재시도해도 절대 성공하지 않는다.**
+  // 켜두면 로그인 화면이 몇 초 동안 스피너를 돌리다 버튼을 보여준다.
+  retry: (retryCount, error) => null,
 );
