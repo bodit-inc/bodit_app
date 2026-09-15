@@ -62,7 +62,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ],
           ),
           if (pending.isNotEmpty) ...[
-            SectionHeader('전송 대기 ${pending.length}건 · 최근순'),
+            Row(
+              children: [
+                Expanded(
+                  child: SectionHeader('전송 대기 ${pending.length}건 · 최근순'),
+                ),
+                TextButton(
+                  onPressed: () => _clearAll(context),
+                  child: const Text('전체 삭제'),
+                ),
+              ],
+            ),
             AppCard(
               // `내 제출` 과 같은 위젯이다 — 목적지별 성패도, 전송 전 건
               // 편집도 여기서 그대로 된다.
@@ -126,6 +136,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!mounted) return;
     unawaited(ref.read(reviewControllerProvider.notifier).load(evidence));
     await context.push(Routes.review);
+  }
+
+  Future<void> _clearAll(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final n = await confirmClearAll(context, ref);
+    if (n == null || !mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text('$n건을 지웠습니다.')));
   }
 
   Future<void> _sendPending() async {
