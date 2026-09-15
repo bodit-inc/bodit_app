@@ -27,6 +27,7 @@ class ReviewState {
     this.selected = 0,
     this.isReading = false,
     this.isSubmitting = false,
+    this.editingId,
     this.error,
   });
 
@@ -40,6 +41,12 @@ class ReviewState {
 
   /// 제출 후 전송 시도 중.
   final bool isSubmitting;
+
+  /// 전송 대기 중인 건을 고치는 중이면 그 큐 행의 id.
+  /// null 이면 새 건이다.
+  final int? editingId;
+
+  bool get isEditing => editingId != null;
 
   /// 예외 **원문**. 사람이 읽을 문구는 화면이 붙인다
   /// (`ErrorDisclosure` 가 한 줄 + 접힌 원문으로 보여준다).
@@ -59,6 +66,7 @@ class ReviewState {
     int? selected,
     bool? isReading,
     bool? isSubmitting,
+    int? editingId,
     String? error,
     bool clearError = false,
   }) {
@@ -67,6 +75,7 @@ class ReviewState {
       selected: selected ?? this.selected,
       isReading: isReading ?? this.isReading,
       isSubmitting: isSubmitting ?? this.isSubmitting,
+      editingId: editingId ?? this.editingId,
       error: clearError ? null : (error ?? this.error),
     );
   }
@@ -152,6 +161,26 @@ class ReviewController extends Notifier<ReviewState> {
     state = state.copyWith(drafts: out, isReading: false);
   }
 
+  /// 전송 대기 중인 건을 다시 연다. OCR 은 돌리지 않는다 — 이미 확정된 값이다.
+  ///
+  /// **아직 아무 목적지에도 안 나간 건만** 부른다. Drive 에 이미 올라간 건을
+  /// 고치면 파일명과 시트 행이 어긋난다(호출부에서 막는다).
+  void loadForEdit(Submission row) {
+    final entry = PurchaseEntry.fromJson(
+      jsonDecode(row.entryJson) as Map<String, dynamic>,
+    );
+    state = ReviewState(
+      drafts: <EntryDraft>[
+        EntryDraft.fromEntry(
+          entry,
+          evidencePath: row.evidencePath,
+          filename: row.filename,
+        ),
+      ],
+      editingId: row.id,
+    );
+  }
+
   void select(int index) => state = state.copyWith(selected: index);
 
   /// 지금 보고 있는 건을 수정한다.
@@ -196,8 +225,26 @@ class ReviewController extends Notifier<ReviewState> {
     final db = ref.read(queueDbProvider);
     final ids = <int>[];
 
-    // ── 1. 먼저 전부 큐에 넣는다 (유실 방지) ──────────────────────
-    for (final d in state.drafts) {
+    // ── 편집이면 새로 넣지 않고 그 행을 고친다 ────────────────────
+    //    새로 넣으면 같은 증빙이 큐에 두 건이 된다.
+    final editingId = state.editingId;
+    if (editingId != null) {
+      final row = await db.byId(editingId);
+      if (row == null) throw StateError('고치려던 건을 찾을 수 없습니다.');
+      final d = state.drafts.first;
+      await db.updateRow(
+        row.copyWith(
+          entryJson: jsonEncode(d.toEntry(createdBy: email).toJson()),
+          filename: d.filename,
+          // 다시 보낼 것이므로 지난 실패 사유는 지운다.
+          lastError: const Value(null),
+        ),
+      );
+      ids.add(editingId);
+    }
+
+    // ── 1. 새 건은 전부 큐에 넣는다 (유실 방지) ───────────────────
+    for (final d in editingId != null ? <EntryDraft>[] : state.drafts) {
       final entry = d.toEntry(createdBy: email);
       final id = await db.enqueue(
         SubmissionsCompanion.insert(

@@ -43,6 +43,39 @@ abstract class EntryDraft with _$EntryDraft {
     String? suggestionReason,
   }) = _EntryDraft;
 
+  /// 이미 제출해 큐에 들어간 건을 다시 편집할 때. 전송 전이라면 고칠 수 있다.
+  ///
+  /// 시트에 **이미 들어간 행은 고치지 않는다**(ADR Decision 3) — 여기서 되살리는
+  /// 것은 아직 아무 데도 안 나간 건이라 그 제약과 무관하다.
+  ///
+  /// [filename] 은 큐에 저장돼 있던 값을 그대로 쓴다. 사용자가 손으로 고쳤을 수
+  /// 있고, 그렇다면 항목을 다시 바꿔도 그 이름을 지켜야 한다.
+  factory EntryDraft.fromEntry(
+    PurchaseEntry e, {
+    required String evidencePath,
+    required String filename,
+  }) {
+    return EntryDraft(
+      evidencePath: evidencePath,
+      belongDate: e.belongDate,
+      spendDate: e.spendDate,
+      vendor: e.vendor,
+      description: e.description,
+      expenseCategory: e.expenseCategory,
+      classCode: e.classCode,
+      className: e.className,
+      cardLast4: e.cardLast4,
+      totalAmount: e.totalAmount,
+      supplyAmount: e.supplyAmount,
+      vatAmount: e.vatAmount,
+      // 이미 확정된 금액이라 "부가세가 안 찍혔다" 배너를 다시 띄우지 않는다.
+      vatPrinted: true,
+      note: e.note,
+      settlementAccount: e.settlementAccount,
+      filenameOverride: filename,
+    );
+  }
+
   const EntryDraft._();
 
   /// 저장될 파일명. 항목이 바뀌면 따라 바뀌고, 사용자가 덮어쓸 수 있다.
