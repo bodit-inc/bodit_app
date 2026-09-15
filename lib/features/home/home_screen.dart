@@ -6,6 +6,7 @@ import 'package:bodit_app/data/providers.dart';
 import 'package:bodit_app/features/auth/auth_controller.dart';
 import 'package:bodit_app/features/capture/capture_service.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
+import 'package:bodit_app/features/submissions/submission_row.dart';
 import 'package:bodit_app/router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -63,19 +64,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           if (pending.isNotEmpty) ...[
             SectionHeader('전송 대기 ${pending.length}건 · 최근순'),
             AppCard(
-              children: [
-                for (final s in pending.take(3))
-                  LabeledRow(
-                    label: '',
-                    value: s.filename,
-                    trailing: StatusPill(
-                      s.lastError == null ? '대기' : '실패',
-                      tone: s.lastError == null
-                          ? PillTone.waiting
-                          : PillTone.error,
-                    ),
-                  ),
-              ],
+              // `내 제출` 과 같은 위젯이다 — 목적지별 성패도, 전송 전 건
+              // 편집도 여기서 그대로 된다.
+              children: [for (final s in pending.take(3)) SubmissionRow(s)],
             ),
             const SizedBox(height: Gap.md),
             FilledButton(
