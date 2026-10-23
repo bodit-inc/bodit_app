@@ -410,6 +410,9 @@ class ReviewController extends Notifier<ReviewState> {
 
   /// 총액을 1.1로 나눈다. **사용자가 눌렀을 때만** 부른다 —
   /// 면세(도서 등)는 부가세가 0원이라 자동으로 하면 틀린다.
+  ///
+  /// 누른 사실을 [EntryDraft.vatSplitApplied] 에 남긴다. 나중에 총금액을
+  /// 고칠 때 같은 판단을 다시 적용하기 위해서다([setTotalAmount]).
   void applyVatSplit() {
     update((d) {
       final total = d.totalAmount;
@@ -419,6 +422,38 @@ class ReviewController extends Notifier<ReviewState> {
         supplyAmount: r.supply,
         vatAmount: r.vat,
         vatPrinted: true,
+        vatSplitApplied: true,
+      );
+    });
+  }
+
+  /// 총금액을 고친다. **공급가액·부가세를 그대로 두지 않는다.**
+  ///
+  /// 예전엔 총금액만 바뀌고 나머지는 옛 값이 남았다 —
+  /// `총 11,000 / 공급 10,000 / 부가 1,000` 에서 총액만 22,000 으로 고치면
+  /// 합이 안 맞는 행이 그대로 시트에 들어갔다.
+  ///
+  /// 그렇다고 **자동으로 1.1 을 나누면 안 된다.** 면세(도서 등)는 부가세가
+  /// 0원이 맞아서, 자동 계산은 없는 세금을 만들어낸다. 그래서 갈라서 다룬다:
+  ///
+  ///   - 전에 [applyVatSplit] 을 눌렀으면 → 사용자가 이미 "과세" 라고
+  ///     판단한 건이다. 같은 판단을 새 금액에 다시 적용한다
+  ///   - 안 눌렀으면 → 비우고 다시 묻는다. `vatPrinted` 도 내려서
+  ///     "1.1로 나누기" 안내가 다시 뜨게 한다
+  void setTotalAmount(int total, {required String currencyCode}) {
+    update((d) {
+      // 통화를 바꿨으면 같이 반영한다 — 금액만 바꾸면 단위가 어긋난다.
+      final next = d.copyWith(totalAmount: total, currency: currencyCode);
+      if (d.vatSplitApplied) {
+        final r = splitVat(total);
+        return next.copyWith(supplyAmount: r.supply, vatAmount: r.vat);
+      }
+      // 애초에 비어 있었으면 건드릴 것이 없다.
+      if (d.supplyAmount == null && d.vatAmount == null) return next;
+      return next.copyWith(
+        supplyAmount: null,
+        vatAmount: null,
+        vatPrinted: false,
       );
     });
   }

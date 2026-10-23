@@ -375,13 +375,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                           draft.totalAmount,
                           draft.currency,
                         ),
-                        onTap: () => _editAmount(
-                          context,
-                          ref,
-                          '총금액',
-                          draft.totalAmount,
-                          (d, v) => d.copyWith(totalAmount: v),
-                        ),
+                        // 총금액은 혼자 바뀌지 않는다 — 공급가액·부가세가
+                        // 따라와야 한다. 그 규칙은 컨트롤러가 갖는다.
+                        onTap: () => _editTotalAmount(context, ref, draft),
                       ),
                       LabeledRow(
                         label: '공급가액',
@@ -649,25 +645,23 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 
   /// 금액은 전용 키패드로 받는다. 시스템 키보드는 기기·IME 마다 배열이 달라
   /// 오입력이 나고, 한글 자판이나 소수점이 섞여 들어온다.
-  Future<void> _editAmount(
+  /// 총금액 전용. 공급가액·부가세를 같이 정리한다
+  /// (`ReviewController.setTotalAmount` 주석 참조).
+  Future<void> _editTotalAmount(
     BuildContext context,
     WidgetRef ref,
-    String label,
-    int? initial,
-    EntryDraft Function(EntryDraft, int) apply,
+    EntryDraft draft,
   ) async {
-    final draft = ref.read(reviewControllerProvider).current;
     final r = await showAmountKeypad(
       context,
-      title: label,
-      initial: initial,
-      currencyCode: draft?.currency ?? 'KRW',
+      title: '총금액',
+      initial: draft.totalAmount,
+      currencyCode: draft.currency,
     );
     if (r == null) return;
-    // 통화를 바꿨으면 같이 반영한다 — 금액만 바꾸면 단위가 어긋난다.
     ref
         .read(reviewControllerProvider.notifier)
-        .update((d) => apply(d.copyWith(currency: r.currencyCode), r.minor));
+        .setTotalAmount(r.minor, currencyCode: r.currencyCode);
   }
 
   Future<void> _editFilename(
