@@ -67,6 +67,16 @@ abstract class EntryDraft with _$EntryDraft {
     /// 조용히 첫 번째를 고르면 겹치는 순간부터 절반이 틀린 예산에 잡힌다.
     @Default(<ClassChoice>[]) List<ClassChoice> classSuggestions,
 
+    /// OCR 항목별 확신도(0.0~1.0). 키는 OCR 스키마의 필드명이다.
+    ///
+    /// **없는 키는 "모른다" 다.** 비어 있다고 전부 확신한 것으로 치면
+    /// 경고가 거짓말이 된다 — 직접 친 값과 모델이 찍은 값이 구분되지 않는다.
+    @Default(<String, double>{}) Map<String, double> confidence,
+
+    /// 사진이 읽을 만하지 않았을 때 모델이 적어준 한국어 한 문장.
+    /// 화면이 "다시 찍기" 와 함께 띄운다.
+    String? imageProblem,
+
     /// 카드로 분류를 못 정한 이유. 화면이 배너로 보여준다.
     ///
     /// **조용히 비워두면 안 된다** — 사용자는 분류 칸이 왜 비었는지 모른 채
@@ -114,6 +124,19 @@ abstract class EntryDraft with _$EntryDraft {
   }
 
   const EntryDraft._();
+
+  /// 그 항목을 사람이 한 번 더 봐야 하는가.
+  ///
+  /// 기준을 0.7 로 둔 건 **경고가 드물어야 쓸모 있기 때문**이다. 절반이
+  /// 노랗게 뜨면 아무도 안 본다. 모델이 "읽긴 했는데 자신 없다" 고 말한
+  /// 것만 집어낸다.
+  ///
+  /// 확신도가 아예 없으면(직접 친 값, OCR 실패, PDF) false 다 —
+  /// 모르는 것을 틀렸다고 말하지 않는다.
+  bool isUncertain(String ocrField) {
+    final c = confidence[ocrField];
+    return c != null && c < 0.7;
+  }
 
   /// 저장될 파일명. 항목이 바뀌면 따라 바뀌고, 사용자가 덮어쓸 수 있다.
   ///

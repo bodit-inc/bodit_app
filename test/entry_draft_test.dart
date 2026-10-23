@@ -43,6 +43,31 @@ void main() {
     });
   });
 
+  group('확신도 — 경고는 드물어야 쓸모 있다', () {
+    test('낮으면 확인하라고 표시한다', () {
+      final d = _full().copyWith(confidence: const {'vendor': 0.4});
+      expect(d.isUncertain('vendor'), isTrue);
+    });
+
+    test('높으면 표시하지 않는다', () {
+      final d = _full().copyWith(confidence: const {'vendor': 0.95});
+      expect(d.isUncertain('vendor'), isFalse);
+    });
+
+    test('확신도가 없으면 표시하지 않는다 — 모르는 것을 틀렸다고 하지 않는다', () {
+      // 직접 친 값, OCR 실패, PDF 가 전부 여기로 떨어진다.
+      expect(_full().isUncertain('vendor'), isFalse);
+      expect(_full().confidence, isEmpty);
+    });
+
+    test('기준은 0.7 이다', () {
+      expect(_full().copyWith(confidence: const {'x': 0.7}).isUncertain('x'),
+          isFalse);
+      expect(_full().copyWith(confidence: const {'x': 0.69}).isUncertain('x'),
+          isTrue);
+    });
+  });
+
   group('filename', () {
     test('항목에서 자동 생성된다', () {
       expect(_full().filename, '260805_영풍문고_8월 도서_영수증_19,000');

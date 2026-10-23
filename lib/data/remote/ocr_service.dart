@@ -13,6 +13,19 @@
 /// 도서 등 면세는 0원이 맞다. 모델에게 **인쇄된 값만 읽으라**고 지시하고,
 /// 총액만 있으면 `vatPrinted: false` 로 알려준다. 나눌지는 사용자가 정한다.
 ///
+/// ## 확신도와 사진 품질을 같이 받는다
+///
+/// 예전엔 값만 받았다(ADR Decision 11 이 확신도 표시를 막았다 — "여기만
+/// 확인하세요" 라고 찍으면 나머지를 안 본다는 이유였다). 운영에서 뒤집혔다:
+/// 전부 훑으라고 해도 실제로는 안 훑었고, 틀린 값이 그대로 시트에 들어갔다.
+///
+/// 그래서 **항목별 확신도**와 **사진 품질**을 같이 받는다.
+///
+/// 사진 품질을 기기에서 미리 재지 않는 이유: 흔들림 판정은 픽셀 분석이
+/// 필요한데(라플라시안 분산 등) 영수증은 원래 고대비라 기준값이 기기마다 다르다.
+/// **읽을 수 있었는지는 읽어본 쪽이 가장 잘 안다** — 모델에게 묻는 게 정확하다.
+/// 호출 한 번 값이지만 잘못 읽은 값을 그대로 제출하는 것보다 싸다.
+///
 /// ## 비용
 ///
 /// 이미지 토큰 ≈ (가로 × 세로) / 750. 즉 **압축이 곧 비용 절감**이다.
@@ -23,6 +36,20 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+
+/// 사진이 OCR 하기에 괜찮았는지. 모델이 스스로 판정한다.
+class ImageQuality {
+  const ImageQuality({required this.readable, this.problem});
+
+  /// 항목을 읽어낼 만했는지.
+  final bool readable;
+
+  /// 읽기 힘들었던 이유. 사람이 읽을 한국어 한 조각이다 —
+  /// 코드값으로 받으면 모델이 새 값을 지어낼 때 화면이 빈다.
+  final String? problem;
+
+  static const ok = ImageQuality(readable: true);
+}
 
 /// OCR 이 읽어낸 값. 못 읽은 필드는 null 이다.
 class OcrResult {
@@ -35,6 +62,8 @@ class OcrResult {
     this.vatAmount,
     this.cardLast4,
     this.vatPrinted = false,
+    this.quality = ImageQuality.ok,
+    this.confidence = const <String, double>{},
   });
 
   factory OcrResult.fromJson(Map<String, dynamic> j) {
@@ -53,7 +82,30 @@ class OcrResult {
       vatAmount: num_(j['vat_amount']),
       cardLast4: str(j['card_last4']),
       vatPrinted: j['vat_printed'] == true,
+      quality: _quality(j['image_quality']),
+      confidence: _confidence(j['confidence']),
     );
+  }
+
+  static ImageQuality _quality(Object? v) {
+    if (v is! Map) return ImageQuality.ok;
+    final problem = v['problem'];
+    return ImageQuality(
+      // 값이 빠지면 "괜찮다" 로 본다 — 스키마가 바뀌었다고 멀쩡한 사진에
+      // 다시 찍으라고 하면 아무도 안 믿는다.
+      readable: v['readable'] != false,
+      problem: problem is String && problem.trim().isNotEmpty
+          ? problem.trim()
+          : null,
+    );
+  }
+
+  static Map<String, double> _confidence(Object? v) {
+    if (v is! Map) return const <String, double>{};
+    return <String, double>{
+      for (final e in v.entries)
+        if (e.value is num) '${e.key}': (e.value as num).toDouble(),
+    };
   }
 
   final DateTime? belongDate;
@@ -69,6 +121,16 @@ class OcrResult {
   /// 영수증에 부가세가 **인쇄돼 있었는지**. false 면 총액만 찍힌 것이므로
   /// 사용자에게 "1.1로 나누기" 를 물어본다.
   final bool vatPrinted;
+
+  /// 사진이 읽을 만했는지. 나쁘면 화면이 다시 찍으라고 안내한다.
+  final ImageQuality quality;
+
+  /// 항목별 확신도(0.0~1.0). 키는 스키마의 필드명 그대로다
+  /// (`belong_date`·`vendor`·`description`·`total_amount`·`card_last4`).
+  ///
+  /// **없는 키는 "모른다" 지 "확신한다" 가 아니다.** 화면이 그렇게 다룬다 —
+  /// 비어 있다고 전부 초록으로 칠하면 경고가 아니라 거짓말이 된다.
+  final Map<String, double> confidence;
 }
 
 class OcrService {
@@ -118,6 +180,48 @@ class OcrService {
         'type': <String>['string', 'null'],
         'description': '카드번호 뒤 4자리만. 앞자리는 읽지 말 것',
       },
+      'image_quality': <String, Object>{
+        'type': 'object',
+        'description': '이 사진이 읽을 만했는지에 대한 네 판단',
+        'properties': <String, Object>{
+          'readable': <String, Object>{
+            'type': 'boolean',
+            'description': '항목들을 읽어낼 만했으면 true',
+          },
+          'problem': <String, Object>{
+            'type': <String>['string', 'null'],
+            'description':
+                'readable 이 false 일 때만 채운다. 사용자에게 보여줄 **한국어 한 문장**으로 '
+                '무엇이 문제인지와 어떻게 다시 찍으면 되는지를 쓴다. '
+                '예: "글씨가 흔들려 금액이 안 보입니다. 가까이서 다시 찍어주세요." '
+                'readable 이 true 면 null',
+          },
+        },
+        'required': <String>['readable', 'problem'],
+        'additionalProperties': false,
+      },
+      'confidence': <String, Object>{
+        'type': 'object',
+        'description':
+            '항목별 확신도 0.0~1.0. **읽은 글자가 맞다고 얼마나 확신하는지**이지 '
+            '값이 그럴듯한지가 아니다. 흐릿하거나 가려졌거나 추측이 섞였으면 낮춘다. '
+            '값이 null 인 항목은 0 으로 둔다',
+        'properties': <String, Object>{
+          'belong_date': <String, Object>{'type': 'number'},
+          'vendor': <String, Object>{'type': 'number'},
+          'description': <String, Object>{'type': 'number'},
+          'total_amount': <String, Object>{'type': 'number'},
+          'card_last4': <String, Object>{'type': 'number'},
+        },
+        'required': <String>[
+          'belong_date',
+          'vendor',
+          'description',
+          'total_amount',
+          'card_last4',
+        ],
+        'additionalProperties': false,
+      },
     },
     'required': <String>[
       'belong_date',
@@ -128,6 +232,8 @@ class OcrService {
       'vat_amount',
       'vat_printed',
       'card_last4',
+      'image_quality',
+      'confidence',
     ],
     'additionalProperties': false,
   };
@@ -142,6 +248,11 @@ class OcrService {
 - 카드번호는 **뒤 4자리만** 읽는다. 앞자리는 읽지도 마라.
 - 금액은 쉼표를 빼고 정수로.
 - 읽을 수 없는 항목은 null 로 둔다. 지어내지 마라.
+- confidence 는 **읽은 글자가 맞다는 확신**이다. 값이 그럴듯한지가 아니다.
+  흐릿하거나 가려졌거나 추측이 섞였으면 낮춰라. null 인 항목은 0 이다.
+- image_quality.readable 은 **항목을 제대로 읽어낼 만한 사진이었는지**다.
+  흔들림·잘림·어두움·빛번짐으로 금액이나 상호를 못 읽었으면 false 로 두고,
+  problem 에 사용자가 바로 행동할 수 있는 한국어 한 문장을 써라.
 ''';
 
   /// 이미지 한 장에서 항목을 뽑는다.
