@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
+import 'package:bodit_app/data/local/queue_db.dart';
 import 'package:bodit_app/data/providers.dart';
 import 'package:bodit_app/features/submissions/submission_row.dart';
 import 'package:flutter/material.dart';
@@ -9,11 +12,43 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 ///
 /// 목적지가 3곳이라 Slack 만 실패하는 경우가 생긴다. 어디까지 갔는지를
 /// 목적지별로 그대로 보여준다 — 조용히 실패하면 안 된다.
-class SubmissionsScreen extends ConsumerWidget {
+///
+/// ## 왜 월로 묶고 검색을 붙였나
+///
+/// 한 달에 수십 건이 쌓이면 평평한 목록에서 특정 건을 못 찾는다. 회계가
+/// 일하는 단위가 **해당년월**이라(Drive 폴더도 시트 필터도 그 기준이다)
+/// 같은 단위로 묶는 게 머릿속 모양과 맞는다.
+class SubmissionsScreen extends ConsumerStatefulWidget {
   const SubmissionsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SubmissionsScreen> createState() => _SubmissionsScreenState();
+}
+
+class _SubmissionsScreenState extends ConsumerState<SubmissionsScreen> {
+  final _scroll = ScrollController();
+  String _query = '';
+
+  /// 이 개수를 넘으면 위아래 이동 버튼을 띄운다. 몇 건뿐인데 버튼이 떠 있으면
+  /// 목록을 가리기만 한다.
+  static const _jumpButtonsFrom = 8;
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _jumpTo(double offset) {
+    _scroll.animateTo(
+      offset,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final rows = ref.watch(pendingSubmissionsProvider);
 
     return Scaffold(
@@ -43,20 +78,128 @@ class SubmissionsScreen extends ConsumerWidget {
           if (list.isEmpty) {
             return const Center(child: Text('아직 제출한 건이 없습니다.'));
           }
-          return ListView(
-            padding: screenPadding,
+
+          // 파일명에 날짜·업체명·내역·증빙자료명·금액이 전부 들어 있다.
+          // 따로 색인을 만들 이유가 없다 — 파일명 하나로 다 걸린다.
+          final q = _query.trim().toLowerCase();
+          final shown = q.isEmpty
+              ? list
+              : list
+                    .where((s) => s.filename.toLowerCase().contains(q))
+                    .toList();
+
+          final groups = _groupByMonth(shown);
+
+          return Column(
             children: [
-              AppCard(children: [for (final s in list) SubmissionRow(s)]),
-              const NoteText(
-                '목적지가 3곳이라 하나만 실패할 수 있습니다. '
-                '실패한 곳만 다시 보내므로 시트에 같은 행이 두 번 들어가지 않습니다.\n'
-                '행을 왼쪽으로 밀면 목록에서 지울 수 있습니다 — '
-                '이미 올라간 파일과 시트 행은 지워지지 않습니다.',
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, 0),
+                child: SearchField(
+                  hintText: '업체명·내역·금액으로 검색',
+                  // 목록을 보러 들어온 화면이다. 열자마자 키보드가 올라오면
+                  // 정작 보려던 목록이 가려진다.
+                  autofocus: false,
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              Expanded(
+                child: shown.isEmpty
+                    ? const Center(child: Text('검색 결과가 없습니다.'))
+                    : ListView(
+                        controller: _scroll,
+                        padding: screenPadding,
+                        children: [
+                          for (final g in groups) ...[
+                            SectionHeader('${g.label} · ${g.rows.length}건'),
+                            AppCard(
+                              children: [
+                                for (final s in g.rows) SubmissionRow(s),
+                              ],
+                            ),
+                          ],
+                          const NoteText(
+                            '목적지가 3곳이라 하나만 실패할 수 있습니다. '
+                            '실패한 곳만 다시 보내므로 시트에 같은 행이 두 번 들어가지 않습니다.\n'
+                            '행을 왼쪽으로 밀면 목록에서 지울 수 있습니다 — '
+                            '이미 올라간 파일과 시트 행은 지워지지 않습니다.',
+                          ),
+                        ],
+                      ),
               ),
             ],
           );
         },
       ),
+      floatingActionButton: rows.maybeWhen(
+        data: (list) => list.length < _jumpButtonsFrom
+            ? null
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FloatingActionButton.small(
+                    heroTag: 'top',
+                    tooltip: '맨 위로',
+                    onPressed: () => _jumpTo(0),
+                    child: const Icon(Icons.keyboard_arrow_up),
+                  ),
+                  const SizedBox(height: Gap.sm),
+                  FloatingActionButton.small(
+                    heroTag: 'bottom',
+                    tooltip: '맨 아래로',
+                    onPressed: () => _jumpTo(_scroll.position.maxScrollExtent),
+                    child: const Icon(Icons.keyboard_arrow_down),
+                  ),
+                ],
+              ),
+        orElse: () => null,
+      ),
     );
+  }
+}
+
+/// 한 달치 묶음.
+class _MonthGroup {
+  const _MonthGroup(this.label, this.rows);
+  final String label;
+  final List<Submission> rows;
+}
+
+/// **소속날짜** 기준으로 월별로 묶는다.
+///
+/// 제출한 날이 아니라 소속날짜인 이유: 9월에 올린 8월 영수증은 회계에게
+/// 8월 건이다. Drive 폴더도 시트 필터도 그 기준이라 여기만 다르면 헷갈린다.
+///
+/// 소속날짜를 못 읽으면 제출한 날로 떨어진다 — 묶음에서 빠지는 것보다 낫다.
+List<_MonthGroup> _groupByMonth(List<Submission> rows) {
+  final buckets = <String, List<Submission>>{};
+  for (final r in rows) {
+    final d = _belongDateOf(r) ?? r.createdAt;
+    final key = '${d.year}-${d.month.toString().padLeft(2, '0')}';
+    (buckets[key] ??= <Submission>[]).add(r);
+  }
+  // 최근 달이 위로. 지금 처리하는 건이 보통 이번 달 것이다.
+  final keys = buckets.keys.toList()..sort((a, b) => b.compareTo(a));
+  return [
+    for (final k in keys)
+      _MonthGroup(
+        '${k.split('-')[0]}년 ${int.parse(k.split('-')[1])}월',
+        buckets[k]!,
+      ),
+  ];
+}
+
+/// 큐에 저장된 JSON 에서 소속날짜만 꺼낸다.
+///
+/// `PurchaseEntry` 로 통째로 되살리지 않는 이유: 2차 사업비처럼 **다른 타입**이
+/// 들어와도 `belongDate` 만 있으면 묶을 수 있어야 한다. 타입을 맞춰 되살리면
+/// 종류가 늘어날 때마다 여기도 같이 고쳐야 한다.
+DateTime? _belongDateOf(Submission row) {
+  try {
+    final m = jsonDecode(row.entryJson) as Map<String, dynamic>;
+    final v = m['belongDate'];
+    return v is String ? DateTime.tryParse(v) : null;
+  } on Object {
+    // 묶음이 깨지는 것뿐이라 조용히 넘어간다 — 호출부가 제출일로 떨어뜨린다.
+    return null;
   }
 }

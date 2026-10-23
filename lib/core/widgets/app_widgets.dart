@@ -12,6 +12,7 @@
 /// | `buttons.dart` | 반복되는 버튼 조합 |
 /// | `dialogs.dart` | 확인·입력 다이얼로그 |
 /// | `feedback.dart` | 보조설명·안내·실패 |
+/// | `picker_sheet.dart` | 긴 목록에서 하나 고르기 |
 library;
 
 export 'buttons.dart';
@@ -20,4 +21,5 @@ export 'dialogs.dart';
 export 'feedback.dart';
 export 'fields.dart';
 export 'layout.dart';
+export 'picker_sheet.dart';
 export 'rows.dart';

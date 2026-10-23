@@ -19,6 +19,7 @@ class LabeledRow extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.warnPlaceholder = false,
+    this.editable = false,
   });
 
   final String label;
@@ -37,6 +38,13 @@ class LabeledRow extends StatelessWidget {
   /// **사람이 직접 써야 하는 칸**은 그것과 구분돼야 한다 — 회계 담당자가
   /// 그 칸이 비어서 되묻는 일이 실제로 있었다.
   final bool warnPlaceholder;
+
+  /// **글자를 고치는 줄**이다 — 어디론가 넘어가는 줄이 아니라.
+  ///
+  /// 둘 다 `›` 를 달고 있었더니 "눌러서 다음 화면으로 간다" 로만 읽혔다.
+  /// 고치는 줄은 연필과 밑줄을 달아 입력칸처럼 보이게 한다. 날짜·비목처럼
+  /// 목록에서 고르는 줄은 그대로 `›` 다.
+  final bool editable;
   final Widget? trailing;
   final VoidCallback? onTap;
 
@@ -55,27 +63,41 @@ class LabeledRow extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: Text(
-            hasValue ? value! : (placeholder ?? ''),
-            textAlign: TextAlign.right,
-            style: t.bodyMedium?.copyWith(
-              fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
-              color: hasValue
-                  ? null
-                  : (warnPlaceholder
-                        ? AppColors.dangerFg
-                        : Theme.of(context).disabledColor),
+          child: Container(
+            // 입력칸처럼 보이게 하는 밑줄. 값이 오른쪽 정렬이라 밑줄도
+            // 글자 폭이 아니라 줄 전체에 깔린다 — 빈 칸도 누를 자리가 보인다.
+            decoration: editable
+                ? const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Color(0xFFD8D8DE)),
+                    ),
+                  )
+                : null,
+            padding: editable
+                ? const EdgeInsets.only(bottom: 3)
+                : EdgeInsets.zero,
+            child: Text(
+              hasValue ? value! : (placeholder ?? ''),
+              textAlign: TextAlign.right,
+              style: t.bodyMedium?.copyWith(
+                fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
+                color: hasValue
+                    ? null
+                    : (warnPlaceholder
+                          ? AppColors.dangerFg
+                          : Theme.of(context).disabledColor),
+              ),
             ),
           ),
         ),
         if (trailing != null) ...[const SizedBox(width: Gap.sm), trailing!],
         if (onTap != null)
-          const Padding(
-            padding: EdgeInsets.only(left: Gap.xs),
+          Padding(
+            padding: const EdgeInsets.only(left: Gap.xs),
             child: Icon(
-              Icons.chevron_right,
-              size: 20,
-              color: Color(0xFFC2C2C7),
+              editable ? Icons.edit_outlined : Icons.chevron_right,
+              size: editable ? 16 : 20,
+              color: const Color(0xFFC2C2C7),
             ),
           ),
       ],
