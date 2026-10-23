@@ -18,6 +18,7 @@ class LabeledRow extends StatelessWidget {
     this.subtitle,
     this.trailing,
     this.onTap,
+    this.warnPlaceholder = false,
   });
 
   final String label;
@@ -29,6 +30,13 @@ class LabeledRow extends StatelessWidget {
 
   /// 값이 비었을 때 회색으로 보여줄 안내 문구.
   final String? placeholder;
+
+  /// 안내 문구를 **경고색**으로 띄운다.
+  ///
+  /// 회색 안내는 "비어 있다" 로만 읽히고 넘어간다. OCR 이 못 채워서
+  /// **사람이 직접 써야 하는 칸**은 그것과 구분돼야 한다 — 회계 담당자가
+  /// 그 칸이 비어서 되묻는 일이 실제로 있었다.
+  final bool warnPlaceholder;
   final Widget? trailing;
   final VoidCallback? onTap;
 
@@ -52,7 +60,11 @@ class LabeledRow extends StatelessWidget {
             textAlign: TextAlign.right,
             style: t.bodyMedium?.copyWith(
               fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
-              color: hasValue ? null : Theme.of(context).disabledColor,
+              color: hasValue
+                  ? null
+                  : (warnPlaceholder
+                        ? AppColors.dangerFg
+                        : Theme.of(context).disabledColor),
             ),
           ),
         ),

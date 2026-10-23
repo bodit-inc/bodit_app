@@ -3,12 +3,15 @@
 /// 규칙의 단일 원천은 위키다:
 ///   ~/llm-wiki-template/wiki/projects/bodit-app/sheet-schema.md
 ///
-///   소속일자_[업체명]_[내역]_증빙자료명_총금액
-///   예: 260805_[영풍문고]_[8월 도서]_영수증_19,000
+///   소속일자_업체명_내역_증빙자료명_총금액
+///   예: 260805_영풍문고_8월 도서_영수증_19,000
 ///
-/// 업체명·내역을 대괄호로 감싸는 이유: 값 안에 `_` 가 들어가도 필드 경계가
-/// 안 무너진다. 다만 이건 가독성용이다 — 시트에 `증빙링크` 컬럼이 있으므로
-/// 파일명을 되파싱할 일은 없다.
+/// ## 대괄호를 뺀 이유
+///
+/// 예전엔 업체명·내역을 `[]` 로 감쌌다. 값 안에 `_` 가 들어가도 필드 경계가
+/// 안 무너진다는 이유였는데, **되파싱할 일이 없어서 그 안전장치가 쓸모가 없었다**
+/// — 시트에 `증빙링크` 컬럼이 있으니 파일명에서 값을 다시 꺼낼 필요가 없다.
+/// 회계 담당자가 Drive 에서 눈으로 읽는 이름이라 짧은 쪽이 낫다는 요청을 받았다.
 ///
 /// 주의: 사용자가 검토 화면에서 이 파일명을 직접 고칠 수 있다(ADR Decision 12c).
 /// 그래서 `sanitizeSegment` 는 자동 생성 경로뿐 아니라 **사용자 입력에도 반드시** 적용한다.
@@ -20,12 +23,10 @@ library;
 /// 내려받는 순간 깨진다. 회계 담당자가 로컬로 받아 정리하므로 반드시 막는다.
 const _forbidden = r'<>:"/\|?*';
 
-/// 대괄호 구분자를 깨뜨리는 문자.
-const _closingBracket = ']';
-
 /// 파일명 한 조각을 안전하게 만든다.
 ///
 /// 금지문자만 바꾸고 나머지는 그대로 통과시킨다 — 공백·한글·`_`·`-`·`,`·괄호 모두 허용.
+/// 대괄호도 이제 그냥 통과한다(구분자가 아니므로 깨질 게 없다).
 /// 실무에서 실제로 걸리는 건 사실상 `/` 하나다 (예: "A/S 비용" → "A-S 비용").
 String sanitizeSegment(String raw) {
   final buf = StringBuffer();
@@ -34,8 +35,6 @@ String sanitizeSegment(String raw) {
     if (rune < 0x20 || rune == 0x7F) continue; // 제어문자는 버린다
     if (_forbidden.contains(ch)) {
       buf.write('-');
-    } else if (ch == _closingBracket) {
-      buf.write(')');
     } else {
       buf.write(ch);
     }
@@ -76,8 +75,8 @@ String buildEvidenceFilename({
 }) {
   final parts = [
     formatDateForFilename(belongDate),
-    '[${sanitizeSegment(vendor)}]',
-    '[${sanitizeSegment(description)}]',
+    sanitizeSegment(vendor),
+    sanitizeSegment(description),
     sanitizeSegment(evidenceType),
     formatAmountForFilename(amount),
   ];
