@@ -8,6 +8,8 @@
 library;
 
 import 'package:bodit_app/core/utils/filename.dart';
+import 'package:bodit_app/models/class_choice.dart';
+import 'package:bodit_app/models/evidence_type.dart';
 import 'package:bodit_app/models/purchase_entry.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
@@ -37,13 +39,29 @@ abstract class EntryDraft with _$EntryDraft {
     @Default(false) bool vatPrinted,
     @Default('') String note,
     @Default('') String settlementAccount,
-    @Default('영수증') String evidenceType,
+    @Default(defaultEvidenceType) String evidenceType,
 
     /// 사용자가 파일명을 직접 고쳤으면 그 값. null 이면 자동 생성한다.
     String? filenameOverride,
 
-    /// 과거 이력 추천의 근거. 화면에 그대로 보여준다.
+    /// **비목** 추천의 근거(과거 이력). 화면에 그대로 보여준다.
     String? suggestionReason,
+
+    /// **분류** 추천의 근거(카드). 비목과 출처가 달라서 줄을 따로 쓴다 —
+    /// 한 줄에 합치면 어느 쪽이 추측이고 어느 쪽이 사실인지 섞인다.
+    String? classReason,
+
+    /// 뒤 4자리가 겹쳐서 분류를 못 정했을 때의 후보들.
+    ///
+    /// **비어 있지 않으면 분류를 자동으로 채우지 않았다는 뜻이다.**
+    /// 조용히 첫 번째를 고르면 겹치는 순간부터 절반이 틀린 예산에 잡힌다.
+    @Default(<ClassChoice>[]) List<ClassChoice> classSuggestions,
+
+    /// 카드로 분류를 못 정한 이유. 화면이 배너로 보여준다.
+    ///
+    /// **조용히 비워두면 안 된다** — 사용자는 분류 칸이 왜 비었는지 모른 채
+    /// 44개 목록에서 직접 찾게 된다. 못 찾았으면 못 찾았다고 말한다.
+    String? cardNotice,
 
     /// 같은 업체로 과거에 쓴 내역 후보. **자동으로 채우지 않는다** —
     /// 내역은 건마다 달라서("8월 도서" → "9월 도서") 지난 값을 넣으면
