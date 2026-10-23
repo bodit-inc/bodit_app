@@ -6,15 +6,20 @@ library;
 
 import 'dart:convert';
 
+import 'package:bodit_app/core/log.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
 import 'package:bodit_app/data/providers.dart';
+import 'package:bodit_app/data/remote/card_repository.dart';
 import 'package:bodit_app/features/auth/auth_controller.dart';
 import 'package:bodit_app/features/capture/capture_service.dart';
+import 'package:bodit_app/models/class_choice.dart';
 import 'package:bodit_app/models/entry_draft.dart';
 import 'package:bodit_app/models/purchase_entry.dart';
 import 'package:bodit_app/models/sheet_row.dart';
 import 'package:drift/drift.dart' show Value;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
 import 'package:uuid/uuid.dart';
 
 final captureServiceProvider = Provider<CaptureService>((ref) {
@@ -86,6 +91,171 @@ class ReviewController extends Notifier<ReviewState> {
 
   static const _uuid = Uuid();
 
+  /// 뒤 4자리 → 카드. 분류를 정하는 근거다.
+  ///
+  /// 컨트롤러가 들고 있는 이유: 사용자가 **카드번호를 고치면 분류를 다시 정해야**
+  /// 하는데, 그때마다 시트를 다시 읽을 수는 없다. 한 번 읽어 세션 동안 쓴다.
+  CardDirectory? _cards;
+
+  /// 분류코드 → 분류명. **분류명의 출처는 여기 하나다** —
+  /// 카드 시트에도 분류명 칸이 있지만 두 시트가 어긋난 적이 있어서 안 읽는다
+  /// (`card_repository.dart` 주석 참조).
+  Map<int, String>? _classNames;
+
+  /// 카드·분류 마스터를 읽어둔다. **실패해도 던지지 않는다** —
+  /// 분류 자동완성이 안 될 뿐 폼은 그대로 쓸 수 있다. 다만 왜 비었는지는
+  /// `cardNotice` 로 화면에 남는다.
+  Future<void> _loadCardData(gapis.AuthClient client) async {
+    if (_cards != null && _classNames != null) return;
+    try {
+      _cards ??= await ref.read(cardRepositoryProvider).load(client);
+    } on Object catch (e) {
+      log.w('카드보유내역을 읽지 못했다 (분류 자동완성을 건너뛴다): $e');
+    }
+    try {
+      _classNames ??= await ref
+          .read(masterDataRepositoryProvider)
+          .classNames(client);
+    } on Object catch (e) {
+      log.w('분류 마스터를 읽지 못했다 (분류 자동완성을 건너뛴다): $e');
+    }
+  }
+
+  /// 카드 뒤 4자리로 분류를 정한다. **분류가 자동으로 채워지는 유일한 경로다.**
+  ///
+  /// 못 정하는 경우가 네 가지인데 **전부 다른 문구로 알린다.** 뭉뚱그려
+  /// "분류를 찾지 못했습니다" 라고 하면 사용자가 뭘 해야 할지 모른다 —
+  /// 카드번호를 고쳐야 하는지, 시트에 카드를 추가해야 하는지, 그냥 직접
+  /// 고르면 되는지가 다 다르다.
+  /// 인스턴스가 들고 있는 카드·마스터로 판단한다. 실제 로직은 [applyCardClass].
+  EntryDraft _applyCardClass(EntryDraft draft) =>
+      applyCardClass(draft, _cards, _classNames);
+
+  /// [_applyCardClass] 의 알맹이. **상태에 기대지 않는 순수 함수다** —
+  /// 경우가 다섯 가지(정상·못 찾음·미사용·겹침·마스터 누락)라 전부 테스트한다.
+  @visibleForTesting
+  static EntryDraft applyCardClass(
+    EntryDraft draft,
+    CardDirectory? cards,
+    Map<int, String>? classNames,
+  ) {
+    // 지난 판단의 흔적을 먼저 지운다. 카드번호를 고쳤는데 예전 근거가 남아
+    // 있으면 사용자는 새 번호가 반영된 줄 안다.
+    //
+    // **분류코드까지 지울지는 출처를 보고 정한다.** `classReason` 이 있으면
+    // 그 값은 카드가 채운 것이다 — 카드가 바뀌었으니 같이 내려가야 한다.
+    // 반대로 사용자가 46개 목록에서 직접 고른 값은 건드리지 않는다
+    // (그쪽은 고를 때 `classReason` 을 지워서 출처를 표시해둔다).
+    final fromCard = draft.classReason != null;
+    final d = draft.copyWith(
+      classReason: null,
+      cardNotice: null,
+      classSuggestions: const <ClassChoice>[],
+      classCode: fromCard ? null : draft.classCode,
+      className: fromCard ? null : draft.className,
+    );
+
+    final last4 = (d.cardLast4 ?? '').trim();
+    // 카드가 없는 증빙이다(계산서·이체확인증·현금영수증). 할 말이 없다 —
+    // 여기서 배너를 띄우면 이체 건마다 쓸데없는 경고가 뜬다.
+    if (last4.isEmpty) return d;
+
+    if (cards == null || classNames == null) {
+      return d.copyWith(
+        cardNotice: '카드 정보를 불러오지 못해 분류를 자동으로 채우지 못했습니다. '
+            '분류를 직접 골라주세요.',
+      );
+    }
+
+    final hits = cards.find(last4);
+    final active = hits.where((c) => c.active).toList();
+    if (active.isEmpty) {
+      return d.copyWith(
+        cardNotice: hits.isEmpty
+            ? '카드 $last4 를 카드보유내역에서 찾지 못했습니다. '
+                  '번호가 맞는지 확인하고 분류를 직접 골라주세요.'
+            : '카드 $last4 는 지금 사용하지 않는 카드로 등록돼 있습니다. '
+                  '분류를 직접 골라주세요.',
+      );
+    }
+
+    // 분류명을 못 푸는 코드는 후보에서 뺀다 — 이름 없이 코드만 시트에 넣으면
+    // 회계 담당자가 보는 분류명 칸이 빈다.
+    final choices = <ClassChoice>[];
+    final unresolved = <int>[];
+    for (final c in active) {
+      final r = resolveClass(c, classNames);
+      if (r == null) {
+        unresolved.add(c.classCode);
+      } else if (!choices.contains(r)) {
+        choices.add(r);
+      }
+    }
+
+    if (unresolved.isNotEmpty) {
+      // 마스터가 낡았다는 뜻이다. 자동으로 채우면 틀린 예산에 잡히므로 멈춘다.
+      return d.copyWith(
+        classSuggestions: choices,
+        cardNotice:
+            '카드 $last4 의 분류코드 ${unresolved.join(', ')} 가 분류 마스터에 없습니다. '
+            '`_분류마스터` 탭을 확인하고, 지금은 분류를 직접 골라주세요.',
+      );
+    }
+
+    if (choices.length == 1) {
+      final only = choices.single;
+      return d.copyWith(
+        classCode: only.code,
+        className: only.name,
+        // 근거를 안 보여주면 사용자가 못 믿고 46개 목록을 다시 연다.
+        classReason: '카드 $last4 · ${only.name}',
+      );
+    }
+
+    // 뒤 4자리가 겹친다. **조용히 첫 번째를 고르지 않는다** —
+    // 겹치는 순간부터 절반이 틀린 예산에 잡힌다.
+    return d.copyWith(
+      classSuggestions: choices,
+      cardNotice: '뒤 4자리가 $last4 인 카드가 ${choices.length}장입니다. '
+          '어느 쪽인지 골라주세요.',
+    );
+  }
+
+  /// 사용자가 카드 뒤 4자리를 고쳤다. **분류를 다시 정한다.**
+  ///
+  /// OCR 이 숫자 하나를 잘못 읽으면 분류가 통째로 틀리는데, 고쳐도 분류가
+  /// 그대로면 사용자는 고친 줄 안다.
+  Future<void> setCardLast4(String raw) async {
+    // 사용자가 전체 번호를 붙여넣을 수도 있다. 뒤 4자리만 남긴다 —
+    // 앞자리는 저장하지 않는다(ADR: 카드번호는 뒤 4자리만).
+    final last4 = CardDirectory.last4Of(raw) ?? '';
+    update((d) => d.copyWith(cardLast4: last4));
+
+    // 아직 못 읽었으면 지금 읽어본다. 사용자 조작 중이지만 동의 화면은
+    // 띄우지 않는다 — 번호 하나 고치다가 팝업이 뜨면 흐름이 끊긴다.
+    if (_cards == null || _classNames == null) {
+      final client = await ref
+          .read(googleAuthProvider)
+          .authorizedClient(interactive: false);
+      if (client != null) await _loadCardData(client);
+    }
+    update(_applyCardClass);
+  }
+
+  /// 뒤 4자리가 겹쳤을 때 사용자가 고른 분류.
+  void chooseClass(ClassChoice choice) {
+    update(
+      (d) => d.copyWith(
+        classCode: choice.code,
+        className: choice.name,
+        classReason: '카드 ${d.cardLast4 ?? ''} · ${choice.name} (직접 고름)',
+        // 골랐으니 안내와 후보는 치운다. 남겨두면 아직 덜 된 것처럼 보인다.
+        cardNotice: null,
+        classSuggestions: const <ClassChoice>[],
+      ),
+    );
+  }
+
   /// 증빙을 받아 draft 를 만들고 OCR 을 돌린다.
   Future<void> load(List<CapturedEvidence> evidence) async {
     if (evidence.isEmpty) return;
@@ -104,6 +274,10 @@ class ReviewController extends Notifier<ReviewState> {
     final client = await ref
         .read(googleAuthProvider)
         .authorizedClient(interactive: false);
+
+    // 카드 목록과 분류 마스터는 건마다 바뀌지 않는다. **루프 밖에서 한 번만**
+    // 읽는다 — 안에 넣으면 10장 찍었을 때 시트를 20번 더 읽는다.
+    if (client != null) await _loadCardData(client);
 
     final out = <EntryDraft>[];
     for (var i = 0; i < evidence.length; i++) {
@@ -141,10 +315,11 @@ class ReviewController extends Notifier<ReviewState> {
             vendor: vendor,
           );
           if (s != null) {
+            // **분류(classCode·className)는 여기서 채우지 않는다.**
+            // 업체 이력은 추측이고 카드는 사실이다 — 같은 업체에서 같은 걸 사도
+            // 어느 예산으로 긁었는지는 카드가 정한다. 분류는 _applyCardClass 담당.
             draft = draft.copyWith(
               expenseCategory: s.expenseCategory,
-              classCode: s.classCode,
-              className: s.className,
               // 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
               suggestionReason: '$vendor는 지난 ${s.reason}',
               // 내역은 채우지 않고 후보로만 넘긴다(위 주석 참조).
@@ -156,7 +331,9 @@ class ReviewController extends Notifier<ReviewState> {
         }
       }
 
-      out.add(draft);
+      // ── 분류는 카드가 정한다 ──────────────────────────────────────
+      //    업체 이력보다 **뒤에** 둔다. 순서가 바뀌면 이력이 분류를 덮는다.
+      out.add(_applyCardClass(draft));
     }
 
     state = state.copyWith(drafts: out, isReading: false);

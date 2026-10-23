@@ -20,6 +20,7 @@
 /// SLACK_BOT_TOKEN=xoxb-...
 /// SLACK_CHANNEL_ID=C...
 /// SPREADSHEET_ID=1...
+/// CARD_SHEET_ID=1...
 /// DRIVE_FOLDER_ID=1...
 /// GOOGLE_IOS_CLIENT_ID=....apps.googleusercontent.com
 /// GOOGLE_SERVER_CLIENT_ID=....apps.googleusercontent.com
@@ -46,6 +47,14 @@ abstract class Config {
   /// 매입내역 스프레드시트.
   @EnviedField(varName: 'SPREADSHEET_ID')
   static final String spreadsheetId = _Config.spreadsheetId;
+
+  /// 카드보유내역 스프레드시트. **매입내역과 다른 파일이다** —
+  /// 운영팀이 따로 관리하고 우리 계정으로는 보기 전용이다.
+  ///
+  /// 스코프를 넓힐 필요는 없다. `spreadsheets` 는 특정 파일이 아니라
+  /// **사용자가 열 수 있는 모든 스프레드시트**에 걸리므로 이미 덮는다.
+  @EnviedField(varName: 'CARD_SHEET_ID')
+  static final String cardSheetId = _Config.cardSheetId;
 
   /// 증빙을 모아두는 공유 드라이브 폴더.
   /// `drive.file` scope 로는 폴더를 검색할 수 없어서 ID 를 박아둔다.

@@ -9,7 +9,9 @@ import 'package:bodit_app/core/widgets/amount_keypad.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/providers.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
+import 'package:bodit_app/models/class_choice.dart';
 import 'package:bodit_app/models/entry_draft.dart';
+import 'package:bodit_app/models/evidence_type.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -145,6 +147,15 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         (d, v) => d.copyWith(vendor: v),
                       ),
                     ),
+                    // 카드번호는 **분류를 정하는 입력**이다. 예전엔 OCR 이 읽은
+                    // 값이 화면에 아예 안 나와서, 숫자 하나를 잘못 읽어도
+                    // 사용자가 알 길이 없었다. 지금은 그게 분류까지 끌고 간다.
+                    LabeledRow(
+                      label: '카드번호',
+                      value: draft.cardLast4,
+                      placeholder: '카드 결제가 아니면 비워둡니다',
+                      onTap: () => _editCardLast4(context, ref, draft),
+                    ),
                     LabeledRow(
                       key: _fieldKeys['내역'],
                       label: '내역',
@@ -261,6 +272,38 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                               ),
                             ],
                           ),
+                          // 카드로 정해진 분류의 근거. 비목과 줄을 따로 쓴다 —
+                          // 비목은 과거 이력(추측), 분류는 카드(사실)라 출처가
+                          // 다르다. 한 줄에 합치면 그 차이가 안 보인다.
+                          if (draft.classReason != null)
+                            SuggestReason(draft.classReason!),
+
+                          // 뒤 4자리가 겹쳤을 때의 후보. **자동으로 안 고른다** —
+                          // 조용히 첫 번째를 쓰면 절반이 틀린 예산에 잡힌다.
+                          if (draft.classSuggestions.isNotEmpty) ...[
+                            const SizedBox(height: Gap.sm),
+                            Wrap(
+                              spacing: Gap.sm,
+                              runSpacing: Gap.sm,
+                              children: [
+                                for (final c in draft.classSuggestions)
+                                  SuggestChip(
+                                    c.label,
+                                    selected: c.code == draft.classCode,
+                                    onTap: () => ref
+                                        .read(reviewControllerProvider.notifier)
+                                        .chooseClass(c),
+                                  ),
+                              ],
+                            ),
+                          ],
+
+                          // 카드로 분류를 못 정했으면 **왜** 못 정했는지 말한다.
+                          // 조용히 비워두면 사용자는 46개 목록에서 직접 찾는다.
+                          if (draft.cardNotice != null) ...[
+                            const SizedBox(height: Gap.md),
+                            NoticeBanner(child: Text(draft.cardNotice!)),
+                          ],
                         ],
                       ),
                     ),
@@ -335,6 +378,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                 const SectionHeader('저장될 파일명'),
                 AppCard(
                   children: [
+                    // 파일명 네 번째 칸이 이 값이다. 예전엔 '영수증' 고정이라
+                    // 매출전표를 올려도 파일명에 '영수증' 이 박혔다.
+                    LabeledRow(
+                      label: '증빙자료명',
+                      value: draft.evidenceType,
+                      onTap: () => _pickEvidenceType(context, ref),
+                    ),
                     Padding(
                       padding: const EdgeInsets.all(Gap.lg),
                       child: Row(
@@ -478,6 +528,33 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     );
   }
 
+  Future<void> _pickEvidenceType(BuildContext context, WidgetRef ref) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => const _EvidenceTypePickerSheet(),
+    );
+  }
+
+  /// 카드 뒤 4자리를 고친다. **고치면 분류가 다시 정해진다** —
+  /// 컨트롤러가 그 일까지 맡으므로 여기서는 값만 넘긴다.
+  Future<void> _editCardLast4(
+    BuildContext context,
+    WidgetRef ref,
+    EntryDraft draft,
+  ) async {
+    final v = await promptText(
+      context,
+      title: '카드 뒤 4자리',
+      initial: draft.cardLast4 ?? '',
+      hintText: '예: 3927 · 카드 결제가 아니면 비워둡니다',
+      keyboardType: TextInputType.number,
+    );
+    if (v == null) return;
+    await ref.read(reviewControllerProvider.notifier).setCardLast4(v);
+  }
+
   Future<void> _pickDate(
     BuildContext context,
     WidgetRef ref,
@@ -580,8 +657,9 @@ class _ReadingView extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Gap.xxl),
               child: Text(
-                '비목과 분류코드는 영수증에 없습니다.\n'
-                '과거에 같은 업체를 어떻게 처리했는지 보고 제안합니다.',
+                '비목과 분류는 영수증에 없습니다.\n'
+                '비목은 과거에 같은 업체를 어떻게 처리했는지 보고,\n'
+                '분류는 결제한 카드를 보고 채웁니다.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall
                     ?.copyWith(color: AppColors.neutralFg),
@@ -684,13 +762,60 @@ class _CategoryPickerSheet extends ConsumerWidget {
   }
 }
 
+/// 증빙자료명 선택.
+///
+/// 비목·분류와 달리 **목록이 코드에 있다.** 시트에서 읽지 않는 이유는
+/// `models/evidence_type.dart` 주석에 적어뒀다 — 요구사항 문서의 고정 목록이고
+/// 늘어나려면 회계 처리 방식 자체가 바뀌어야 한다.
+class _EvidenceTypePickerSheet extends ConsumerWidget {
+  const _EvidenceTypePickerSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(reviewControllerProvider).current?.evidenceType;
+
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.sm),
+            child: Text(
+              '증빙자료명',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+          for (final name in evidenceTypes)
+            ListTile(
+              title: Text(name),
+              // 지금 값에 체크를 둔다 — 목록이 9개라 뭘 고른 상태인지
+              // 안 보이면 같은 걸 또 누른다.
+              trailing: name == current
+                  ? const Icon(Icons.check, size: 18)
+                  : null,
+              onTap: () {
+                ref
+                    .read(reviewControllerProvider.notifier)
+                    .update((d) => d.copyWith(evidenceType: name));
+                Navigator.pop(context);
+              },
+            ),
+          const NoteText('파일명 네 번째 칸에 그대로 들어갑니다.'),
+          const SizedBox(height: Gap.lg),
+        ],
+      ),
+    );
+  }
+}
+
 /// 분류 선택. `_분류마스터` 탭을 읽어 `코드 이름` 으로 보여준다.
 ///
 /// 고르면 **분류코드와 분류명이 한 번에** 정해진다. 코드를 손으로 치게 하면
 /// 마스터에 없는 번호가 들어갈 수 있고, 그러면 시트의 분류명 칸이 빈다
 /// (시트에 수식을 안 두므로 앱이 채우는 유일한 경로다).
 ///
-/// 항목이 44개라 검색을 붙였다 — 스크롤로 찾기엔 많다.
+/// 항목이 46개라 검색을 붙였다 — 스크롤로 찾기엔 많다.
 class _ClassPickerSheet extends ConsumerStatefulWidget {
   const _ClassPickerSheet();
 
@@ -784,6 +909,13 @@ class _ClassPickerSheetState extends ConsumerState<_ClassPickerSheet> {
                                     (d) => d.copyWith(
                                       classCode: e.key,
                                       className: e.value,
+                                      // 사용자가 직접 고른 값이다. 카드가
+                                      // 채웠다는 표시를 지워야 나중에 카드번호를
+                                      // 고쳐도 이 선택이 안 날아간다.
+                                      classReason: null,
+                                      cardNotice: null,
+                                      classSuggestions:
+                                          const <ClassChoice>[],
                                     ),
                                   );
                               Navigator.pop(context);

@@ -7,6 +7,7 @@ library;
 import 'package:bodit_app/core/config.dart';
 import 'package:bodit_app/core/log.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
+import 'package:bodit_app/data/remote/card_repository.dart';
 import 'package:bodit_app/data/remote/drive_repository.dart';
 import 'package:bodit_app/data/remote/google_auth.dart';
 import 'package:bodit_app/data/remote/ocr_service.dart';
@@ -38,6 +39,11 @@ final sheetsRepositoryProvider = Provider<SheetsRepository>((ref) {
 
 final masterDataRepositoryProvider = Provider<MasterDataRepository>((ref) {
   return MasterDataRepository(spreadsheetId: Config.spreadsheetId);
+});
+
+/// 카드보유내역. **매입내역과 다른 스프레드시트다** — 운영팀이 따로 관리한다.
+final cardRepositoryProvider = Provider<CardRepository>((ref) {
+  return CardRepository(spreadsheetId: Config.cardSheetId);
 });
 
 final slackRepositoryProvider = Provider<SlackRepository>((ref) {
@@ -153,4 +159,33 @@ final FutureProvider<Map<int, String>> classNamesProvider =
           .classNames(client);
       ref.keepAlive();
       return map;
+    });
+
+/// 뒤 4자리 → 카드. 분류를 정하는 데 쓴다.
+///
+/// 비목·분류 마스터와 같은 규칙 — **성공만 캐시하고 실패는 항상 재시도**한다.
+/// 카드가 추가되면 앱을 껐다 켜야 보이지만, 카드는 몇 달에 한 장 늘어나는
+/// 것이라 매번 읽을 이유가 없다.
+final FutureProvider<CardDirectory> cardDirectoryProvider =
+    FutureProvider.autoDispose<CardDirectory>((ref) async {
+      final client = await _requireClient(ref);
+      final dir = await ref
+          .watch(cardRepositoryProvider)
+          .load(client)
+          .timeout(
+            const Duration(seconds: 20),
+            onTimeout: () => throw StateError(
+              '카드보유내역을 20초 안에 읽지 못했습니다.\n'
+              'CARD_SHEET_ID 와 네트워크를 확인해 주세요.',
+            ),
+          );
+      ref.keepAlive();
+      if (dir.cardCount == 0) {
+        // 여기까지 왔으면 접근은 됐다. 시트가 비었거나 컬럼이 밀린 것이다.
+        throw StateError(
+          '카드보유내역에서 카드를 한 장도 읽지 못했습니다.\n'
+          'C열(카드번호)과 D열(분류코드)이 맞는지 확인해 주세요.',
+        );
+      }
+      return dir;
     });
