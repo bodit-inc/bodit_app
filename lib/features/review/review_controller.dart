@@ -162,7 +162,8 @@ class ReviewController extends Notifier<ReviewState> {
 
     if (cards == null || classNames == null) {
       return d.copyWith(
-        cardNotice: '카드 정보를 불러오지 못해 분류를 자동으로 채우지 못했습니다. '
+        cardNotice:
+            '카드 정보를 불러오지 못해 분류를 자동으로 채우지 못했습니다. '
             '분류를 직접 골라주세요.',
       );
     }
@@ -216,7 +217,8 @@ class ReviewController extends Notifier<ReviewState> {
     // 겹치는 순간부터 절반이 틀린 예산에 잡힌다.
     return d.copyWith(
       classSuggestions: choices,
-      cardNotice: '뒤 4자리가 $last4 인 카드가 ${choices.length}장입니다. '
+      cardNotice:
+          '뒤 4자리가 $last4 인 카드가 ${choices.length}장입니다. '
           '어느 쪽인지 골라주세요.',
     );
   }
@@ -267,76 +269,89 @@ class ReviewController extends Notifier<ReviewState> {
       isReading: true,
     );
 
-    final capture = ref.read(captureServiceProvider);
-    final ocr = ref.read(ocrServiceProvider);
-    final sheets = ref.read(sheetsRepositoryProvider);
-    // 추천을 위해 시트를 읽어야 한다. 인가가 없으면 OCR 만 하고 넘어간다.
+    // 카드 목록과 분류 마스터는 건마다 바뀌지 않는다. **루프 밖에서 한 번만**
+    // 읽어 둔다 — 안에서 읽으면 10장 찍었을 때 시트를 20번 더 읽는다.
+    // (`_readOne` 은 이미 읽혀 있으면 건너뛴다.)
     final client = await ref
         .read(googleAuthProvider)
         .authorizedClient(interactive: false);
-
-    // 카드 목록과 분류 마스터는 건마다 바뀌지 않는다. **루프 밖에서 한 번만**
-    // 읽는다 — 안에 넣으면 10장 찍었을 때 시트를 20번 더 읽는다.
     if (client != null) await _loadCardData(client);
 
     final out = <EntryDraft>[];
     for (var i = 0; i < evidence.length; i++) {
-      var draft = state.drafts[i];
-      final e = evidence[i];
-
-      // PDF 는 이미지가 아니라 OCR 로 못 보낸다. 사용자가 직접 채운다.
-      if (e.isImage) {
-        try {
-          final bytes = await capture.compressForOcr(e.file);
-          final r = await ocr.extract(imageBytes: bytes);
-          draft = draft.copyWith(
-            belongDate: r.belongDate,
-            spendDate: r.belongDate,
-            vendor: r.vendor,
-            description: r.description,
-            totalAmount: r.totalAmount,
-            supplyAmount: r.supplyAmount,
-            vatAmount: r.vatAmount,
-            vatPrinted: r.vatPrinted,
-            cardLast4: r.cardLast4,
-          );
-        } on Object catch (err) {
-          // 한 장이 실패해도 나머지는 계속 읽는다. 사용자가 직접 채우면 된다.
-          state = state.copyWith(error: '$err');
-        }
-      }
-
-      // ── 자동완성의 실제 승부처: 과거에 같은 업체를 어떻게 처리했는가 ──
-      final vendor = draft.vendor;
-      if (client != null && vendor != null && vendor.isNotEmpty) {
-        try {
-          final s = await sheets.suggestForVendor(
-            client: client,
-            vendor: vendor,
-          );
-          if (s != null) {
-            // **분류(classCode·className)는 여기서 채우지 않는다.**
-            // 업체 이력은 추측이고 카드는 사실이다 — 같은 업체에서 같은 걸 사도
-            // 어느 예산으로 긁었는지는 카드가 정한다. 분류는 _applyCardClass 담당.
-            draft = draft.copyWith(
-              expenseCategory: s.expenseCategory,
-              // 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
-              suggestionReason: '$vendor는 지난 ${s.reason}',
-              // 내역은 채우지 않고 후보로만 넘긴다(위 주석 참조).
-              descriptionSuggestions: s.recentDescriptions,
-            );
-          }
-        } on Object {
-          // 추천은 실패해도 진행에 지장 없다. 사용자가 직접 고르면 된다.
-        }
-      }
-
-      // ── 분류는 카드가 정한다 ──────────────────────────────────────
-      //    업체 이력보다 **뒤에** 둔다. 순서가 바뀌면 이력이 분류를 덮는다.
-      out.add(_applyCardClass(draft));
+      out.add(await _readOne(evidence[i], state.drafts[i]));
     }
 
     state = state.copyWith(drafts: out, isReading: false);
+  }
+
+  /// 증빙 한 장을 읽어 draft 를 채운다. **읽기 경로는 여기 하나다** —
+  /// 처음 불러올 때와 사진을 다시 찍었을 때가 같은 코드를 타야
+  /// 한쪽만 고쳐지는 일이 없다.
+  ///
+  /// 카드·분류 마스터는 이미 읽혀 있다고 본다(`_loadCardData`). 여기서 읽으면
+  /// 10장 찍었을 때 시트를 20번 더 읽는다.
+  Future<EntryDraft> _readOne(CapturedEvidence e, EntryDraft initial) async {
+    var draft = initial;
+    final capture = ref.read(captureServiceProvider);
+    final ocr = ref.read(ocrServiceProvider);
+    final sheets = ref.read(sheetsRepositoryProvider);
+    final client = await ref
+        .read(googleAuthProvider)
+        .authorizedClient(interactive: false);
+    if (client != null) await _loadCardData(client);
+
+    // PDF 는 이미지가 아니라 OCR 로 못 보낸다. 사용자가 직접 채운다.
+    if (e.isImage) {
+      try {
+        final bytes = await capture.compressForOcr(e.file);
+        final r = await ocr.extract(imageBytes: bytes);
+        draft = draft.copyWith(
+          belongDate: r.belongDate,
+          spendDate: r.belongDate,
+          vendor: r.vendor,
+          description: r.description,
+          totalAmount: r.totalAmount,
+          supplyAmount: r.supplyAmount,
+          vatAmount: r.vatAmount,
+          vatPrinted: r.vatPrinted,
+          cardLast4: r.cardLast4,
+          confidence: r.confidence,
+          // 읽을 만한 사진이었으면 할 말이 없다. 멀쩡한 사진에 경고를 띄우면
+          // 정작 흔들린 사진의 경고도 같이 무시된다.
+          imageProblem: r.quality.readable ? null : r.quality.problem,
+        );
+      } on Object catch (err) {
+        // 한 장이 실패해도 나머지는 계속 읽는다. 사용자가 직접 채우면 된다.
+        state = state.copyWith(error: '$err');
+      }
+    }
+
+    // ── 자동완성의 실제 승부처: 과거에 같은 업체를 어떻게 처리했는가 ──
+    final vendor = draft.vendor;
+    if (client != null && vendor != null && vendor.isNotEmpty) {
+      try {
+        final s = await sheets.suggestForVendor(client: client, vendor: vendor);
+        if (s != null) {
+          // **분류(classCode·className)는 여기서 채우지 않는다.**
+          // 업체 이력은 추측이고 카드는 사실이다 — 같은 업체에서 같은 걸 사도
+          // 어느 예산으로 긁었는지는 카드가 정한다. 분류는 _applyCardClass 담당.
+          draft = draft.copyWith(
+            expenseCategory: s.expenseCategory,
+            // 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
+            suggestionReason: '$vendor는 지난 ${s.reason}',
+            // 내역은 채우지 않고 후보로만 넘긴다(위 주석 참조).
+            descriptionSuggestions: s.recentDescriptions,
+          );
+        }
+      } on Object {
+        // 추천은 실패해도 진행에 지장 없다. 사용자가 직접 고르면 된다.
+      }
+    }
+
+    // ── 분류는 카드가 정한다 ────────────────────────────────────────
+    //    업체 이력보다 **뒤에** 둔다. 순서가 바뀌면 이력이 분류를 덮는다.
+    return _applyCardClass(draft);
   }
 
   /// 전송 대기 중인 건을 다시 연다. OCR 은 돌리지 않는다 — 이미 확정된 값이다.
@@ -360,6 +375,29 @@ class ReviewController extends Notifier<ReviewState> {
   }
 
   void select(int index) => state = state.copyWith(selected: index);
+
+  /// 지금 보고 있는 건의 증빙을 새 사진으로 갈아끼우고 **다시 읽는다.**
+  ///
+  /// 흔들린 사진을 다시 찍었을 때 쓴다. 건을 새로 만들지 않는 이유:
+  /// 못 쓸 사진이 목록에 남으면 사용자가 둘 중 뭘 제출할지 헷갈린다.
+  ///
+  /// 사용자가 손으로 고쳐둔 값도 같이 날아간다 — 새 사진에서 다시 읽는 게
+  /// 맞다. 잘못 읽힌 값 위에 덧칠하면 어느 쪽이 새 값인지 알 수 없다.
+  Future<void> replaceEvidence(CapturedEvidence evidence) async {
+    final i = state.selected;
+    if (i >= state.drafts.length) return;
+
+    final kept = <EntryDraft>[...state.drafts];
+    // 사용자가 직접 정한 파일명은 지키지 않는다 — 항목이 다시 읽히면
+    // 자동 파일명도 달라지는데, 옛 이름만 남으면 둘이 어긋난다.
+    kept[i] = EntryDraft(evidencePath: evidence.file.path);
+    state = state.copyWith(drafts: kept, isReading: true, clearError: true);
+
+    final draft = await _readOne(evidence, kept[i]);
+    final next = <EntryDraft>[...state.drafts];
+    next[i] = draft;
+    state = state.copyWith(drafts: next, isReading: false);
+  }
 
   /// 지금 보고 있는 건을 수정한다.
   void update(EntryDraft Function(EntryDraft) edit) {

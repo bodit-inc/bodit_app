@@ -104,6 +104,25 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                   // 무엇을 올리는지 보고 확인해야 한다 — 값만 보고는 OCR 이 엉뚱한
                   // 영수증을 읽었는지 알 수 없다. 다건일 때는 특히 그렇다.
                   _EvidencePreview(draft.evidencePath),
+                  // 흔들리거나 잘린 사진은 값이 틀린 채로 그럴듯하게 들어온다.
+                  // 읽어본 쪽(모델)이 못 읽겠다고 하면 **다시 찍는 게 가장 싸다** —
+                  // 여기서 안 잡으면 회계 담당자가 시트에서 발견한다.
+                  if (draft.imageProblem != null) ...[
+                    const SizedBox(height: Gap.md),
+                    NoticeBanner(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(draft.imageProblem!),
+                          const SizedBox(height: Gap.sm),
+                          InlineButton(
+                            onPressed: () => _retake(context, ref),
+                            label: '다시 찍기',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: Gap.md),
 
                   // 시안 ⑥ — 여러 건일 때 건별 목록
@@ -132,6 +151,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       LabeledRow(
                         key: _fieldKeys['소속날짜'],
                         label: '소속날짜',
+                        uncertain: draft.isUncertain('belong_date'),
                         value: _fmtDate(draft.belongDate),
                         placeholder: '입력 필요',
                         subtitle: '계산서 발행일자 또는 카드 결제일자',
@@ -147,6 +167,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       LabeledRow(
                         key: _fieldKeys['업체명'],
                         label: '업체명',
+                        uncertain: draft.isUncertain('vendor'),
                         editable: true,
                         value: draft.vendor,
                         placeholder: '입력 필요',
@@ -163,6 +184,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       // 사용자가 알 길이 없었다. 지금은 그게 분류까지 끌고 간다.
                       LabeledRow(
                         label: '카드번호',
+                        uncertain: draft.isUncertain('card_last4'),
                         editable: true,
                         value: draft.cardLast4,
                         placeholder: '카드 결제가 아니면 비워둡니다',
@@ -174,6 +196,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       LabeledRow(
                         key: _fieldKeys['내역'],
                         label: '내역',
+                        uncertain: draft.isUncertain('description'),
                         editable: true,
                         value: draft.description,
                         placeholder: '직접 입력',
@@ -342,6 +365,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       LabeledRow(
                         key: _fieldKeys['총금액'],
                         label: '총금액',
+                        uncertain: draft.isUncertain('total_amount'),
                         editable: true,
                         value: _fmtAmount(draft.totalAmount, draft.currency),
                         placeholder: '입력 필요',
@@ -555,6 +579,16 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       isScrollControlled: true,
       builder: (_) => const _ClassPickerSheet(),
     );
+  }
+
+  /// 사진을 다시 찍어 지금 보고 있는 건을 교체한다.
+  ///
+  /// **건을 새로 만들지 않는다.** 새로 만들면 못 쓸 사진이 목록에 남고,
+  /// 사용자가 둘 중 뭘 제출해야 하는지 헷갈린다.
+  Future<void> _retake(BuildContext context, WidgetRef ref) async {
+    final shot = await ref.read(captureServiceProvider).fromCamera();
+    if (shot == null) return;
+    await ref.read(reviewControllerProvider.notifier).replaceEvidence(shot);
   }
 
   Future<void> _pickEvidenceType(BuildContext context, WidgetRef ref) async {

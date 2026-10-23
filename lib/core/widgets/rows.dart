@@ -20,6 +20,7 @@ class LabeledRow extends StatelessWidget {
     this.onTap,
     this.warnPlaceholder = false,
     this.editable = false,
+    this.uncertain = false,
   });
 
   final String label;
@@ -45,6 +46,15 @@ class LabeledRow extends StatelessWidget {
   /// 고치는 줄은 연필과 밑줄을 달아 입력칸처럼 보이게 한다. 날짜·비목처럼
   /// 목록에서 고르는 줄은 그대로 `›` 다.
   final bool editable;
+
+  /// OCR 이 **읽긴 했는데 자신 없다**고 말한 값.
+  ///
+  /// 값이 비어 있는 것과는 다른 상태다 — 비면 사용자가 바로 알아채지만,
+  /// 잘못 읽은 값은 그럴듯해 보여서 그냥 지나간다. 그래서 값 쪽에 표식을 단다.
+  ///
+  /// 드물게 떠야 쓸모가 있다. 절반이 노랗게 뜨면 아무도 안 본다
+  /// (기준은 `EntryDraft.isUncertain`).
+  final bool uncertain;
   final Widget? trailing;
   final VoidCallback? onTap;
 
@@ -90,6 +100,17 @@ class LabeledRow extends StatelessWidget {
             ),
           ),
         ),
+        if (uncertain) ...[
+          const SizedBox(width: Gap.xs),
+          const Tooltip(
+            message: '잘 못 읽은 것 같습니다. 확인해 주세요.',
+            child: Icon(
+              Icons.error_outline,
+              size: 16,
+              color: AppColors.dangerFg,
+            ),
+          ),
+        ],
         if (trailing != null) ...[const SizedBox(width: Gap.sm), trailing!],
         if (onTap != null)
           Padding(
