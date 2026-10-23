@@ -147,6 +147,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       LabeledRow(
                         key: _fieldKeys['업체명'],
                         label: '업체명',
+                        editable: true,
                         value: draft.vendor,
                         placeholder: '입력 필요',
                         onTap: () => _editText(
@@ -162,6 +163,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       // 사용자가 알 길이 없었다. 지금은 그게 분류까지 끌고 간다.
                       LabeledRow(
                         label: '카드번호',
+                        editable: true,
                         value: draft.cardLast4,
                         placeholder: '카드 결제가 아니면 비워둡니다',
                         onTap: () => _editCardLast4(context, ref, draft),
@@ -172,6 +174,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       LabeledRow(
                         key: _fieldKeys['내역'],
                         label: '내역',
+                        editable: true,
                         value: draft.description,
                         placeholder: '직접 입력',
                         warnPlaceholder: true,
@@ -339,6 +342,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       LabeledRow(
                         key: _fieldKeys['총금액'],
                         label: '총금액',
+                        editable: true,
                         value: _fmtAmount(draft.totalAmount, draft.currency),
                         placeholder: '입력 필요',
                         // 0 하나 틀리면 10배다. 숫자 옆에 한글로 같이 보여준다.
@@ -723,16 +727,23 @@ class _DraftRow extends StatelessWidget {
 }
 
 /// 시안 ⑧ — 비목 선택. 마스터는 **시트에서 읽는다**(하드코딩 금지).
+///
+/// 생김새는 분류 선택과 같다 — 둘 다 `PickerSheet` 다. 같은 일을 하는 화면이
+/// 둘로 갈라져 있어서 분류에만 검색이 있었다.
 class _CategoryPickerSheet extends ConsumerWidget {
   const _CategoryPickerSheet();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final categories = ref.watch(expenseCategoriesProvider);
+    final current = ref
+        .watch(reviewControllerProvider)
+        .current
+        ?.expenseCategory;
 
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.7,
+      initialChildSize: 0.75,
       builder: (_, controller) => categories.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
@@ -754,31 +765,20 @@ class _CategoryPickerSheet extends ConsumerWidget {
           ),
         ),
         // 빈 목록은 provider 가 이미 걸러서 던진다(탭이 비었다고 알려준다).
-        // 여기 오는 list 는 항상 하나 이상이다.
         data: (list) {
-          return ListView.builder(
-            controller: controller,
-            itemCount: list.length + 1,
-            itemBuilder: (_, i) {
-              if (i == 0) {
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.sm),
-                  child: Text(
-                    '비목 선택',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                );
-              }
-              final name = list[i - 1];
-              return ListTile(
-                title: Text(name),
-                onTap: () {
-                  ref
-                      .read(reviewControllerProvider.notifier)
-                      .update((d) => d.copyWith(expenseCategory: name));
-                  Navigator.pop(context);
-                },
-              );
+          // 시트에 적힌 순서는 사람이 추가한 순서라 규칙이 없다.
+          // 33개를 눈으로 훑어야 하므로 가나다로 세운다.
+          final sorted = [...list]..sort(compareKorean);
+          return PickerSheet(
+            title: '비목 선택',
+            searchHint: '이름으로 검색 (예: 도서, 여비)',
+            selectedLabel: current,
+            items: [for (final name in sorted) PickerItem(label: name)],
+            onSelected: (item) {
+              ref
+                  .read(reviewControllerProvider.notifier)
+                  .update((d) => d.copyWith(expenseCategory: item.label));
+              Navigator.pop(context);
             },
           );
         },
@@ -799,33 +799,21 @@ class _EvidenceTypePickerSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final current = ref.watch(reviewControllerProvider).current?.evidenceType;
 
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.sm),
-            child: Text('증빙자료명', style: Theme.of(context).textTheme.titleSmall),
-          ),
-          for (final name in evidenceTypes)
-            ListTile(
-              title: Text(name),
-              // 지금 값에 체크를 둔다 — 목록이 9개라 뭘 고른 상태인지
-              // 안 보이면 같은 걸 또 누른다.
-              trailing: name == current
-                  ? const Icon(Icons.check, size: 18)
-                  : null,
-              onTap: () {
-                ref
-                    .read(reviewControllerProvider.notifier)
-                    .update((d) => d.copyWith(evidenceType: name));
-                Navigator.pop(context);
-              },
-            ),
-          const NoteText('파일명 네 번째 칸에 그대로 들어갑니다.'),
-          const SizedBox(height: Gap.lg),
-        ],
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      builder: (_, controller) => PickerSheet(
+        title: '증빙자료명',
+        searchHint: '이름으로 검색 (예: 전표, 계산서)',
+        selectedLabel: current,
+        // 가나다로 세우지 않는다 — 흔한 것부터가 찾기 빠르다.
+        items: [for (final name in evidenceTypes) PickerItem(label: name)],
+        onSelected: (item) {
+          ref
+              .read(reviewControllerProvider.notifier)
+              .update((d) => d.copyWith(evidenceType: item.label));
+          Navigator.pop(context);
+        },
       ),
     );
   }
@@ -836,21 +824,13 @@ class _EvidenceTypePickerSheet extends ConsumerWidget {
 /// 고르면 **분류코드와 분류명이 한 번에** 정해진다. 코드를 손으로 치게 하면
 /// 마스터에 없는 번호가 들어갈 수 있고, 그러면 시트의 분류명 칸이 빈다
 /// (시트에 수식을 안 두므로 앱이 채우는 유일한 경로다).
-///
-/// 항목이 46개라 검색을 붙였다 — 스크롤로 찾기엔 많다.
-class _ClassPickerSheet extends ConsumerStatefulWidget {
+class _ClassPickerSheet extends ConsumerWidget {
   const _ClassPickerSheet();
 
   @override
-  ConsumerState<_ClassPickerSheet> createState() => _ClassPickerSheetState();
-}
-
-class _ClassPickerSheetState extends ConsumerState<_ClassPickerSheet> {
-  String _query = '';
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final names = ref.watch(classNamesProvider);
+    final current = ref.watch(reviewControllerProvider).current?.className;
 
     return DraggableScrollableSheet(
       expand: false,
@@ -873,79 +853,33 @@ class _ClassPickerSheetState extends ConsumerState<_ClassPickerSheet> {
           ),
         ),
         data: (map) {
-          final q = _query.trim().toLowerCase();
-          final entries =
-              map.entries
-                  .where(
-                    (e) =>
-                        q.isEmpty ||
-                        '${e.key}'.contains(q) ||
-                        e.value.toLowerCase().contains(q),
-                  )
-                  .toList()
-                ..sort((a, b) => a.key.compareTo(b.key));
-
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.sm),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '분류 선택',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: Gap.sm),
-                    SearchField(
-                      hintText: '코드나 이름으로 검색 (예: 23, CTS)',
-                      onChanged: (v) => setState(() => _query = v),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: entries.isEmpty
-                    ? const Center(child: Text('검색 결과가 없습니다.'))
-                    : ListView.builder(
-                        controller: controller,
-                        itemCount: entries.length,
-                        itemBuilder: (_, i) {
-                          final e = entries[i];
-                          return ListTile(
-                            dense: true,
-                            leading: SizedBox(
-                              width: 34,
-                              child: Text(
-                                '${e.key}',
-                                textAlign: TextAlign.end,
-                                style: Theme.of(context).textTheme.labelMedium
-                                    ?.copyWith(fontFamily: 'monospace'),
-                              ),
-                            ),
-                            title: Text(e.value),
-                            onTap: () {
-                              ref
-                                  .read(reviewControllerProvider.notifier)
-                                  .update(
-                                    (d) => d.copyWith(
-                                      classCode: e.key,
-                                      className: e.value,
-                                      // 사용자가 직접 고른 값이다. 카드가
-                                      // 채웠다는 표시를 지워야 나중에 카드번호를
-                                      // 고쳐도 이 선택이 안 날아간다.
-                                      classReason: null,
-                                      cardNotice: null,
-                                      classSuggestions: const <ClassChoice>[],
-                                    ),
-                                  );
-                              Navigator.pop(context);
-                            },
-                          );
-                        },
-                      ),
-              ),
+          // 분류는 가나다가 아니라 **코드 순**이다. 회계 담당자가 번호로
+          // 말하고, 번호가 사업 시작 순서라 관련된 것끼리 붙어 있다.
+          final codes = map.keys.toList()..sort();
+          return PickerSheet(
+            title: '분류 선택',
+            searchHint: '코드나 이름으로 검색 (예: 23, CTS)',
+            selectedLabel: current,
+            items: [
+              for (final code in codes)
+                PickerItem(label: map[code]!, code: '$code'),
             ],
+            onSelected: (item) {
+              ref
+                  .read(reviewControllerProvider.notifier)
+                  .update(
+                    (d) => d.copyWith(
+                      classCode: int.parse(item.code!),
+                      className: item.label,
+                      // 사용자가 직접 고른 값이다. 카드가 채웠다는 표시를
+                      // 지워야 나중에 카드번호를 고쳐도 이 선택이 안 날아간다.
+                      classReason: null,
+                      cardNotice: null,
+                      classSuggestions: const <ClassChoice>[],
+                    ),
+                  );
+              Navigator.pop(context);
+            },
           );
         },
       ),
@@ -953,10 +887,6 @@ class _ClassPickerSheetState extends ConsumerState<_ClassPickerSheet> {
   }
 }
 
-/// 올라갈 증빙 미리보기. 눌러서 전체 화면으로 본다.
-///
-/// 값만 보고는 OCR 이 **엉뚱한 영수증**을 읽었는지 알 수 없다.
-/// 여러 장을 한 번에 찍었을 때 특히 그렇다 — 금액이 그럴듯하면 그냥 넘어간다.
 class _EvidencePreview extends StatelessWidget {
   const _EvidencePreview(this.path);
 
