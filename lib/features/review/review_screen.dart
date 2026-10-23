@@ -87,340 +87,365 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       // pinned SliverAppBar 로도 항상 띄울 수 있지만, 그러면 스크롤하는 동안
       // 매 프레임 레이아웃 계산에 참여한다. 밖에 두면 한 번 배치되고 끝이고
       // 스크롤과 무관해진다. 코드도 슬리버 없이 단순해진다.
-      body: Column(
-        children: [
-          if (draft.missingFields.isNotEmpty)
-            _MissingFieldsBar(draft.missingFields),
-          Expanded(
-            child: ListView(
-              padding: screenPadding,
-              children: [
-                // 무엇을 올리는지 보고 확인해야 한다 — 값만 보고는 OCR 이 엉뚱한
-                // 영수증을 읽었는지 알 수 없다. 다건일 때는 특히 그렇다.
-                _EvidencePreview(draft.evidencePath),
-                const SizedBox(height: Gap.md),
+      //
+      // 제출이 시작되면 화면을 잠근다(AbsorbPointer). 예전엔 전송 중에도 값을
+      // 고칠 수 있어서, 이미 큐에 들어간 내용과 화면이 어긋났다 —
+      // 사용자는 고쳐진 줄 안다.
+      body: AbsorbPointer(
+        absorbing: state.isSubmitting,
+        child: Column(
+          children: [
+            if (draft.missingFields.isNotEmpty)
+              _MissingFieldsBar(draft.missingFields),
+            Expanded(
+              child: ListView(
+                padding: screenPadding,
+                children: [
+                  // 무엇을 올리는지 보고 확인해야 한다 — 값만 보고는 OCR 이 엉뚱한
+                  // 영수증을 읽었는지 알 수 없다. 다건일 때는 특히 그렇다.
+                  _EvidencePreview(draft.evidencePath),
+                  const SizedBox(height: Gap.md),
 
-                // 시안 ⑥ — 여러 건일 때 건별 목록
-                if (state.isMulti) ...[
-                  SectionHeader('읽은 증빙 ${state.drafts.length}건'),
+                  // 시안 ⑥ — 여러 건일 때 건별 목록
+                  if (state.isMulti) ...[
+                    SectionHeader('읽은 증빙 ${state.drafts.length}건'),
+                    AppCard(
+                      children: [
+                        for (var i = 0; i < state.drafts.length; i++)
+                          _DraftRow(
+                            draft: state.drafts[i],
+                            selected: i == state.selected,
+                            onTap: () => ref
+                                .read(reviewControllerProvider.notifier)
+                                .select(i),
+                          ),
+                      ],
+                    ),
+                    const NoteText('한 건씩 눌러서 확인합니다. 전부 채우면 한 번에 제출됩니다.'),
+                  ],
+
+                  const SectionHeader('기본'),
                   AppCard(
                     children: [
-                      for (var i = 0; i < state.drafts.length; i++)
-                        _DraftRow(
-                          draft: state.drafts[i],
-                          selected: i == state.selected,
-                          onTap: () => ref
-                              .read(reviewControllerProvider.notifier)
-                              .select(i),
+                      // 두 날짜의 차이를 아무도 모른다. 이름만으로는 구분이 안 돼서
+                      // 회계 담당자가 요구사항 문서에 적어둔 설명을 그대로 붙인다.
+                      LabeledRow(
+                        key: _fieldKeys['소속날짜'],
+                        label: '소속날짜',
+                        value: _fmtDate(draft.belongDate),
+                        placeholder: '입력 필요',
+                        subtitle: '계산서 발행일자 또는 카드 결제일자',
+                        onTap: () => _pickDate(context, ref, draft),
+                      ),
+                      LabeledRow(
+                        label: '지출날짜',
+                        value: _fmtDate(draft.spendDate ?? draft.belongDate),
+                        placeholder: '소속날짜와 동일',
+                        subtitle: '실제로 비용을 집행한 일자',
+                        onTap: () {},
+                      ),
+                      LabeledRow(
+                        key: _fieldKeys['업체명'],
+                        label: '업체명',
+                        value: draft.vendor,
+                        placeholder: '입력 필요',
+                        onTap: () => _editText(
+                          context,
+                          ref,
+                          '업체명',
+                          draft.vendor,
+                          (d, v) => d.copyWith(vendor: v),
+                        ),
+                      ),
+                      // 카드번호는 **분류를 정하는 입력**이다. 예전엔 OCR 이 읽은
+                      // 값이 화면에 아예 안 나와서, 숫자 하나를 잘못 읽어도
+                      // 사용자가 알 길이 없었다. 지금은 그게 분류까지 끌고 간다.
+                      LabeledRow(
+                        label: '카드번호',
+                        value: draft.cardLast4,
+                        placeholder: '카드 결제가 아니면 비워둡니다',
+                        onTap: () => _editCardLast4(context, ref, draft),
+                      ),
+                      // 내역은 OCR 이 읽은 품목명이 그대로 들어가 있기 쉬운데,
+                      // 회계가 원하는 건 "무슨 건인지" 다. **직접 써야 하는 칸**이라는
+                      // 신호를 주려고 안내를 경고색으로 띄운다.
+                      LabeledRow(
+                        key: _fieldKeys['내역'],
+                        label: '내역',
+                        value: draft.description,
+                        placeholder: '직접 입력',
+                        warnPlaceholder: true,
+                        onTap: () => _editText(
+                          context,
+                          ref,
+                          '내역',
+                          draft.description,
+                          (d, v) => d.copyWith(description: v),
+                        ),
+                      ),
+                      // 같은 업체로 과거에 쓴 내역. **자동으로 안 채운다** —
+                      // 내역은 건마다 달라서("8월 도서" → "9월 도서") 지난 값을
+                      // 넣으면 9월에 8월 것이 조용히 들어간다. 눌러서 고른다.
+                      if (draft.descriptionSuggestions.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            Gap.lg,
+                            0,
+                            Gap.lg,
+                            Gap.md,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '이 업체로 전에 쓴 내역',
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                              const SizedBox(height: Gap.sm),
+                              Wrap(
+                                spacing: Gap.sm,
+                                runSpacing: Gap.sm,
+                                children: [
+                                  for (final d in draft.descriptionSuggestions)
+                                    SuggestChip(
+                                      d,
+                                      selected: d == draft.description,
+                                      onTap: () => ref
+                                          .read(
+                                            reviewControllerProvider.notifier,
+                                          )
+                                          .update(
+                                            (x) => x.copyWith(description: d),
+                                          ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                     ],
                   ),
-                  const NoteText('한 건씩 눌러서 확인합니다. 전부 채우면 한 번에 제출됩니다.'),
-                ],
+                  // 모르면 지어내는 것보다 비워두는 게 낫다 — 그 사실을 알려야
+                  // 사용자가 아무 말이나 채워 넣지 않는다.
+                  const NoteText('내역을 모르면 비워두세요. "$needsOpsReview" 으로 제출됩니다.'),
 
-                const SectionHeader('기본'),
-                AppCard(
-                  children: [
-                    LabeledRow(
-                      key: _fieldKeys['소속날짜'],
-                      label: '소속날짜',
-                      value: _fmtDate(draft.belongDate),
-                      placeholder: '입력 필요',
-                      onTap: () => _pickDate(context, ref, draft),
-                    ),
-                    LabeledRow(
-                      label: '지출날짜',
-                      value: _fmtDate(draft.spendDate ?? draft.belongDate),
-                      placeholder: '소속날짜와 동일',
-                      onTap: () {},
-                    ),
-                    LabeledRow(
-                      key: _fieldKeys['업체명'],
-                      label: '업체명',
-                      value: draft.vendor,
-                      placeholder: '입력 필요',
-                      onTap: () => _editText(
-                        context,
-                        ref,
-                        '업체명',
-                        draft.vendor,
-                        (d, v) => d.copyWith(vendor: v),
-                      ),
-                    ),
-                    // 카드번호는 **분류를 정하는 입력**이다. 예전엔 OCR 이 읽은
-                    // 값이 화면에 아예 안 나와서, 숫자 하나를 잘못 읽어도
-                    // 사용자가 알 길이 없었다. 지금은 그게 분류까지 끌고 간다.
-                    LabeledRow(
-                      label: '카드번호',
-                      value: draft.cardLast4,
-                      placeholder: '카드 결제가 아니면 비워둡니다',
-                      onTap: () => _editCardLast4(context, ref, draft),
-                    ),
-                    LabeledRow(
-                      key: _fieldKeys['내역'],
-                      label: '내역',
-                      value: draft.description,
-                      placeholder: '입력 필요',
-                      onTap: () => _editText(
-                        context,
-                        ref,
-                        '내역',
-                        draft.description,
-                        (d, v) => d.copyWith(description: v),
-                      ),
-                    ),
-                    // 같은 업체로 과거에 쓴 내역. **자동으로 안 채운다** —
-                    // 내역은 건마다 달라서("8월 도서" → "9월 도서") 지난 값을
-                    // 넣으면 9월에 8월 것이 조용히 들어간다. 눌러서 고른다.
-                    if (draft.descriptionSuggestions.isNotEmpty)
+                  // 시안 ⑦ — 영수증에 없는 항목은 과거 이력으로 추천
+                  const SectionHeader('분류 — 영수증에 없는 항목'),
+                  AppCard(
+                    children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          Gap.lg,
-                          0,
-                          Gap.lg,
-                          Gap.md,
-                        ),
+                        padding: const EdgeInsets.all(Gap.lg),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '이 업체로 전에 쓴 내역',
-                              style: Theme.of(context).textTheme.labelSmall,
+                              '비목',
+                              key: _fieldKeys['비목'],
+                              style: Theme.of(context).textTheme.bodySmall,
                             ),
                             const SizedBox(height: Gap.sm),
                             Wrap(
                               spacing: Gap.sm,
                               runSpacing: Gap.sm,
                               children: [
-                                for (final d in draft.descriptionSuggestions)
+                                if (draft.expenseCategory != null)
                                   SuggestChip(
-                                    d,
-                                    selected: d == draft.description,
-                                    onTap: () => ref
-                                        .read(reviewControllerProvider.notifier)
-                                        .update(
-                                          (x) => x.copyWith(description: d),
-                                        ),
+                                    draft.expenseCategory!,
+                                    selected: true,
+                                    onTap: () => _pickCategory(context, ref),
                                   ),
+                                SuggestChip(
+                                  draft.expenseCategory == null
+                                      ? '선택하기'
+                                      : '바꾸기',
+                                  onTap: () => _pickCategory(context, ref),
+                                ),
                               ],
                             ),
+                            // 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
+                            if (draft.suggestionReason != null)
+                              SuggestReason(draft.suggestionReason!),
+
+                            const SizedBox(height: Gap.lg),
+                            Text(
+                              '분류',
+                              key: _fieldKeys['분류코드'],
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: Gap.sm),
+                            // 분류코드와 분류명은 따로 받지 않는다 — 마스터에서 하나를
+                            // 고르면 둘 다 정해진다. 코드를 손으로 치게 하면 마스터에
+                            // 없는 번호가 들어가고, 그러면 시트의 분류명이 빈다.
+                            Wrap(
+                              spacing: Gap.sm,
+                              runSpacing: Gap.sm,
+                              children: [
+                                if (draft.classCode != null)
+                                  SuggestChip(
+                                    '${draft.classCode} ${draft.className ?? ''}'
+                                        .trim(),
+                                    selected: true,
+                                    onTap: () => _pickClass(context, ref),
+                                  ),
+                                SuggestChip(
+                                  draft.classCode == null ? '선택하기' : '바꾸기',
+                                  onTap: () => _pickClass(context, ref),
+                                ),
+                              ],
+                            ),
+                            // 카드로 정해진 분류의 근거. 비목과 줄을 따로 쓴다 —
+                            // 비목은 과거 이력(추측), 분류는 카드(사실)라 출처가
+                            // 다르다. 한 줄에 합치면 그 차이가 안 보인다.
+                            if (draft.classReason != null)
+                              SuggestReason(draft.classReason!),
+
+                            // 뒤 4자리가 겹쳤을 때의 후보. **자동으로 안 고른다** —
+                            // 조용히 첫 번째를 쓰면 절반이 틀린 예산에 잡힌다.
+                            if (draft.classSuggestions.isNotEmpty) ...[
+                              const SizedBox(height: Gap.sm),
+                              Wrap(
+                                spacing: Gap.sm,
+                                runSpacing: Gap.sm,
+                                children: [
+                                  for (final c in draft.classSuggestions)
+                                    SuggestChip(
+                                      c.label,
+                                      selected: c.code == draft.classCode,
+                                      onTap: () => ref
+                                          .read(
+                                            reviewControllerProvider.notifier,
+                                          )
+                                          .chooseClass(c),
+                                    ),
+                                ],
+                              ),
+                            ],
+
+                            // 카드로 분류를 못 정했으면 **왜** 못 정했는지 말한다.
+                            // 조용히 비워두면 사용자는 46개 목록에서 직접 찾는다.
+                            if (draft.cardNotice != null) ...[
+                              const SizedBox(height: Gap.md),
+                              NoticeBanner(child: Text(draft.cardNotice!)),
+                            ],
                           ],
                         ),
                       ),
-                  ],
-                ),
+                    ],
+                  ),
 
-                // 시안 ⑦ — 영수증에 없는 항목은 과거 이력으로 추천
-                const SectionHeader('분류 — 영수증에 없는 항목'),
-                AppCard(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(Gap.lg),
+                  const SectionHeader('금액'),
+                  AppCard(
+                    children: [
+                      LabeledRow(
+                        key: _fieldKeys['총금액'],
+                        label: '총금액',
+                        value: _fmtAmount(draft.totalAmount, draft.currency),
+                        placeholder: '입력 필요',
+                        // 0 하나 틀리면 10배다. 숫자 옆에 한글로 같이 보여준다.
+                        // **원화일 때만** — 외화를 한글로 읽으면 오히려 헷갈린다.
+                        subtitle: _koreanOrNull(
+                          draft.totalAmount,
+                          draft.currency,
+                        ),
+                        onTap: () => _editAmount(
+                          context,
+                          ref,
+                          '총금액',
+                          draft.totalAmount,
+                          (d, v) => d.copyWith(totalAmount: v),
+                        ),
+                      ),
+                      LabeledRow(
+                        label: '공급가액',
+                        value: _fmtAmount(draft.supplyAmount, draft.currency),
+                        placeholder: '총금액과 동일',
+                        subtitle: _koreanOrNull(
+                          draft.supplyAmount,
+                          draft.currency,
+                        ),
+                      ),
+                      LabeledRow(
+                        label: '부가세',
+                        value: _fmtAmount(draft.vatAmount ?? 0, draft.currency),
+                        subtitle: _koreanOrNull(
+                          draft.vatAmount ?? 0,
+                          draft.currency,
+                        ),
+                      ),
+                    ],
+                  ),
+                  // 부가세를 자동 계산하지 않는다 — 면세(도서 등)는 0원이 맞다.
+                  if (!draft.vatPrinted && draft.totalAmount != null) ...[
+                    const SizedBox(height: Gap.md),
+                    NoticeBanner(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '비목',
-                            key: _fieldKeys['비목'],
-                            style: Theme.of(context).textTheme.bodySmall,
+                          const Text(
+                            '영수증에 부가세가 인쇄돼 있지 않습니다.\n'
+                            '면세 품목이면 0원이 맞습니다. 과세인데 총액만 찍혀 있다면 '
+                            '아래로 나눌 수 있습니다.',
                           ),
                           const SizedBox(height: Gap.sm),
-                          Wrap(
-                            spacing: Gap.sm,
-                            runSpacing: Gap.sm,
-                            children: [
-                              if (draft.expenseCategory != null)
-                                SuggestChip(
-                                  draft.expenseCategory!,
-                                  selected: true,
-                                  onTap: () => _pickCategory(context, ref),
-                                ),
-                              SuggestChip(
-                                draft.expenseCategory == null ? '선택하기' : '바꾸기',
-                                onTap: () => _pickCategory(context, ref),
-                              ),
-                            ],
-                          ),
-                          // 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
-                          if (draft.suggestionReason != null)
-                            SuggestReason(draft.suggestionReason!),
-
-                          const SizedBox(height: Gap.lg),
-                          Text(
-                            '분류',
-                            key: _fieldKeys['분류코드'],
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                          const SizedBox(height: Gap.sm),
-                          // 분류코드와 분류명은 따로 받지 않는다 — 마스터에서 하나를
-                          // 고르면 둘 다 정해진다. 코드를 손으로 치게 하면 마스터에
-                          // 없는 번호가 들어가고, 그러면 시트의 분류명이 빈다.
-                          Wrap(
-                            spacing: Gap.sm,
-                            runSpacing: Gap.sm,
-                            children: [
-                              if (draft.classCode != null)
-                                SuggestChip(
-                                  '${draft.classCode} ${draft.className ?? ''}'
-                                      .trim(),
-                                  selected: true,
-                                  onTap: () => _pickClass(context, ref),
-                                ),
-                              SuggestChip(
-                                draft.classCode == null ? '선택하기' : '바꾸기',
-                                onTap: () => _pickClass(context, ref),
-                              ),
-                            ],
-                          ),
-                          // 카드로 정해진 분류의 근거. 비목과 줄을 따로 쓴다 —
-                          // 비목은 과거 이력(추측), 분류는 카드(사실)라 출처가
-                          // 다르다. 한 줄에 합치면 그 차이가 안 보인다.
-                          if (draft.classReason != null)
-                            SuggestReason(draft.classReason!),
-
-                          // 뒤 4자리가 겹쳤을 때의 후보. **자동으로 안 고른다** —
-                          // 조용히 첫 번째를 쓰면 절반이 틀린 예산에 잡힌다.
-                          if (draft.classSuggestions.isNotEmpty) ...[
-                            const SizedBox(height: Gap.sm),
-                            Wrap(
-                              spacing: Gap.sm,
-                              runSpacing: Gap.sm,
-                              children: [
-                                for (final c in draft.classSuggestions)
-                                  SuggestChip(
-                                    c.label,
-                                    selected: c.code == draft.classCode,
-                                    onTap: () => ref
-                                        .read(reviewControllerProvider.notifier)
-                                        .chooseClass(c),
-                                  ),
-                              ],
-                            ),
-                          ],
-
-                          // 카드로 분류를 못 정했으면 **왜** 못 정했는지 말한다.
-                          // 조용히 비워두면 사용자는 46개 목록에서 직접 찾는다.
-                          if (draft.cardNotice != null) ...[
-                            const SizedBox(height: Gap.md),
-                            NoticeBanner(child: Text(draft.cardNotice!)),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SectionHeader('금액'),
-                AppCard(
-                  children: [
-                    LabeledRow(
-                      key: _fieldKeys['총금액'],
-                      label: '총금액',
-                      value: _fmtAmount(draft.totalAmount, draft.currency),
-                      placeholder: '입력 필요',
-                      // 0 하나 틀리면 10배다. 숫자 옆에 한글로 같이 보여준다.
-                      // **원화일 때만** — 외화를 한글로 읽으면 오히려 헷갈린다.
-                      subtitle: _koreanOrNull(
-                        draft.totalAmount,
-                        draft.currency,
-                      ),
-                      onTap: () => _editAmount(
-                        context,
-                        ref,
-                        '총금액',
-                        draft.totalAmount,
-                        (d, v) => d.copyWith(totalAmount: v),
-                      ),
-                    ),
-                    LabeledRow(
-                      label: '공급가액',
-                      value: _fmtAmount(draft.supplyAmount, draft.currency),
-                      placeholder: '총금액과 동일',
-                      subtitle: _koreanOrNull(
-                        draft.supplyAmount,
-                        draft.currency,
-                      ),
-                    ),
-                    LabeledRow(
-                      label: '부가세',
-                      value: _fmtAmount(draft.vatAmount ?? 0, draft.currency),
-                      subtitle: _koreanOrNull(
-                        draft.vatAmount ?? 0,
-                        draft.currency,
-                      ),
-                    ),
-                  ],
-                ),
-                // 부가세를 자동 계산하지 않는다 — 면세(도서 등)는 0원이 맞다.
-                if (!draft.vatPrinted && draft.totalAmount != null) ...[
-                  const SizedBox(height: Gap.md),
-                  NoticeBanner(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '영수증에 부가세가 인쇄돼 있지 않습니다.\n'
-                          '면세 품목이면 0원이 맞습니다. 과세인데 총액만 찍혀 있다면 '
-                          '아래로 나눌 수 있습니다.',
-                        ),
-                        const SizedBox(height: Gap.sm),
-                        InlineButton(
-                          onPressed: () => ref
-                              .read(reviewControllerProvider.notifier)
-                              .applyVatSplit(),
-                          label: '1.1로 나누기',
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-
-                const SectionHeader('저장될 파일명'),
-                AppCard(
-                  children: [
-                    // 파일명 네 번째 칸이 이 값이다. 예전엔 '영수증' 고정이라
-                    // 매출전표를 올려도 파일명에 '영수증' 이 박혔다.
-                    LabeledRow(
-                      label: '증빙자료명',
-                      value: draft.evidenceType,
-                      onTap: () => _pickEvidenceType(context, ref),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(Gap.lg),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              draft.filename,
-                              style: Theme.of(context).textTheme.labelSmall
-                                  ?.copyWith(fontFamily: 'monospace'),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () => _editFilename(context, ref, draft),
-                            child: const Text('수정'),
+                          InlineButton(
+                            onPressed: () => ref
+                                .read(reviewControllerProvider.notifier)
+                                .applyVatSplit(),
+                            label: '1.1로 나누기',
                           ),
                         ],
                       ),
                     ),
                   ],
-                ),
-                const NoteText('위 항목을 고치면 파일명도 따라 바뀝니다. 직접 고칠 수도 있습니다.'),
 
-                // OCR 이 실패해도 폼은 그대로 쓴다(직접 채우면 된다). 다만 왜 비었는지는
-                // 알려줘야 한다 — 지금까지 이 값이 화면에 안 나와서 조용히 삼켜졌다.
-                if (state.error != null) ...[
-                  const SizedBox(height: Gap.lg),
-                  ErrorDisclosure(
-                    '증빙에서 항목을 읽지 못했습니다. 직접 채워주세요.',
-                    detail: state.error!,
+                  const SectionHeader('저장될 파일명'),
+                  AppCard(
+                    children: [
+                      // 파일명 네 번째 칸이 이 값이다. 예전엔 '영수증' 고정이라
+                      // 매출전표를 올려도 파일명에 '영수증' 이 박혔다.
+                      LabeledRow(
+                        label: '증빙자료명',
+                        value: draft.evidenceType,
+                        onTap: () => _pickEvidenceType(context, ref),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(Gap.lg),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                draft.filename,
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(fontFamily: 'monospace'),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  _editFilename(context, ref, draft),
+                              child: const Text('수정'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
+                  const NoteText('위 항목을 고치면 파일명도 따라 바뀝니다. 직접 고칠 수도 있습니다.'),
+
+                  // OCR 이 실패해도 폼은 그대로 쓴다(직접 채우면 된다). 다만 왜 비었는지는
+                  // 알려줘야 한다 — 지금까지 이 값이 화면에 안 나와서 조용히 삼켜졌다.
+                  if (state.error != null) ...[
+                    const SizedBox(height: Gap.lg),
+                    ErrorDisclosure(
+                      '증빙에서 항목을 읽지 못했습니다. 직접 채워주세요.',
+                      detail: state.error!,
+                    ),
+                  ],
+                  const SizedBox(height: Gap.xl),
                 ],
-                const SizedBox(height: Gap.xl),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -781,10 +806,7 @@ class _EvidenceTypePickerSheet extends ConsumerWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.sm),
-            child: Text(
-              '증빙자료명',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
+            child: Text('증빙자료명', style: Theme.of(context).textTheme.titleSmall),
           ),
           for (final name in evidenceTypes)
             ListTile(
@@ -914,8 +936,7 @@ class _ClassPickerSheetState extends ConsumerState<_ClassPickerSheet> {
                                       // 고쳐도 이 선택이 안 날아간다.
                                       classReason: null,
                                       cardNotice: null,
-                                      classSuggestions:
-                                          const <ClassChoice>[],
+                                      classSuggestions: const <ClassChoice>[],
                                     ),
                                   );
                               Navigator.pop(context);

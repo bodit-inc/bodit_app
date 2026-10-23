@@ -98,7 +98,8 @@ class _AmountKeypadSheetState extends State<_AmountKeypadSheet> {
             Text(widget.title, style: Theme.of(context).textTheme.labelMedium),
             const SizedBox(height: Gap.md),
 
-            // 입력값. 길게 눌러 지울 수 있다.
+            // 입력값. 길게 눌러도 지워지지만, 그건 아무도 모르는 동작이라
+            // 키패드에 `C` 를 따로 뒀다 — 길게 누르기는 아는 사람용 단축이다.
             GestureDetector(
               onLongPress: _clear,
               child: Row(
@@ -147,7 +148,7 @@ class _AmountKeypadSheetState extends State<_AmountKeypadSheet> {
             ],
 
             const SizedBox(height: Gap.lg),
-            _Keypad(onDigits: _push, onBackspace: _backspace),
+            _Keypad(onDigits: _push, onBackspace: _backspace, onClear: _clear),
             const SizedBox(height: Gap.md),
             FilledButton(
               onPressed: () =>
@@ -162,19 +163,28 @@ class _AmountKeypadSheetState extends State<_AmountKeypadSheet> {
 }
 
 class _Keypad extends StatelessWidget {
-  const _Keypad({required this.onDigits, required this.onBackspace});
+  const _Keypad({
+    required this.onDigits,
+    required this.onBackspace,
+    required this.onClear,
+  });
 
   final void Function(String) onDigits;
   final VoidCallback onBackspace;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
     // 계산기 배열. 마지막 줄의 `00` 은 금액 입력에서 가장 자주 쓰는 키다.
+    //
+    // 마지막 줄만 네 칸이다. `C` 를 넣으려고 `00` 을 빼면 원화 금액을 칠 때마다
+    // 0 을 두 번씩 누르게 된다 — 가장 자주 쓰는 키를 가장 드물게 쓰는 키와
+    // 바꾸는 셈이라, 그 줄만 좁히는 쪽을 택했다.
     const rows = <List<String>>[
       ['7', '8', '9'],
       ['4', '5', '6'],
       ['1', '2', '3'],
-      ['00', '0', '⌫'],
+      ['C', '00', '0', '⌫'],
     ];
 
     return Column(
@@ -190,7 +200,11 @@ class _Keypad extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: Gap.xs),
                       child: _Key(
                         label: key,
-                        onTap: key == '⌫' ? onBackspace : () => onDigits(key),
+                        onTap: switch (key) {
+                          '⌫' => onBackspace,
+                          'C' => onClear,
+                          _ => () => onDigits(key),
+                        },
                       ),
                     ),
                   ),
@@ -208,12 +222,14 @@ class _Key extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  bool get _isDelete => label == '⌫';
+  /// 숫자가 아닌 키. 바탕을 눌러 숫자 키와 구분한다 — 잘못 누르면
+  /// 입력이 날아가는 키라 눈에 띄어야 한다.
+  bool get _isFunction => label == '⌫' || label == 'C';
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: _isDelete ? AppColors.neutralBg : Colors.white,
+      color: _isFunction ? AppColors.neutralBg : Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.button),
         side: const BorderSide(color: Color(0xFFE3E3E8)),
@@ -227,8 +243,8 @@ class _Key extends StatelessWidget {
           child: Center(
             child: Text(
               label,
-              // 숫자 키는 titleMedium, 지우기는 한 단계 작게.
-              style: _isDelete
+              // 숫자 키는 titleMedium, 지우기·비우기는 한 단계 작게.
+              style: _isFunction
                   ? Theme.of(context).textTheme.titleSmall
                   : Theme.of(context).textTheme.titleMedium,
             ),

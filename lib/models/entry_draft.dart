@@ -15,6 +15,16 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'entry_draft.freezed.dart';
 
+/// 내역을 모를 때 대신 들어가는 값.
+///
+/// 예전엔 내역이 **필수**라 모르면 제출 자체가 막혔다. 그런데 영수증만 보고는
+/// 무슨 건인지 모르는 경우가 실제로 있고(대신 결제, 공용 물품 등), 그때 사용자는
+/// 아무 말이나 지어내거나 제출을 포기했다. 둘 다 회계 담당자에게 더 나쁘다.
+///
+/// 그래서 비워둔 채 넘기고 **시트에서 눈에 띄게** 만든다. 담당자가 이 값을
+/// 검색해 한 번에 모아볼 수 있다.
+const needsOpsReview = '운영팀 확인 요청';
+
 @freezed
 abstract class EntryDraft with _$EntryDraft {
   const factory EntryDraft({
@@ -122,10 +132,11 @@ abstract class EntryDraft with _$EntryDraft {
   }
 
   /// 제출에 필요한 칸이 다 찼는지.
+  /// **내역은 빠져 있다** — 모르면 [needsOpsReview] 로 채워 넘긴다.
+  /// 지어낸 내역보다 "확인 요청" 이 회계 담당자에게 낫다.
   bool get isComplete =>
       belongDate != null &&
       (vendor ?? '').isNotEmpty &&
-      (description ?? '').isNotEmpty &&
       (expenseCategory ?? '').isNotEmpty &&
       classCode != null &&
       totalAmount != null;
@@ -134,7 +145,6 @@ abstract class EntryDraft with _$EntryDraft {
   List<String> get missingFields => <String>[
     if (belongDate == null) '소속날짜',
     if ((vendor ?? '').isEmpty) '업체명',
-    if ((description ?? '').isEmpty) '내역',
     if ((expenseCategory ?? '').isEmpty) '비목',
     if (classCode == null) '분류코드',
     if (totalAmount == null) '총금액',
@@ -151,7 +161,8 @@ abstract class EntryDraft with _$EntryDraft {
       // 지출날짜는 영수증에 없다. 사용자가 안 고쳤으면 소속날짜를 쓴다.
       spendDate: spendDate ?? belongDate!,
       expenseCategory: expenseCategory!,
-      description: description!,
+      // 비어 있으면 지어내지 않고 운영팀에게 넘긴다.
+      description: (description ?? '').isEmpty ? needsOpsReview : description!,
       vendor: vendor!,
       classCode: classCode!,
       className: className ?? '',

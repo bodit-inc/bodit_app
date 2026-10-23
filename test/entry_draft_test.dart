@@ -31,19 +31,26 @@ void main() {
       const d = EntryDraft(evidencePath: '/tmp/a.jpg');
       expect(
         d.missingFields,
-        containsAll(<String>['소속날짜', '업체명', '내역', '비목', '분류코드', '총금액']),
+        containsAll(<String>['소속날짜', '업체명', '비목', '분류코드', '총금액']),
       );
+    });
+
+    test('내역은 비어도 제출할 수 있다 — 모르면 운영팀에게 넘긴다', () {
+      // 필수로 두면 사용자가 아무 말이나 지어낸다. 그게 더 나쁘다.
+      final d = _full().copyWith(description: null);
+      expect(d.isComplete, isTrue);
+      expect(d.missingFields, isNot(contains('내역')));
     });
   });
 
   group('filename', () {
     test('항목에서 자동 생성된다', () {
-      expect(_full().filename, '260805_[영풍문고]_[8월 도서]_영수증_19,000');
+      expect(_full().filename, '260805_영풍문고_8월 도서_영수증_19,000');
     });
 
     test('항목을 고치면 파일명도 따라 바뀐다', () {
       final d = _full().copyWith(vendor: '교보문고', totalAmount: 25000);
-      expect(d.filename, '260805_[교보문고]_[8월 도서]_영수증_25,000');
+      expect(d.filename, '260805_교보문고_8월 도서_영수증_25,000');
     });
 
     test('사용자가 덮어쓰면 그 값을 쓴다', () {
@@ -52,8 +59,8 @@ void main() {
     });
 
     test('사용자가 친 값에도 치환 규칙이 적용된다 — 이게 빠지면 Drive 가 깨진다', () {
-      final d = _full().copyWith(filenameOverride: '260805_[A/S 비용]_영수증');
-      expect(d.filename, '260805_[A-S 비용)_영수증');
+      final d = _full().copyWith(filenameOverride: '260805_A/S 비용_영수증');
+      expect(d.filename, '260805_A-S 비용_영수증');
       expect(d.filename, isNot(contains('/')));
     });
   });
@@ -67,6 +74,13 @@ void main() {
           isA<StateError>().having((e) => e.message, 'message', contains('업체명')),
         ),
       );
+    });
+
+    test('내역이 비면 지어내지 않고 운영팀 확인 요청으로 채운다', () {
+      final e = _full()
+          .copyWith(description: null)
+          .toEntry(createdBy: 'james@bodit.co');
+      expect(e.description, needsOpsReview);
     });
 
     test('지출날짜를 안 고쳤으면 소속날짜를 쓴다 — 영수증에 없는 항목이다', () {
