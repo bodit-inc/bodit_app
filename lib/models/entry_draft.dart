@@ -47,6 +47,14 @@ abstract class EntryDraft with _$EntryDraft {
 
     /// 영수증에 부가세가 인쇄돼 있었는지. false 면 "1.1로 나누기" 를 권한다.
     @Default(false) bool vatPrinted,
+
+    /// 사용자가 **[1.1로 나누기] 를 눌렀는지.**
+    ///
+    /// 이건 금액이 아니라 **판단**을 기억하는 값이다 — "이 건은 과세다" 라고
+    /// 사용자가 정한 것. 그래서 총금액을 고치면 같은 판단을 다시 적용할 수 있다.
+    /// 이 표시가 없으면 금액을 고칠 때마다 버튼을 다시 눌러야 하고,
+    /// 안 누르면 옛 공급가액이 새 총액과 어긋난 채로 남는다.
+    @Default(false) bool vatSplitApplied,
     @Default('') String note,
     @Default('') String settlementAccount,
     @Default(defaultEvidenceType) String evidenceType,

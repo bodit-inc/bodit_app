@@ -1,4 +1,5 @@
 import 'package:bodit_app/models/entry_draft.dart';
+import 'package:bodit_app/models/purchase_entry.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// OCR 이 다 읽어낸 상태.
@@ -40,6 +41,22 @@ void main() {
       final d = _full().copyWith(description: null);
       expect(d.isComplete, isTrue);
       expect(d.missingFields, isNot(contains('내역')));
+    });
+  });
+
+  group('splitVat — 총금액이 바뀌면 나머지도 따라와야 한다', () {
+    // 규칙 자체는 ReviewController.setTotalAmount 가 갖는다. 여기서는
+    // 그 규칙이 기대는 재료(vatSplitApplied, splitVat)가 맞는지만 본다.
+    test('1.1로 나눈 값의 합은 항상 총액과 같다', () {
+      for (final total in <int>[11000, 19000, 12345, 1, 7, 999999]) {
+        final r = splitVat(total);
+        expect(r.supply + r.vat, total, reason: '총액 $total');
+      }
+    });
+
+    test('나누기를 누른 적이 없으면 표시가 안 서 있다', () {
+      // 이 표시가 "과세라고 사용자가 판단했다" 의 유일한 근거다.
+      expect(_full().vatSplitApplied, isFalse);
     });
   });
 
