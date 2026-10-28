@@ -1,6 +1,7 @@
 import 'package:bodit_app/models/certainty.dart';
 import 'package:bodit_app/models/class_choice.dart';
 import 'package:bodit_app/models/entry_draft.dart';
+import 'package:bodit_app/models/ocr_original.dart';
 import 'package:bodit_app/models/purchase_entry.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -287,6 +288,84 @@ void main() {
     test('카드가 분류를 못 정했으면 벗어난 것도 아니다', () {
       // 카드를 못 찾아 사용자가 직접 고른 건에 경고를 띄우면 안 된다.
       expect(_full().copyWith(classCode: 3).classDiffersFromCard, isFalse);
+    });
+  });
+
+  group('OCR 이 읽은 값과 다르게 고쳤는가', () {
+    /// OCR 이 전부 읽어낸 상태.
+    EntryDraft read() => _full().copyWith(
+      ocrOriginal: OcrOriginal(
+        belongDate: DateTime(2026, 8, 5),
+        vendor: '영풍문고',
+        description: '8월 도서',
+        cardLast4: '1234',
+        totalAmount: 19000,
+      ),
+    );
+
+    test('그대로 두면 아무 안내도 없다', () {
+      final d = read();
+      expect(d.vendorOcrConflict, isNull);
+      expect(d.descriptionOcrConflict, isNull);
+      expect(d.cardLast4OcrConflict, isNull);
+      expect(d.belongDateOcrConflict, isNull);
+      expect(d.totalAmountOcrConflict, isNull);
+      expect(d.hasOcrConflict, isFalse);
+    });
+
+    test('다르게 고치면 OCR 이 읽은 값을 돌려준다', () {
+      // 화면이 그 값으로 "…로 인식했습니다" 와 되돌리기 칩을 만든다.
+      expect(read().copyWith(vendor: '교보문고').vendorOcrConflict, '영풍문고');
+      expect(
+        read().copyWith(description: '9월 도서').descriptionOcrConflict,
+        '8월 도서',
+      );
+      expect(read().copyWith(cardLast4: '5678').cardLast4OcrConflict, '1234');
+      expect(read().copyWith(totalAmount: 20000).totalAmountOcrConflict, 19000);
+      expect(
+        read().copyWith(belongDate: DateTime(2026, 8, 6)).belongDateOcrConflict,
+        DateTime(2026, 8, 5),
+      );
+      expect(read().copyWith(vendor: '교보문고').hasOcrConflict, isTrue);
+    });
+
+    test('OCR 이 못 읽은 항목에는 안내하지 않는다', () {
+      // "못 읽었는데 네가 틀렸다" 가 된다.
+      final d = _full().copyWith(
+        ocrOriginal: const OcrOriginal(vendor: '영풍문고'),
+        description: '내가 직접 쓴 내역',
+        totalAmount: 50000,
+      );
+      expect(d.descriptionOcrConflict, isNull);
+      expect(d.totalAmountOcrConflict, isNull);
+      expect(d.belongDateOcrConflict, isNull);
+    });
+
+    test('OCR 자체가 없으면(PDF·실패) 안내하지 않는다', () {
+      expect(_full().copyWith(vendor: '교보문고').vendorOcrConflict, isNull);
+      expect(_full().hasOcrConflict, isFalse);
+    });
+
+    test('사용자가 비운 것은 고친 것으로 보지 않는다', () {
+      // 비우는 것은 지우려는 의도다 — 거기에 되돌리기 칩을 띄우면 방해다.
+      expect(read().copyWith(vendor: null).vendorOcrConflict, isNull);
+      expect(read().copyWith(totalAmount: null).totalAmountOcrConflict, isNull);
+    });
+
+    test('공백·대소문자 차이로는 안내하지 않는다', () {
+      // 실수로 공백 하나를 넣은 것에 경고를 띄우면 잦아져서 무뎌진다.
+      expect(read().copyWith(vendor: ' 영풍문고 ').vendorOcrConflict, isNull);
+      final d = _full().copyWith(
+        ocrOriginal: const OcrOriginal(vendor: 'Kyobo'),
+        vendor: 'kyobo',
+      );
+      expect(d.vendorOcrConflict, isNull);
+    });
+
+    test('소속날짜는 날짜만 비교한다', () {
+      // picker 와 OCR 의 시각 성분이 달라도 같은 날이면 고친 것이 아니다.
+      final d = read().copyWith(belongDate: DateTime(2026, 8, 5, 13, 30));
+      expect(d.belongDateOcrConflict, isNull);
     });
   });
 }

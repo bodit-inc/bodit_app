@@ -157,6 +157,19 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         subtitle: '계산서 발행일자 또는 카드 결제일자',
                         onTap: () => _pickDate(context, ref, draft),
                       ),
+                      // OCR 이 읽은 날짜와 다르게 골랐다. 어느 쪽이 맞는지는
+                      // 사용자가 안다 — 막지 않고 알리고 되돌릴 길만 둔다.
+                      if (draft.belongDateOcrConflict != null)
+                        OcrConflictNote(
+                          ocrValue: _fmtDate(draft.belongDateOcrConflict)!,
+                          onRevert: () => ref
+                              .read(reviewControllerProvider.notifier)
+                              .update(
+                                (d) => d.copyWith(
+                                  belongDate: draft.belongDateOcrConflict,
+                                ),
+                              ),
+                        ),
                       LabeledRow(
                         label: '지출날짜',
                         value: _fmtDate(draft.spendDate ?? draft.belongDate),
@@ -179,6 +192,16 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                           (d, v) => d.copyWith(vendor: v),
                         ),
                       ),
+                      if (draft.vendorOcrConflict != null)
+                        OcrConflictNote(
+                          ocrValue: draft.vendorOcrConflict!,
+                          onRevert: () => ref
+                              .read(reviewControllerProvider.notifier)
+                              .update(
+                                (d) =>
+                                    d.copyWith(vendor: draft.vendorOcrConflict),
+                              ),
+                        ),
                       // 카드번호는 **분류를 정하는 입력**이다. 예전엔 OCR 이 읽은
                       // 값이 화면에 아예 안 나와서, 숫자 하나를 잘못 읽어도
                       // 사용자가 알 길이 없었다. 지금은 그게 분류까지 끌고 간다.
@@ -190,6 +213,15 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         placeholder: '카드 결제가 아니면 비워둡니다',
                         onTap: () => _editCardLast4(context, ref, draft),
                       ),
+                      // 되돌리기도 `setCardLast4` 를 탄다. 숫자 하나가 바뀌면
+                      // 분류가 통째로 달라지므로 값만 바꿔선 안 된다.
+                      if (draft.cardLast4OcrConflict != null)
+                        OcrConflictNote(
+                          ocrValue: draft.cardLast4OcrConflict!,
+                          onRevert: () => ref
+                              .read(reviewControllerProvider.notifier)
+                              .setCardLast4(draft.cardLast4OcrConflict!),
+                        ),
                       // 내역은 OCR 이 읽은 품목명이 그대로 들어가 있기 쉬운데,
                       // 회계가 원하는 건 "무슨 건인지" 다. **직접 써야 하는 칸**이라는
                       // 신호를 주려고 안내를 경고색으로 띄운다.
@@ -209,6 +241,17 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                           (d, v) => d.copyWith(description: v),
                         ),
                       ),
+                      if (draft.descriptionOcrConflict != null)
+                        OcrConflictNote(
+                          ocrValue: draft.descriptionOcrConflict!,
+                          onRevert: () => ref
+                              .read(reviewControllerProvider.notifier)
+                              .update(
+                                (d) => d.copyWith(
+                                  description: draft.descriptionOcrConflict,
+                                ),
+                              ),
+                        ),
                       // 비워두면 "$needsOpsReview" 으로 들어가고 회계 담당자가
                       // 다시 물어야 한다. **직접 써야 한다는 것을 빨간 글씨로
                       // 못박는다** — 예전엔 placeholder 를 경고색으로 띄우는
@@ -451,6 +494,22 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         // 따라와야 한다. 그 규칙은 컨트롤러가 갖는다.
                         onTap: () => _editTotalAmount(context, ref, draft),
                       ),
+                      // 되돌리기도 `setTotalAmount` 를 탄다. 총금액은 혼자
+                      // 바뀌지 않는다 — 공급가액·부가세가 따라와야 하고,
+                      // 그 규칙은 컨트롤러가 갖는다.
+                      if (draft.totalAmountOcrConflict != null)
+                        OcrConflictNote(
+                          ocrValue: _fmtAmount(
+                            draft.totalAmountOcrConflict,
+                            draft.currency,
+                          )!,
+                          onRevert: () => ref
+                              .read(reviewControllerProvider.notifier)
+                              .setTotalAmount(
+                                draft.totalAmountOcrConflict!,
+                                currencyCode: draft.currency,
+                              ),
+                        ),
                       LabeledRow(
                         label: '공급가액',
                         value: _fmtAmount(draft.supplyAmount, draft.currency),

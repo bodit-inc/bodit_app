@@ -11,6 +11,7 @@ import 'package:bodit_app/core/utils/filename.dart';
 import 'package:bodit_app/models/certainty.dart';
 import 'package:bodit_app/models/class_choice.dart';
 import 'package:bodit_app/models/evidence_type.dart';
+import 'package:bodit_app/models/ocr_original.dart';
 import 'package:bodit_app/models/purchase_entry.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
@@ -97,6 +98,12 @@ abstract class EntryDraft with _$EntryDraft {
     /// 9월에 8월 것이 조용히 들어간다. 고르는 건 사용자가 한다.
     @Default(<String>[]) List<String> descriptionSuggestions,
 
+    /// OCR 이 읽은 **원래 값**. 사용자가 고친 뒤에도 남는다.
+    ///
+    /// 고치면 "무엇으로 인식했는지" 가 사라져서 다르게 고쳤다고 말해줄 수도,
+    /// 되돌릴 수도 없다. 자세한 이유는 [OcrOriginal] 주석에 있다.
+    OcrOriginal? ocrOriginal,
+
     /// 업체 이력이 제안한 비목. **추천을 적용한 뒤에도 들고 있는다** —
     /// 사용자가 다른 값으로 고쳤는지는 원래 값이 남아 있어야 알 수 있다.
     /// `suggestionReason` 은 근거 문구이고 값이 아니다.
@@ -172,6 +179,62 @@ abstract class EntryDraft with _$EntryDraft {
   /// 그 항목을 사람이 한 번 더 봐야 하는가. 단계가 필요하면
   /// [certaintyOf] 를 쓴다.
   bool isUncertain(String ocrField) => certaintyOf(ocrField).needsAttention;
+
+  // ── OCR 이 읽은 값과 다르게 고쳤는가 ────────────────────────────────
+  //
+  // 다르면 **OCR 이 읽은 값**을 돌려준다(같으면 null). 화면은 그 값을
+  // "…로 인식했습니다" 문구와 되돌리기 칩에 쓴다.
+  //
+  // 세 경우에는 null 이다:
+  //   - OCR 이 그 항목을 못 읽었다 → "못 읽었는데 네가 틀렸다" 가 된다
+  //   - 사용자가 비웠다 → 비우는 것은 지우려는 의도다
+  //   - 같다
+  //
+  // 타입을 그대로 돌려주는 이유는 화면이 기존 포맷터(날짜·금액)를 쓰고,
+  // 되돌릴 때 파싱 없이 그 값을 그대로 넣을 수 있어야 하기 때문이다.
+
+  /// 소속날짜. **날짜만 비교한다** — picker 와 OCR 의 시각 성분이 달라도
+  /// 같은 날이면 고친 것이 아니다.
+  DateTime? get belongDateOcrConflict {
+    final o = ocrOriginal?.belongDate;
+    final n = belongDate;
+    if (o == null || n == null) return null;
+    final sameDay = o.year == n.year && o.month == n.month && o.day == n.day;
+    return sameDay ? null : o;
+  }
+
+  String? get vendorOcrConflict => _conflict(ocrOriginal?.vendor, vendor);
+
+  String? get descriptionOcrConflict =>
+      _conflict(ocrOriginal?.description, description);
+
+  /// 카드번호. 앱이 가려진 자리를 좁혀 실제 번호로 바꾼 경우는 **고친 것이
+  /// 아니다** — 그때는 `applyCardClass` 가 원본도 같이 갱신한다.
+  String? get cardLast4OcrConflict =>
+      _conflict(ocrOriginal?.cardLast4, cardLast4);
+
+  int? get totalAmountOcrConflict =>
+      _conflict(ocrOriginal?.totalAmount, totalAmount);
+
+  /// OCR 값과 다르게 고친 항목이 하나라도 있는가.
+  bool get hasOcrConflict =>
+      belongDateOcrConflict != null ||
+      vendorOcrConflict != null ||
+      descriptionOcrConflict != null ||
+      cardLast4OcrConflict != null ||
+      totalAmountOcrConflict != null;
+
+  static T? _conflict<T>(T? ocr, T? now) {
+    if (ocr == null || now == null) return null;
+    // 문자열은 앞뒤 공백·대소문자 차이로 "다르다" 고 하지 않는다 — 사용자가
+    // 실수로 공백 하나를 넣은 것에 경고를 띄우면 잦아져서 무뎌진다.
+    if (ocr is String && now is String) {
+      final a = ocr.trim();
+      final b = now.trim();
+      return a.toLowerCase() == b.toLowerCase() ? null : ocr;
+    }
+    return ocr == now ? null : ocr;
+  }
 
   /// 비목을 **추천과 다르게** 고쳤는가.
   ///

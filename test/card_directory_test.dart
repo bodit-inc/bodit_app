@@ -8,6 +8,7 @@ library;
 import 'package:bodit_app/data/remote/card_repository.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
 import 'package:bodit_app/models/entry_draft.dart';
+import 'package:bodit_app/models/ocr_original.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// `A no. · B 은행 · C 카드번호 · D 분류코드 · E 분류명 · F 구분 · G 현재사용여부`
@@ -525,6 +526,40 @@ void main() {
       );
       expect(second.cardClass, isNull);
       expect(second.classDiffersFromCard, isFalse);
+    });
+
+    test('앱이 가려진 자리를 좁힌 것은 사용자가 고친 것이 아니다', () {
+      // 원본을 그대로 두면 "766* 로 인식했습니다" 가 떠서 앱이 한 일을
+      // 사용자 탓으로 돌리고, 되돌리기 칩이 766* 를 다시 넣으려 한다.
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('5525-76**-****-7662', 44),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('766*')
+            .copyWith(ocrOriginal: const OcrOriginal(cardLast4: '766*')),
+        cards,
+        master,
+      );
+      expect(d.cardLast4, '7662');
+      expect(d.ocrOriginal?.cardLast4, '7662');
+      expect(d.cardLast4OcrConflict, isNull);
+    });
+
+    test('좁히지 못했으면 원본을 건드리지 않는다', () {
+      // 분류가 갈려 확정하지 못한 경우다. 앱이 번호를 바꾸지 않았으므로
+      // 원본도 그대로여야 한다.
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('5525-76**-****-7662', 44),
+        row('9410-76**-****-7663', 24),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('766*')
+            .copyWith(ocrOriginal: const OcrOriginal(cardLast4: '766*')),
+        cards,
+        master,
+      );
+      expect(d.cardLast4, '766*');
+      expect(d.ocrOriginal?.cardLast4, '766*');
     });
 
     test('사용자가 다른 분류로 고치면 카드와 다르다고 본다', () {
