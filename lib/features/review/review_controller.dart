@@ -4,6 +4,7 @@
 /// 한 장이면 목록 길이가 1일 뿐, 코드 경로는 같다.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -351,13 +352,14 @@ class ReviewController extends Notifier<ReviewState> {
       isReading: true,
     );
 
-    // 카드 목록과 분류 마스터는 건마다 바뀌지 않는다. **루프 밖에서 한 번만**
-    // 읽어 둔다 — 안에서 읽으면 10장 찍었을 때 시트를 20번 더 읽는다.
-    // (`_readOne` 은 이미 읽혀 있으면 건너뛴다.)
-    final client = await ref
-        .read(googleAuthProvider)
-        .authorizedClient(interactive: false);
-    if (client != null) await _loadCardData(client);
+    // 카드 목록과 분류 마스터는 건마다 바뀌지 않으므로 한 번만 읽는다. 다만
+    // **기다리지 않고 시작만 해둔다** — 분류를 정할 때만 필요하고 그건 OCR
+    // 응답보다 뒤다. 예전엔 여기서 await 해서 **시트 두 번 읽는 시간이 첫
+    // 사진 판정 앞에 그대로 붙었다.** 이제 OCR 과 같이 돈다.
+    //
+    // 기다리는 자리는 `_readOne` 안이다. `_loadCardData` 의 in-flight 가드가
+    // 같은 Future 를 돌려주므로 시트를 두 번 읽지 않는다.
+    unawaited(_prefetchCardData());
 
     // 장별로 **도착하는 즉시** 반영한다.
     //
@@ -391,6 +393,22 @@ class ReviewController extends Notifier<ReviewState> {
     state = state.copyWith(isReading: false);
   }
 
+  /// 카드·분류 마스터를 **미리 읽기만 해둔다.**
+  ///
+  /// 실패해도 삼킨다 — `_readOne` 이 어차피 다시 시도하고, 분류 자동완성이
+  /// 안 될 뿐 폼은 그대로 쓸 수 있다(`cardNotice` 로 화면에 남는다).
+  /// 여기서 던지면 아무도 안 받는 비동기 예외가 된다.
+  Future<void> _prefetchCardData() async {
+    try {
+      final client = await ref
+          .read(googleAuthProvider)
+          .authorizedClient(interactive: false);
+      if (client != null) await _loadCardData(client);
+    } on Object catch (e) {
+      log.w('카드 마스터 선읽기 실패 (읽기 경로에서 다시 시도한다): $e');
+    }
+  }
+
   /// 한 건만 갈아끼운다.
   ///
   /// 여러 장을 동시에 읽으므로 **도착 순서가 섞인다.** 목록을 통째로 덮으면
@@ -408,8 +426,9 @@ class ReviewController extends Notifier<ReviewState> {
   /// 처음 불러올 때와 사진을 다시 찍었을 때가 같은 코드를 타야
   /// 한쪽만 고쳐지는 일이 없다.
   ///
-  /// 카드·분류 마스터는 이미 읽혀 있다고 본다(`_loadCardData`). 여기서 읽으면
-  /// 10장 찍었을 때 시트를 20번 더 읽는다.
+  /// 카드·분류 마스터를 기다리는 자리는 **OCR 뒤**다. `load` 가 미리 시작해두고
+  /// (`_prefetchCardData`) `_loadCardData` 의 in-flight 가드가 같은 Future 를
+  /// 돌려주므로, 10장을 찍어도 시트는 한 번만 읽는다.
   Future<EntryDraft> _readOne(
     CapturedEvidence e,
     EntryDraft initial, {
@@ -419,10 +438,13 @@ class ReviewController extends Notifier<ReviewState> {
     final capture = ref.read(captureServiceProvider);
     final ocr = ref.read(ocrServiceProvider);
     final sheets = ref.read(sheetsRepositoryProvider);
-    final client = await ref
-        .read(googleAuthProvider)
-        .authorizedClient(interactive: false);
-    if (client != null) await _loadCardData(client);
+
+    // **Google 쪽은 OCR 뒤에서 기다린다.**
+    //
+    // 인가 토큰과 카드·분류 마스터가 필요한 자리는 아래 업체 이력 조회와
+    // `_applyCardClass` 두 곳인데, 둘 다 OCR 응답보다 뒤다. 예전엔 이 앞에서
+    // await 해서 사진이 쓸 만한지 알려주는 시점이 **시트 두 번 읽는 만큼**
+    // 밀렸다. 사진 품질은 OCR 응답에 들어 있으니 기다릴 이유가 없다.
 
     // PDF 는 이미지가 아니라 OCR 로 못 보낸다. 사용자가 직접 채운다.
     if (e.isImage) {
@@ -453,6 +475,13 @@ class ReviewController extends Notifier<ReviewState> {
         state = state.copyWith(error: '$err');
       }
     }
+
+    // 여기서부터 Google 이 필요하다. `load` 가 미리 시작해뒀으면
+    // (`_prefetchCardData`) 이미 끝나 있어 거의 기다리지 않는다.
+    final client = await ref
+        .read(googleAuthProvider)
+        .authorizedClient(interactive: false);
+    if (client != null) await _loadCardData(client);
 
     // ── 자동완성의 실제 승부처: 과거에 같은 업체를 어떻게 처리했는가 ──
     final vendor = draft.vendor;
