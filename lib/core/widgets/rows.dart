@@ -4,6 +4,7 @@
 library;
 
 import 'package:bodit_app/core/theme/tokens.dart';
+import 'package:bodit_app/models/certainty.dart';
 import 'package:flutter/material.dart';
 
 /// `라벨 ......... 값` 한 줄. 시안의 `.row`
@@ -20,7 +21,7 @@ class LabeledRow extends StatelessWidget {
     this.onTap,
     this.warnPlaceholder = false,
     this.editable = false,
-    this.uncertain = false,
+    this.certainty = Certainty.unknown,
   });
 
   final String label;
@@ -47,14 +48,17 @@ class LabeledRow extends StatelessWidget {
   /// 목록에서 고르는 줄은 그대로 `›` 다.
   final bool editable;
 
-  /// OCR 이 **읽긴 했는데 자신 없다**고 말한 값.
+  /// OCR 이 그 값을 얼마나 확신했는가.
   ///
   /// 값이 비어 있는 것과는 다른 상태다 — 비면 사용자가 바로 알아채지만,
   /// 잘못 읽은 값은 그럴듯해 보여서 그냥 지나간다. 그래서 값 쪽에 표식을 단다.
   ///
-  /// 드물게 떠야 쓸모가 있다. 절반이 노랗게 뜨면 아무도 안 본다
-  /// (기준은 `EntryDraft.isUncertain`).
-  final bool uncertain;
+  /// **두 단계를 다르게 그린다.** `0.39` 와 `0.69` 는 할 일이 다르다 —
+  /// 앞쪽은 값을 믿을 수 없고 뒤쪽은 한 번 훑으면 된다. 기준은
+  /// `EntryDraft.certaintyOf`.
+  ///
+  /// 드물게 떠야 쓸모가 있다. 절반이 뜨면 아무도 안 본다.
+  final Certainty certainty;
   final Widget? trailing;
   final VoidCallback? onTap;
 
@@ -100,14 +104,22 @@ class LabeledRow extends StatelessWidget {
             ),
           ),
         ),
-        if (uncertain) ...[
+        if (certainty.needsAttention) ...[
           const SizedBox(width: Gap.xs),
-          const Tooltip(
-            message: '잘 못 읽은 것 같습니다. 확인해 주세요.',
+          Tooltip(
+            message: certainty == Certainty.poor
+                ? '거의 못 읽었습니다. 값이 맞는지 꼭 확인하세요.'
+                : '읽긴 했는데 자신 없습니다. 확인해 주세요.',
             child: Icon(
-              Icons.error_outline,
+              certainty == Certainty.poor
+                  ? Icons.error_outline
+                  : Icons.help_outline,
               size: 16,
-              color: AppColors.dangerFg,
+              // 거의 못 읽은 것만 빨강이다. 둘을 같은 색으로 두면 정도가
+              // 안 보이고, 빨강이 흔해지면 빨강이 무뎌진다.
+              color: certainty == Certainty.poor
+                  ? AppColors.dangerFg
+                  : AppColors.noticeFg,
             ),
           ),
         ],

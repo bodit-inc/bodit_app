@@ -1,19 +1,21 @@
+import 'package:bodit_app/models/certainty.dart';
+import 'package:bodit_app/models/class_choice.dart';
 import 'package:bodit_app/models/entry_draft.dart';
 import 'package:bodit_app/models/purchase_entry.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// OCR 이 다 읽어낸 상태.
 EntryDraft _full() => EntryDraft(
-      evidencePath: '/tmp/a.jpg',
-      belongDate: DateTime(2026, 8, 5),
-      vendor: '영풍문고',
-      description: '8월 도서',
-      expenseCategory: '도서인쇄비',
-      classCode: 1,
-      className: '법인',
-      cardLast4: '1234',
-      totalAmount: 19000,
-    );
+  evidencePath: '/tmp/a.jpg',
+  belongDate: DateTime(2026, 8, 5),
+  vendor: '영풍문고',
+  description: '8월 도서',
+  expenseCategory: '도서인쇄비',
+  classCode: 1,
+  className: '법인',
+  cardLast4: '1234',
+  totalAmount: 19000,
+);
 
 void main() {
   group('isComplete / missingFields', () {
@@ -78,10 +80,14 @@ void main() {
     });
 
     test('기준은 0.7 이다', () {
-      expect(_full().copyWith(confidence: const {'x': 0.7}).isUncertain('x'),
-          isFalse);
-      expect(_full().copyWith(confidence: const {'x': 0.69}).isUncertain('x'),
-          isTrue);
+      expect(
+        _full().copyWith(confidence: const {'x': 0.7}).isUncertain('x'),
+        isFalse,
+      );
+      expect(
+        _full().copyWith(confidence: const {'x': 0.69}).isUncertain('x'),
+        isTrue,
+      );
     });
   });
 
@@ -113,7 +119,11 @@ void main() {
       expect(
         () => d.toEntry(createdBy: 'james@bodit.co'),
         throwsA(
-          isA<StateError>().having((e) => e.message, 'message', contains('업체명')),
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('업체명'),
+          ),
         ),
       );
     });
@@ -157,11 +167,11 @@ void main() {
 
   group('통화 — 해외 증빙', () {
     EntryDraft usd() => _full().copyWith(
-          currency: 'USD',
-          totalAmount: 1299, // 센트 단위
-          supplyAmount: 1299,
-          vatAmount: 0,
-        );
+      currency: 'USD',
+      totalAmount: 1299, // 센트 단위
+      supplyAmount: 1299,
+      vatAmount: 0,
+    );
 
     test('시트에는 나눈 값이 들어간다 — 회계가 보는 칸이다', () {
       final row = usd().toEntry(createdBy: 'a@bodit.co').toSheetRow();
@@ -194,6 +204,89 @@ void main() {
 
     test('기본값은 원화다', () {
       expect(_full().currency, 'KRW');
+    });
+  });
+
+  group('확신도 단계 — 0.39 와 0.69 는 할 일이 다르다', () {
+    test('네 단계로 갈린다', () {
+      EntryDraft withC(double c) =>
+          _full().copyWith(confidence: <String, double>{'vendor': c});
+
+      // 확신도가 아예 없으면 모르는 것이다 — 틀렸다고 말하지 않는다.
+      expect(_full().certaintyOf('vendor'), Certainty.unknown);
+      expect(withC(0.9).certaintyOf('vendor'), Certainty.ok);
+      expect(withC(0.7).certaintyOf('vendor'), Certainty.ok);
+      expect(withC(0.69).certaintyOf('vendor'), Certainty.check);
+      expect(withC(0.4).certaintyOf('vendor'), Certainty.check);
+      // 거의 못 읽은 값은 "확인해 주세요" 가 아니라 "믿지 마세요" 다.
+      expect(withC(0.39).certaintyOf('vendor'), Certainty.poor);
+      expect(withC(0).certaintyOf('vendor'), Certainty.poor);
+    });
+
+    test('표식을 다는 단계는 둘뿐이다', () {
+      expect(Certainty.unknown.needsAttention, isFalse);
+      expect(Certainty.ok.needsAttention, isFalse);
+      expect(Certainty.check.needsAttention, isTrue);
+      expect(Certainty.poor.needsAttention, isTrue);
+    });
+
+    test('isUncertain 은 두 단계를 합친 것이다', () {
+      // 예전 기준(0.7)이 그대로 유지돼야 한다 — 경고가 갑자기 흔해지면 안 된다.
+      EntryDraft withC(double c) =>
+          _full().copyWith(confidence: <String, double>{'x': c});
+      expect(withC(0.69).isUncertain('x'), isTrue);
+      expect(withC(0.39).isUncertain('x'), isTrue);
+      expect(withC(0.7).isUncertain('x'), isFalse);
+      expect(_full().isUncertain('x'), isFalse);
+    });
+  });
+
+  group('추천에서 벗어났는가', () {
+    test('비목을 추천과 다르게 고치면 참이다', () {
+      final d = _full().copyWith(
+        suggestedCategory: '도서인쇄비',
+        expenseCategory: '복리후생비',
+      );
+      expect(d.categoryDiffersFromSuggestion, isTrue);
+    });
+
+    test('추천을 그대로 쓰면 거짓이다', () {
+      final d = _full().copyWith(
+        suggestedCategory: '도서인쇄비',
+        expenseCategory: '도서인쇄비',
+      );
+      expect(d.categoryDiffersFromSuggestion, isFalse);
+    });
+
+    test('추천이 없었으면 벗어난 것도 아니다', () {
+      // 추천을 못 받은 건에 "추천과 다르다" 를 띄우면 거짓말이다.
+      expect(
+        _full()
+            .copyWith(expenseCategory: '복리후생비')
+            .categoryDiffersFromSuggestion,
+        isFalse,
+      );
+    });
+
+    test('분류를 카드가 정한 것과 다르게 고치면 참이다', () {
+      final d = _full().copyWith(
+        cardClass: const ClassChoice(code: 44, name: '글로벌팁스(카드)'),
+        classCode: 3,
+      );
+      expect(d.classDiffersFromCard, isTrue);
+    });
+
+    test('카드가 정한 분류를 그대로 쓰면 거짓이다', () {
+      final d = _full().copyWith(
+        cardClass: const ClassChoice(code: 44, name: '글로벌팁스(카드)'),
+        classCode: 44,
+      );
+      expect(d.classDiffersFromCard, isFalse);
+    });
+
+    test('카드가 분류를 못 정했으면 벗어난 것도 아니다', () {
+      // 카드를 못 찾아 사용자가 직접 고른 건에 경고를 띄우면 안 된다.
+      expect(_full().copyWith(classCode: 3).classDiffersFromCard, isFalse);
     });
   });
 }

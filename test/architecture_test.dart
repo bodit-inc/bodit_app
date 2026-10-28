@@ -28,10 +28,7 @@ List<File> _sourceFiles() {
 /// 그 파일이 import 하는 우리 프로젝트 경로들.
 List<String> _internalImports(File f) {
   final re = RegExp("import 'package:bodit_app/([^']+)'");
-  return re
-      .allMatches(f.readAsStringSync())
-      .map((m) => m.group(1)!)
-      .toList();
+  return re.allMatches(f.readAsStringSync()).map((m) => m.group(1)!).toList();
 }
 
 /// `lib/` 기준 상대 경로의 첫 조각. 최상위 파일은 `<root>`.
@@ -53,7 +50,8 @@ void main() {
         expect(
           _layerOf(imp),
           anyOf('models', 'core'),
-          reason: '${f.path} → $imp\n'
+          reason:
+              '${f.path} → $imp\n'
               'models 는 도메인 타입이라 data·features 를 알면 안 된다. '
               '테스트가 목킹 없이 도는 이유가 이거다.',
         );
@@ -67,7 +65,8 @@ void main() {
         expect(
           _layerOf(imp),
           isNot('features'),
-          reason: '${f.path} → $imp\n'
+          reason:
+              '${f.path} → $imp\n'
               '화면이 저장소를 쓰는 것이지 그 반대가 아니다. '
               '모든 저장소가 쓰는 자원이라면 그건 data 소유여야 한다 '
               '(googleAuthProvider 가 그래서 여기로 내려왔다).',
@@ -82,7 +81,8 @@ void main() {
         expect(
           _layerOf(imp),
           anyOf('core', 'models'),
-          reason: '${f.path} → $imp\n'
+          reason:
+              '${f.path} → $imp\n'
               'core 는 어디서나 쓰는 것만 담는다. '
               '화면을 알아야 하는 것(라우터 같은)은 앱 조립 계층에 둔다.',
         );
@@ -104,7 +104,8 @@ void main() {
       expect(
         hits,
         isEmpty,
-        reason: '${f.path} 가 fontSize 를 직접 적는다.\n'
+        reason:
+            '${f.path} 가 fontSize 를 직접 적는다.\n'
             'Theme.of(context).textTheme 의 슬롯을 쓰세요 '
             '(displayLarge…labelSmall). 크기가 안 맞으면 슬롯 선택이 틀린 것이지 '
             '새 크기를 만들 일이 아니다.',
@@ -144,7 +145,8 @@ void main() {
       expect(
         banned.hasMatch(f.readAsStringSync()),
         isFalse,
-        reason: '${f.path} 가 저장소를 직접 생성한다.\n'
+        reason:
+            '${f.path} 가 저장소를 직접 생성한다.\n'
             'providers.dart 를 통해 받아야 테스트에서 갈아끼울 수 있다.',
       );
     }

@@ -151,7 +151,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       LabeledRow(
                         key: _fieldKeys['소속날짜'],
                         label: '소속날짜',
-                        uncertain: draft.isUncertain('belong_date'),
+                        certainty: draft.certaintyOf('belong_date'),
                         value: _fmtDate(draft.belongDate),
                         placeholder: '입력 필요',
                         subtitle: '계산서 발행일자 또는 카드 결제일자',
@@ -167,7 +167,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       LabeledRow(
                         key: _fieldKeys['업체명'],
                         label: '업체명',
-                        uncertain: draft.isUncertain('vendor'),
+                        certainty: draft.certaintyOf('vendor'),
                         editable: true,
                         value: draft.vendor,
                         placeholder: '입력 필요',
@@ -184,7 +184,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       // 사용자가 알 길이 없었다. 지금은 그게 분류까지 끌고 간다.
                       LabeledRow(
                         label: '카드번호',
-                        uncertain: draft.isUncertain('card_last4'),
+                        certainty: draft.certaintyOf('card_last4'),
                         editable: true,
                         value: draft.cardLast4,
                         placeholder: '카드 결제가 아니면 비워둡니다',
@@ -196,7 +196,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       LabeledRow(
                         key: _fieldKeys['내역'],
                         label: '내역',
-                        uncertain: draft.isUncertain('description'),
+                        certainty: draft.certaintyOf('description'),
                         editable: true,
                         value: draft.description,
                         placeholder: '직접 입력',
@@ -325,6 +325,22 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             // 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
                             if (draft.suggestionReason != null)
                               SuggestReason(draft.suggestionReason!),
+                            // 추천과 다르게 골랐다. **조용히 알려준다** —
+                            // 비목 추천은 과거 이력이라 추측이고, 이번 건이
+                            // 다를 수 있다. 벗어나는 것이 정상 동작이므로
+                            // 경고를 띄우면 정당한 수정마다 빨간 줄이 붙는다.
+                            if (draft.categoryDiffersFromSuggestion)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  top: Gap.xs,
+                                  left: 2,
+                                ),
+                                child: Text(
+                                  '과거 이력은 "${draft.suggestedCategory}" 였습니다.',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: AppColors.neutralFg),
+                                ),
+                              ),
 
                             const SizedBox(height: Gap.lg),
                             Text(
@@ -383,6 +399,26 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                               ),
                             ],
 
+                            // 카드가 정한 분류와 다르게 골랐다. **분명하게
+                            // 말한다** — 분류는 추측이 아니라 긁은 카드가 이미
+                            // 정해놓은 사실이다. 벗어나면 그 카드의 예산이 아닌
+                            // 곳에 잡히고, 시트는 append-only 라 앱으로
+                            // 되돌릴 수 없다.
+                            //
+                            // 비목과 세기를 다르게 둔 이유가 이것이다. 비목은
+                            // 추측에서 벗어나는 것이고 이쪽은 사실에서
+                            // 벗어나는 것이다.
+                            if (draft.classDiffersFromCard) ...[
+                              const SizedBox(height: Gap.md),
+                              NoticeBanner(
+                                child: Text(
+                                  '카드가 정한 분류는 '
+                                  '${draft.cardClass?.label ?? ''} 입니다. '
+                                  '다른 분류로 제출됩니다.',
+                                ),
+                              ),
+                            ],
+
                             // 카드로 분류를 못 정했으면 **왜** 못 정했는지 말한다.
                             // 조용히 비워두면 사용자는 46개 목록에서 직접 찾는다.
                             if (draft.cardNotice != null) ...[
@@ -401,7 +437,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       LabeledRow(
                         key: _fieldKeys['총금액'],
                         label: '총금액',
-                        uncertain: draft.isUncertain('total_amount'),
+                        certainty: draft.certaintyOf('total_amount'),
                         editable: true,
                         value: _fmtAmount(draft.totalAmount, draft.currency),
                         placeholder: '입력 필요',
