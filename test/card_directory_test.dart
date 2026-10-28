@@ -575,34 +575,4 @@ void main() {
       expect(d.copyWith(classCode: 3).classDiffersFromCard, isTrue);
     });
   });
-
-  group('분류로 카드 찾기 — 분류 선택 목록에 번호를 보여준다', () {
-    final cards = CardDirectory.fromRows(<List<Object?>>[
-      row('5525-76**-****-6302', 44),
-      row('5525-76**-****-9964', 44, active: 'X'),
-      row('5525-76**-****-1111', 44),
-      row('9410-19**-****-3356', 24),
-    ]);
-
-    test('그 분류의 카드만 돌려준다', () {
-      expect(cards.last4OfClass(24), <String>['3356']);
-    });
-
-    test('활성 카드를 앞에 세운다', () {
-      // 목록이 셋에서 잘리므로 지금 쓰는 카드가 남아야 한다.
-      expect(cards.last4OfClass(44), <String>['1111', '6302', '9964']);
-    });
-
-    test('미사용 카드도 버리지 않는다', () {
-      // 몇 달 지난 영수증을 뒤늦게 올리는 일은 흔하고, 그때는 미사용 카드가
-      // 맞다. 목록에 없으면 영수증의 번호와 맞춰볼 수 없다.
-      expect(cards.last4OfClass(44), contains('9964'));
-    });
-
-    test('카드가 없는 분류는 빈 목록이다', () {
-      // 화면이 이걸 보고 보조 줄을 아예 안 그린다 — 빈 줄이 생기면 없는
-      // 것을 있는 것처럼 보이게 된다.
-      expect(cards.last4OfClass(99), isEmpty);
-    });
-  });
 }

@@ -18,7 +18,7 @@ import 'package:flutter/material.dart';
 /// 고를 수 있는 항목 하나.
 @immutable
 class PickerItem {
-  const PickerItem({required this.label, this.code, this.subtitle});
+  const PickerItem({required this.label, this.code});
 
   /// 화면에 보이고 검색에 걸리는 이름.
   final String label;
@@ -26,14 +26,6 @@ class PickerItem {
   /// 왼쪽에 고정폭으로 붙는 코드. 분류처럼 **번호로 말하는** 목록에만 있다.
   /// 비목은 번호가 없으므로 null 이다.
   final String? code;
-
-  /// 이름 아래 작게 붙는 보조 정보. 분류 목록이 **그 분류로 쓰는 카드 뒷
-  /// 4자리**를 보여주는 데 쓴다.
-  ///
-  /// **검색에는 걸리지 않는다.** 카드번호로 분류를 찾는 것은 앱이 할 일이고
-  /// (`applyCardClass`), 사용자가 여기서 번호를 치는 상황이면 그 조회가 이미
-  /// 실패한 것이다 — 그때 번호로 또 걸러주면 틀린 카드를 고를 길만 넓힌다.
-  final String? subtitle;
 
   /// 코드로도 이름으로도 찾을 수 있다 — 회계 담당자는 "23번" 이라고 말하고
   /// 제출자는 "CTS" 라고 말한다.
@@ -113,13 +105,6 @@ class _PickerSheetState extends State<PickerSheet> {
                               ),
                             ),
                       title: Text(item.label),
-                      subtitle: item.subtitle == null
-                          ? null
-                          : Text(
-                              item.subtitle!,
-                              style: Theme.of(context).textTheme.labelSmall
-                                  ?.copyWith(color: AppColors.neutralFg),
-                            ),
                       trailing: isSelected
                           ? const Icon(Icons.check, size: 18)
                           : null,
