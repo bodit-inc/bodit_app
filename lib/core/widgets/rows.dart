@@ -22,6 +22,7 @@ class LabeledRow extends StatelessWidget {
     this.warnPlaceholder = false,
     this.editable = false,
     this.certainty = Certainty.unknown,
+    this.valueWidget,
   });
 
   final String label;
@@ -59,6 +60,13 @@ class LabeledRow extends StatelessWidget {
   ///
   /// 드물게 떠야 쓸모가 있다. 절반이 뜨면 아무도 안 본다.
   final Certainty certainty;
+
+  /// 값 자리에 들어갈 위젯. 주면 [value]·[placeholder] 대신 이걸 그린다.
+  ///
+  /// [InlineEditRow] 가 **입력칸을 그 자리에 끼우는 데** 쓴다. 보기 모드와
+  /// 편집 모드가 같은 줄 구조를 써야 탭했을 때 글자가 움직이지 않는다.
+  final Widget? valueWidget;
+
   final Widget? trailing;
   final VoidCallback? onTap;
 
@@ -90,18 +98,20 @@ class LabeledRow extends StatelessWidget {
             padding: editable
                 ? const EdgeInsets.only(bottom: 3)
                 : EdgeInsets.zero,
-            child: Text(
-              hasValue ? value! : (placeholder ?? ''),
-              textAlign: TextAlign.right,
-              style: t.bodyMedium?.copyWith(
-                fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
-                color: hasValue
-                    ? null
-                    : (warnPlaceholder
-                          ? AppColors.dangerFg
-                          : Theme.of(context).disabledColor),
-              ),
-            ),
+            child:
+                valueWidget ??
+                Text(
+                  hasValue ? value! : (placeholder ?? ''),
+                  textAlign: TextAlign.right,
+                  style: t.bodyMedium?.copyWith(
+                    fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
+                    color: hasValue
+                        ? null
+                        : (warnPlaceholder
+                              ? AppColors.dangerFg
+                              : Theme.of(context).disabledColor),
+                  ),
+                ),
           ),
         ),
         if (certainty.needsAttention) ...[
@@ -156,6 +166,163 @@ class LabeledRow extends StatelessWidget {
                   ),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+/// 탭하면 **그 자리가 입력칸**이 되는 줄.
+///
+/// ## 왜 다이얼로그를 버렸나
+///
+/// 예전엔 `promptText` 로 팝업을 띄웠다. 탭 → 팝업 → 입력 → 확인 → 닫힘,
+/// 네 동작이고 그 사이 화면이 두 번 바뀐다. 한 줄짜리 값을 고치는 데 드는
+/// 비용이 너무 컸다.
+///
+/// ## 저장 시점
+///
+/// **포커스를 잃으면 저장한다.** 완료 버튼을 눌러도 같다. 팝업의 `확인` 을
+/// 대신하는 셈인데, 모바일에서는 다른 칸을 누르는 것이 곧 "이 칸은 끝났다" 다.
+/// 취소 버튼을 두지 않는 이유는 그것 때문에 칸마다 버튼 두 개가 붙으면
+/// 줄이 복잡해지기 때문이다 — OCR 이 읽은 값으로 되돌리는 길은
+/// `OcrConflictNote` 의 칩이 따로 열어둔다.
+///
+/// ## 키보드
+///
+/// 포커스를 받으면 그 줄을 보이는 곳으로 스크롤한다. 검토 화면이 길어서
+/// 아래쪽 칸은 키보드에 덮인다 — 덮인 채로 입력하면 자기가 뭘 쓰는지 안 보인다.
+class InlineEditRow extends StatefulWidget {
+  const InlineEditRow({
+    required this.label,
+    required this.onSubmit,
+    super.key,
+    this.value,
+    this.placeholder,
+    this.hintText,
+    this.subtitle,
+    this.keyboardType,
+    this.warnPlaceholder = false,
+    this.certainty = Certainty.unknown,
+  });
+
+  final String label;
+  final String? value;
+  final String? placeholder;
+
+  /// 편집 중에만 보여줄 안내. 없으면 [placeholder] 를 쓴다.
+  final String? hintText;
+
+  final String? subtitle;
+  final TextInputType? keyboardType;
+  final bool warnPlaceholder;
+  final Certainty certainty;
+
+  /// 저장할 때 호출된다. 앞뒤 공백은 떼서 넘긴다.
+  final ValueChanged<String> onSubmit;
+
+  @override
+  State<InlineEditRow> createState() => _InlineEditRowState();
+}
+
+class _InlineEditRowState extends State<InlineEditRow> {
+  final _focus = FocusNode();
+  TextEditingController? _controller;
+
+  /// 저장이 두 번 불리는 것을 막는다. 완료를 누르면 `onSubmitted` 가 오고,
+  /// 그 다음 포커스가 빠지면서 리스너도 울린다.
+  bool _saving = false;
+
+  bool get _editing => _controller != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_onFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _focus
+      ..removeListener(_onFocusChange)
+      ..dispose();
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (!_focus.hasFocus && _editing) _save();
+  }
+
+  void _begin() {
+    setState(() {
+      _controller = TextEditingController(text: widget.value ?? '')
+        // 바로 고쳐 쓰는 경우가 많아서 **끝에 커서**를 둔다. 전체 선택으로
+        // 두면 아무 글자나 누르는 순간 기존 값이 날아간다.
+        ..selection = TextSelection.collapsed(
+          offset: (widget.value ?? '').length,
+        );
+    });
+    _focus.requestFocus();
+    // 레이아웃이 바뀐 뒤에 스크롤해야 제자리를 찾는다.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Scrollable.ensureVisible(
+        context,
+        // 줄을 화면 위쪽에 둬서 아래로 올라오는 키보드와 안 겹치게 한다.
+        alignment: 0.2,
+        duration: const Duration(milliseconds: 200),
+      );
+    });
+  }
+
+  void _save() {
+    if (_saving) return;
+    _saving = true;
+    final text = _controller?.text.trim() ?? '';
+    final c = _controller;
+    setState(() => _controller = null);
+    c?.dispose();
+    _saving = false;
+    if (text != (widget.value ?? '')) widget.onSubmit(text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_editing) {
+      return LabeledRow(
+        label: widget.label,
+        value: widget.value,
+        placeholder: widget.placeholder,
+        subtitle: widget.subtitle,
+        warnPlaceholder: widget.warnPlaceholder,
+        certainty: widget.certainty,
+        editable: true,
+        onTap: _begin,
+      );
+    }
+
+    return LabeledRow(
+      label: widget.label,
+      subtitle: widget.subtitle,
+      certainty: widget.certainty,
+      editable: true,
+      valueWidget: TextField(
+        controller: _controller,
+        focusNode: _focus,
+        textAlign: TextAlign.right,
+        keyboardType: widget.keyboardType,
+        textInputAction: TextInputAction.done,
+        style: Theme.of(context).textTheme.bodyMedium
+            ?.copyWith(fontWeight: FontWeight.w500),
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: EdgeInsets.zero,
+          // 밑줄은 LabeledRow 가 그린다. 여기서 또 그리면 두 줄이 된다.
+          border: InputBorder.none,
+          hintText: widget.hintText ?? widget.placeholder,
+          hintStyle: Theme.of(context).textTheme.bodySmall,
+        ),
+        onSubmitted: (_) => _focus.unfocus(),
       ),
     );
   }

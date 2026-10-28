@@ -177,20 +177,15 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         subtitle: '실제로 비용을 집행한 일자',
                         onTap: () {},
                       ),
-                      LabeledRow(
+                      InlineEditRow(
                         key: _fieldKeys['업체명'],
                         label: '업체명',
                         certainty: draft.certaintyOf('vendor'),
-                        editable: true,
                         value: draft.vendor,
                         placeholder: '입력 필요',
-                        onTap: () => _editText(
-                          context,
-                          ref,
-                          '업체명',
-                          draft.vendor,
-                          (d, v) => d.copyWith(vendor: v),
-                        ),
+                        onSubmit: (v) => ref
+                            .read(reviewControllerProvider.notifier)
+                            .update((d) => d.copyWith(vendor: v)),
                       ),
                       if (draft.vendorOcrConflict != null)
                         OcrConflictNote(
@@ -205,13 +200,22 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       // 카드번호는 **분류를 정하는 입력**이다. 예전엔 OCR 이 읽은
                       // 값이 화면에 아예 안 나와서, 숫자 하나를 잘못 읽어도
                       // 사용자가 알 길이 없었다. 지금은 그게 분류까지 끌고 간다.
-                      LabeledRow(
+                      InlineEditRow(
                         label: '카드번호',
                         certainty: draft.certaintyOf('card_last4'),
-                        editable: true,
                         value: draft.cardLast4,
                         placeholder: '카드 결제가 아니면 비워둡니다',
-                        onTap: () => _editCardLast4(context, ref, draft),
+                        hintText: '예: 3927 · 가려진 자리는 766* 처럼',
+                        // **숫자 키패드를 쓰지 않는다.** 영수증에 `766*` 처럼
+                        // 가려진 자리가 찍혀 있으면 보이는 대로 입력해야 앱이
+                        // 후보를 좁히는데, 숫자 키패드에는 `*` 가 없어서
+                        // 사용자가 아예 칠 수 없다.
+                        keyboardType: TextInputType.text,
+                        // **고치면 분류가 다시 정해진다** — 값만 바꾸면
+                        // 숫자 하나 틀린 분류가 그대로 남는다.
+                        onSubmit: (v) => ref
+                            .read(reviewControllerProvider.notifier)
+                            .setCardLast4(v),
                       ),
                       // 되돌리기도 `setCardLast4` 를 탄다. 숫자 하나가 바뀌면
                       // 분류가 통째로 달라지므로 값만 바꿔선 안 된다.
@@ -225,21 +229,16 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       // 내역은 OCR 이 읽은 품목명이 그대로 들어가 있기 쉬운데,
                       // 회계가 원하는 건 "무슨 건인지" 다. **직접 써야 하는 칸**이라는
                       // 신호를 주려고 안내를 경고색으로 띄운다.
-                      LabeledRow(
+                      InlineEditRow(
                         key: _fieldKeys['내역'],
                         label: '내역',
                         certainty: draft.certaintyOf('description'),
-                        editable: true,
                         value: draft.description,
                         placeholder: '직접 입력',
                         warnPlaceholder: true,
-                        onTap: () => _editText(
-                          context,
-                          ref,
-                          '내역',
-                          draft.description,
-                          (d, v) => d.copyWith(description: v),
-                        ),
+                        onSubmit: (v) => ref
+                            .read(reviewControllerProvider.notifier)
+                            .update((d) => d.copyWith(description: v)),
                       ),
                       if (draft.descriptionOcrConflict != null)
                         OcrConflictNote(
@@ -563,24 +562,19 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         value: draft.evidenceType,
                         onTap: () => _pickEvidenceType(context, ref),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.all(Gap.lg),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                draft.filename,
-                                style: Theme.of(context).textTheme.labelSmall
-                                    ?.copyWith(fontFamily: 'monospace'),
+                      InlineEditText(
+                        value: draft.filename,
+                        // 글자 하나를 세어 읽는 값이다.
+                        monospace: true,
+                        // **사용자가 직접 친 값에도 치환 규칙을 적용한다** —
+                        // `/` 하나로 Drive 동기화가 깨진다.
+                        onSubmit: (v) => ref
+                            .read(reviewControllerProvider.notifier)
+                            .update(
+                              (d) => d.copyWith(
+                                filenameOverride: sanitizeSegment(v),
                               ),
                             ),
-                            TextButton(
-                              onPressed: () =>
-                                  _editFilename(context, ref, draft),
-                              child: const Text('수정'),
-                            ),
-                          ],
-                        ),
                       ),
                     ],
                   ),
@@ -727,27 +721,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     );
   }
 
-  /// 카드 뒤 4자리를 고친다. **고치면 분류가 다시 정해진다** —
-  /// 컨트롤러가 그 일까지 맡으므로 여기서는 값만 넘긴다.
-  Future<void> _editCardLast4(
-    BuildContext context,
-    WidgetRef ref,
-    EntryDraft draft,
-  ) async {
-    final v = await promptText(
-      context,
-      title: '카드 뒤 4자리',
-      initial: draft.cardLast4 ?? '',
-      hintText: '예: 3927 · 가려진 자리는 766* 처럼 · 카드 결제가 아니면 비워둡니다',
-      // **숫자 키패드를 쓰지 않는다.** 영수증에 `766*` 처럼 가려진 자리가
-      // 찍혀 있으면 보이는 대로 입력해야 앱이 후보를 좁히는데, 숫자 키패드에는
-      // `*` 가 없어서 사용자가 아예 칠 수 없다.
-      keyboardType: TextInputType.text,
-    );
-    if (v == null) return;
-    await ref.read(reviewControllerProvider.notifier).setCardLast4(v);
-  }
-
   Future<void> _pickDate(
     BuildContext context,
     WidgetRef ref,
@@ -763,18 +736,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     ref
         .read(reviewControllerProvider.notifier)
         .update((d) => d.copyWith(belongDate: picked));
-  }
-
-  Future<void> _editText(
-    BuildContext context,
-    WidgetRef ref,
-    String label,
-    String? initial,
-    EntryDraft Function(EntryDraft, String) apply,
-  ) async {
-    final v = await promptText(context, title: label, initial: initial ?? '');
-    if (v == null) return;
-    ref.read(reviewControllerProvider.notifier).update((d) => apply(d, v));
   }
 
   /// 금액은 전용 키패드로 받는다. 시스템 키보드는 기기·IME 마다 배열이 달라
@@ -796,24 +757,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     ref
         .read(reviewControllerProvider.notifier)
         .setTotalAmount(r.minor, currencyCode: r.currencyCode);
-  }
-
-  Future<void> _editFilename(
-    BuildContext context,
-    WidgetRef ref,
-    EntryDraft draft,
-  ) async {
-    final v = await promptText(
-      context,
-      title: '파일명 수정',
-      initial: draft.filename,
-      maxLines: 2,
-    );
-    if (v == null) return;
-    // 사용자가 직접 친 값에도 치환 규칙을 적용한다 — `/` 하나로 Drive 동기화가 깨진다.
-    ref
-        .read(reviewControllerProvider.notifier)
-        .update((d) => d.copyWith(filenameOverride: sanitizeSegment(v)));
   }
 
   static String? _fmtDate(DateTime? d) => d == null

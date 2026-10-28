@@ -121,8 +121,8 @@ void main() {
     // 화면은 core/widgets 의 컴포넌트만 조립한다. 새 조합이 필요하면
     // 거기에 만들고 이름을 붙인다.
     const banned = <String, String>{
-      'showDialog': 'confirmDestructive / promptText / showDetailDialog',
-      'TextField(': 'AppTextField / SearchField',
+      'showDialog': 'confirmDestructive / showDetailDialog',
+      'TextField(': 'InlineEditRow / InlineEditText / SearchField',
       'styleFrom': '컴포넌트에 이름을 붙여 core/widgets 로',
     };
     for (final f in files.where((f) => f.path.startsWith('lib/features/'))) {

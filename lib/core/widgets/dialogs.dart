@@ -6,7 +6,6 @@
 library;
 
 import 'package:bodit_app/core/widgets/buttons.dart';
-import 'package:bodit_app/core/widgets/fields.dart';
 import 'package:flutter/material.dart';
 
 /// 되돌릴 수 없는 동작을 확인받는다.
@@ -45,41 +44,6 @@ Future<bool> confirmDestructive(
 
 /// 값 하나를 고쳐 받는다. 취소하면 null.
 ///
-/// 확인 없이 **엔터로도 끝난다** — 한 칸짜리 입력에서 확인 버튼까지
-/// 손을 옮기는 건 번거롭다.
-Future<String?> promptText(
-  BuildContext context, {
-  required String title,
-  String initial = '',
-  String? hintText,
-  TextInputType? keyboardType,
-  int maxLines = 1,
-}) {
-  final controller = TextEditingController(text: initial);
-  return showDialog<String>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(title),
-      content: AppTextField(
-        controller: controller,
-        hintText: hintText,
-        keyboardType: keyboardType,
-        maxLines: maxLines,
-        onSubmitted: maxLines == 1 ? (v) => Navigator.pop(ctx, v.trim()) : null,
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('취소'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-          child: const Text('확인'),
-        ),
-      ],
-    ),
-  );
-}
 
 /// 긴 글을 읽기만 하는 창. 전송 실패 사유처럼 복사해 갈 수 있어야 하는 것.
 Future<void> showDetailDialog(
