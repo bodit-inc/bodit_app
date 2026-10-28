@@ -9,57 +9,6 @@ import 'package:flutter/material.dart';
 
 /// 값 하나를 고쳐 넣는 입력.
 ///
-/// 다이얼로그 안에서 쓴다. 열자마자 커서가 들어가고 기존 값이 **전체 선택**된
-/// 상태다 — 고치러 들어온 것이지 이어 쓰려는 게 아니다.
-class AppTextField extends StatefulWidget {
-  const AppTextField({
-    required this.controller,
-    this.hintText,
-    this.keyboardType,
-    this.maxLines = 1,
-    this.autofocus = true,
-    this.onSubmitted,
-    super.key,
-  });
-
-  final TextEditingController controller;
-  final String? hintText;
-  final TextInputType? keyboardType;
-  final int maxLines;
-  final bool autofocus;
-  final ValueChanged<String>? onSubmitted;
-
-  @override
-  State<AppTextField> createState() => _AppTextFieldState();
-}
-
-class _AppTextFieldState extends State<AppTextField> {
-  @override
-  void initState() {
-    super.initState();
-    // 기존 값을 통째로 선택해 둔다. 바로 타이핑하면 덮어써진다.
-    widget.controller.selection = TextSelection(
-      baseOffset: 0,
-      extentOffset: widget.controller.text.length,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: widget.controller,
-      autofocus: widget.autofocus,
-      keyboardType: widget.keyboardType,
-      maxLines: widget.maxLines,
-      onSubmitted: widget.onSubmitted,
-      decoration: InputDecoration(
-        hintText: widget.hintText,
-        isDense: true,
-        border: const OutlineInputBorder(),
-      ),
-    );
-  }
-}
 
 /// 목록을 좁히는 검색 입력.
 ///
@@ -87,6 +36,127 @@ class SearchField extends StatelessWidget {
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(vertical: Gap.md),
         border: const OutlineInputBorder(),
+      ),
+    );
+  }
+}
+
+/// 줄 전체를 쓰는 **인플레이스 편집**. 파일명처럼 길고 고정폭으로 보여줘야
+/// 하는 값에 쓴다.
+///
+/// `InlineEditRow` 와 역할은 같지만 모양이 다르다. 그쪽은 `라벨 … 값` 한 줄에
+/// 값을 **우측 정렬**로 넣는데, 파일명은 화면 폭을 거의 다 쓰고 두 줄까지
+/// 간다 — 우측 정렬 좁은 칸에 넣으면 앞부분이 안 보인다.
+///
+/// 저장은 `InlineEditRow` 와 같다: 포커스를 잃거나 버튼을 누르면 저장한다.
+class InlineEditText extends StatefulWidget {
+  const InlineEditText({
+    required this.value,
+    required this.onSubmit,
+    super.key,
+    this.maxLines = 2,
+    this.monospace = false,
+  });
+
+  final String value;
+
+  /// 저장할 때 호출된다. 앞뒤 공백은 떼서 넘긴다.
+  ///
+  /// **치환 규칙은 호출부가 적용한다** — 파일명의 `/` 하나로 Drive 동기화가
+  /// 깨지는데, 그 규칙은 이 위젯이 알 일이 아니다.
+  final ValueChanged<String> onSubmit;
+
+  final int maxLines;
+
+  /// 고정폭으로 보여준다. 파일명처럼 **글자 하나를 세어 읽는** 값에 쓴다.
+  final bool monospace;
+
+  @override
+  State<InlineEditText> createState() => _InlineEditTextState();
+}
+
+class _InlineEditTextState extends State<InlineEditText> {
+  final _focus = FocusNode();
+  TextEditingController? _controller;
+  bool _saving = false;
+
+  bool get _editing => _controller != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_onFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _focus
+      ..removeListener(_onFocusChange)
+      ..dispose();
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (!_focus.hasFocus && _editing) _save();
+  }
+
+  void _begin() {
+    setState(() {
+      _controller = TextEditingController(text: widget.value)
+        ..selection = TextSelection.collapsed(offset: widget.value.length);
+    });
+    _focus.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Scrollable.ensureVisible(
+        context,
+        alignment: 0.2,
+        duration: const Duration(milliseconds: 200),
+      );
+    });
+  }
+
+  void _save() {
+    if (_saving) return;
+    _saving = true;
+    final text = _controller?.text.trim() ?? '';
+    final c = _controller;
+    setState(() => _controller = null);
+    c?.dispose();
+    _saving = false;
+    if (text != widget.value) widget.onSubmit(text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelSmall
+        ?.copyWith(fontFamily: widget.monospace ? 'monospace' : null);
+
+    return Padding(
+      padding: const EdgeInsets.all(Gap.lg),
+      child: Row(
+        children: [
+          Expanded(
+            child: _editing
+                ? TextField(
+                    controller: _controller,
+                    focusNode: _focus,
+                    maxLines: widget.maxLines,
+                    style: style,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      border: UnderlineInputBorder(),
+                    ),
+                  )
+                : Text(widget.value, style: style),
+          ),
+          TextButton(
+            onPressed: _editing ? _focus.unfocus : _begin,
+            child: Text(_editing ? '완료' : '수정'),
+          ),
+        ],
       ),
     );
   }

@@ -138,11 +138,11 @@ ErrorDisclosure('비목을 불러오지 못했습니다.', detail: '$e')
 | 파일 | 담당 |
 |---|---|
 | `layout.dart` | `SectionHeader` · `AppCard` · `BigActionCard` |
-| `rows.dart` | `LabeledRow` |
+| `rows.dart` | `LabeledRow` · `InlineEditRow`(탭하면 그 자리에서 고친다) |
 | `chips.dart` | `StatusPill` · `SuggestChip` |
-| `fields.dart` | `AppTextField` · `SearchField` |
+| `fields.dart` | `SearchField` · `InlineEditText`(파일명처럼 줄 전체를 쓰는 값) |
 | `buttons.dart` | `RetryButton` · `DangerTextButton` · `InlineButton` |
-| `dialogs.dart` | `confirmDestructive` · `promptText` · `showDetailDialog` |
+| `dialogs.dart` | `confirmDestructive` · `showDetailDialog` |
 | `feedback.dart` | `NoteText` · `SuggestReason` · `NoticeBanner` · `ErrorDisclosure` |
 | `amount_keypad.dart` | 금액 입력(통화 선택 포함) |
 
