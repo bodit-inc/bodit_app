@@ -209,6 +209,30 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                           (d, v) => d.copyWith(description: v),
                         ),
                       ),
+                      // 비워두면 "$needsOpsReview" 으로 들어가고 회계 담당자가
+                      // 다시 물어야 한다. **직접 써야 한다는 것을 빨간 글씨로
+                      // 못박는다** — 예전엔 placeholder 를 경고색으로 띄우는
+                      // 정도였고, 그건 칸을 누르기 전까지 눈에 안 들어왔다.
+                      //
+                      // 채워지면 거둔다. 늘 빨간 글씨가 떠 있으면 아무도 안
+                      // 본다 — 확신도 경고를 드물게 띄우는 것과 같은 이유다.
+                      if ((draft.description ?? '').trim().isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            Gap.lg,
+                            Gap.sm,
+                            Gap.lg,
+                            0,
+                          ),
+                          child: Text(
+                            '내역은 직접 작성해야 합니다.',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: AppColors.dangerFg,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
                       // 같은 업체로 과거에 쓴 내역. **자동으로 안 채운다** —
                       // 내역은 건마다 달라서("8월 도서" → "9월 도서") 지난 값을
                       // 넣으면 9월에 8월 것이 조용히 들어간다. 눌러서 고른다.
@@ -249,11 +273,16 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             ],
                           ),
                         ),
+                      // 모르면 지어내는 것보다 비워두는 게 낫다 — 그 사실을
+                      // 알려야 사용자가 아무 말이나 채워 넣지 않는다.
+                      //
+                      // **카드 안**에 둔다. 밖에 있으면 어느 칸에 대한 말인지
+                      // 안 보였다 — 내역 칸과 두 줄 떨어져 떠 있었다.
+                      const NoteText(
+                        '내역을 모르면 비워두세요. "$needsOpsReview" 으로 제출됩니다.',
+                      ),
                     ],
                   ),
-                  // 모르면 지어내는 것보다 비워두는 게 낫다 — 그 사실을 알려야
-                  // 사용자가 아무 말이나 채워 넣지 않는다.
-                  const NoteText('내역을 모르면 비워두세요. "$needsOpsReview" 으로 제출됩니다.'),
 
                   // 시안 ⑦ — 영수증에 없는 항목은 과거 이력으로 추천
                   const SectionHeader('분류 — 영수증에 없는 항목'),
@@ -274,18 +303,23 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                               spacing: Gap.sm,
                               runSpacing: Gap.sm,
                               children: [
+                                // **`바꾸기` 칩을 따로 두지 않는다.** 값 칩을
+                                // 누르는 것이 곧 바꾸는 동작이라, 둘을 나란히
+                                // 두면 누를 것이 둘인 것처럼 보였다.
+                                //
+                                // 비어 있을 때의 `선택하기` 는 남긴다 —
+                                // 전체 목록으로 가는 **유일한 입구**다.
                                 if (draft.expenseCategory != null)
                                   SuggestChip(
                                     draft.expenseCategory!,
                                     selected: true,
                                     onTap: () => _pickCategory(context, ref),
+                                  )
+                                else
+                                  SuggestChip(
+                                    '선택하기',
+                                    onTap: () => _pickCategory(context, ref),
                                   ),
-                                SuggestChip(
-                                  draft.expenseCategory == null
-                                      ? '선택하기'
-                                      : '바꾸기',
-                                  onTap: () => _pickCategory(context, ref),
-                                ),
                               ],
                             ),
                             // 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
@@ -306,17 +340,19 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                               spacing: Gap.sm,
                               runSpacing: Gap.sm,
                               children: [
+                                // 비목과 같다 — 값 칩이 곧 picker 입구다.
                                 if (draft.classCode != null)
                                   SuggestChip(
                                     '${draft.classCode} ${draft.className ?? ''}'
                                         .trim(),
                                     selected: true,
                                     onTap: () => _pickClass(context, ref),
+                                  )
+                                else
+                                  SuggestChip(
+                                    '선택하기',
+                                    onTap: () => _pickClass(context, ref),
                                   ),
-                                SuggestChip(
-                                  draft.classCode == null ? '선택하기' : '바꾸기',
-                                  onTap: () => _pickClass(context, ref),
-                                ),
                               ],
                             ),
                             // 카드로 정해진 분류의 근거. 비목과 줄을 따로 쓴다 —
