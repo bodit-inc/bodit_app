@@ -6,6 +6,7 @@
 library;
 
 import 'package:bodit_app/core/theme/tokens.dart';
+import 'package:bodit_app/core/widgets/chips.dart';
 import 'package:flutter/material.dart';
 
 /// 카드 아래 작은 설명. 시안의 `.note`
@@ -183,6 +184,55 @@ class _ErrorDisclosureState extends State<ErrorDisclosure> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// OCR 이 읽은 값과 **다르게 고쳤을 때**의 안내 + 되돌리기 칩.
+///
+/// 입력 칸 **바로 아래**에 붙인다. 제출 직전에 몰아서 알려주면 어느 칸이었는지
+/// 다시 찾아야 하고, 그러면 아무도 안 본다.
+///
+/// ## 왜 막지 않고 알리기만 하나
+///
+/// 고치는 쪽이 맞는 경우가 많다 — OCR 이 상호를 잘못 읽는 일은 흔하다.
+/// 그래서 **값을 되돌리지 않고** "이렇게 읽었다" 만 말하고, 되돌릴 길을
+/// 칩으로 열어둔다. 사용자가 둘 중 하나를 고른다.
+///
+/// ## 왜 danger 가 아닌가
+///
+/// 사용자가 **의도적으로** 고친 것일 수 있다. 빨갛게 띄우면 정당한 수정마다
+/// 오류처럼 보이고, 빨강이 흔해지면 진짜 실패가 안 보인다.
+class OcrConflictNote extends StatelessWidget {
+  const OcrConflictNote({
+    required this.ocrValue,
+    required this.onRevert,
+    super.key,
+  });
+
+  /// OCR 이 읽은 값. **사람이 읽을 형태로 포맷해서** 넘긴다 — 날짜·금액의
+  /// 표기는 화면이 이미 갖고 있다.
+  final String ocrValue;
+
+  /// 칩을 누르면 그 값으로 되돌린다.
+  final VoidCallback onRevert;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '"$ocrValue" 로 인식했습니다. 다시 확인해주세요.',
+            style: Theme.of(context).textTheme.labelSmall
+                ?.copyWith(color: AppColors.noticeFg),
+          ),
+          const SizedBox(height: Gap.sm),
+          SuggestChip(ocrValue, onTap: onRevert),
+        ],
+      ),
     );
   }
 }

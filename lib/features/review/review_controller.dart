@@ -16,6 +16,7 @@ import 'package:bodit_app/features/auth/auth_controller.dart';
 import 'package:bodit_app/features/capture/capture_service.dart';
 import 'package:bodit_app/models/class_choice.dart';
 import 'package:bodit_app/models/entry_draft.dart';
+import 'package:bodit_app/models/ocr_original.dart';
 import 'package:bodit_app/models/purchase_entry.dart';
 import 'package:bodit_app/models/sheet_row.dart';
 import 'package:drift/drift.dart' show Value;
@@ -266,6 +267,12 @@ class ReviewController extends Notifier<ReviewState> {
       final settled = active.length == 1 ? active.single.last4 : null;
       return d.copyWith(
         cardLast4: settled ?? d.cardLast4,
+        // **앱이 좁힌 것은 사용자가 고친 것이 아니다.** 원본을 그대로 두면
+        // "766* 로 인식했습니다" 가 떠서, 앱이 한 일을 사용자 탓으로 돌린다.
+        // 되돌리기 칩도 `766*` 를 다시 넣으려 한다.
+        ocrOriginal: settled == null
+            ? d.ocrOriginal
+            : d.ocrOriginal?.copyWith(cardLast4: settled),
         classCode: only.code,
         className: only.name,
         // 사용자가 나중에 다른 분류로 고치면 이 값과 비교해 알려준다.
@@ -473,6 +480,15 @@ class ReviewController extends Notifier<ReviewState> {
           // 읽을 만한 사진이었으면 할 말이 없다. 멀쩡한 사진에 경고를 띄우면
           // 정작 흔들린 사진의 경고도 같이 무시된다.
           imageProblem: r.quality.readable ? null : r.quality.problem,
+          // **읽은 값을 따로 보관한다.** 사용자가 고치면 draft 쪽은 덮이므로,
+          // 무엇으로 인식했는지 말해주고 되돌리려면 원본이 남아 있어야 한다.
+          ocrOriginal: OcrOriginal(
+            belongDate: r.belongDate,
+            vendor: r.vendor,
+            description: r.description,
+            cardLast4: r.cardLast4,
+            totalAmount: r.totalAmount,
+          ),
         );
         // 여기서 이미 **사진이 쓸 만했는지 안다.** 아래 업체 이력 조회는
         // 네트워크를 한 번 더 타므로, 그걸 기다렸다 보여주면 다시 찍어야
