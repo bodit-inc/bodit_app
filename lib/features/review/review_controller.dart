@@ -147,7 +147,8 @@ class ReviewController extends Notifier<ReviewState> {
     // 반대로 사용자가 46개 목록에서 직접 고른 값은 건드리지 않는다
     // (그쪽은 고를 때 `classReason` 을 지워서 출처를 표시해둔다).
     final fromCard = draft.classReason != null;
-    final d = draft.copyWith(
+    // 아래에서 카드번호 표기를 정규화하며 한 번 더 갈아끼운다.
+    var d = draft.copyWith(
       classReason: null,
       cardNotice: null,
       classSuggestions: const <ClassChoice>[],
@@ -155,10 +156,10 @@ class ReviewController extends Notifier<ReviewState> {
       className: fromCard ? null : draft.className,
     );
 
-    final last4 = (d.cardLast4 ?? '').trim();
+    final raw = (d.cardLast4 ?? '').trim();
     // 카드가 없는 증빙이다(계산서·이체확인증·현금영수증). 할 말이 없다 —
     // 여기서 배너를 띄우면 이체 건마다 쓸데없는 경고가 뜬다.
-    if (last4.isEmpty) return d;
+    if (raw.isEmpty) return d;
 
     if (cards == null || classNames == null) {
       return d.copyWith(
@@ -168,14 +169,37 @@ class ReviewController extends Notifier<ReviewState> {
       );
     }
 
-    final hits = cards.find(last4);
+    // 자리 단위로 뽑는다. `766*`·`*669`·`76*9` 처럼 가려진 자리가 섞여 있어도
+    // **아는 자리만으로 후보를 좁힐 수 있다.** 네 자리를 못 채우거나 아는
+    // 자리가 하나도 없으면 멈춘다 — 그때 추측하면 틀린 카드를 고르고,
+    // 분류가 통째로 틀린 채 append-only 시트로 들어간다.
+    final slots = CardDirectory.slotsOf(raw);
+    if (slots == null || !CardDirectory.hasAnyDigit(slots)) {
+      return d.copyWith(
+        cardNotice:
+            '카드번호 뒤 4자리를 읽지 못했습니다. '
+            '보이는 자리만이라도 직접 입력하거나 분류를 골라주세요.',
+      );
+    }
+
+    // 표기를 하나로 모은다(`766x`·`766#` → `766*`). 이 값이 시트 카드번호
+    // 칸으로 가므로, 같은 카드가 영수증마다 다른 문자로 들어가면 안 된다.
+    final shown = CardDirectory.patternOf(slots);
+    final exact = CardDirectory.isExact(slots);
+    if (shown != raw) d = d.copyWith(cardLast4: shown);
+
+    // 문구의 주어. 완전일치면 "카드 3927", 가려진 자리가 있으면
+    // "766* 에 해당되는 카드" — 사용자가 할 일이 다르다.
+    final subject = exact ? '카드 $shown' : '$shown 에 해당되는 카드';
+
+    final hits = cards.findByPattern(slots);
     final active = hits.where((c) => c.active).toList();
     if (active.isEmpty) {
       return d.copyWith(
         cardNotice: hits.isEmpty
-            ? '카드 $last4 를 카드보유내역에서 찾지 못했습니다. '
+            ? '$subject 를 카드보유내역에서 찾지 못했습니다. '
                   '번호가 맞는지 확인하고 분류를 직접 골라주세요.'
-            : '카드 $last4 는 지금 사용하지 않는 카드로 등록돼 있습니다. '
+            : '$subject 는 지금 사용하지 않는 카드로 등록돼 있습니다. '
                   '분류를 직접 골라주세요.',
       );
     }
@@ -197,30 +221,62 @@ class ReviewController extends Notifier<ReviewState> {
       // 마스터가 낡았다는 뜻이다. 자동으로 채우면 틀린 예산에 잡히므로 멈춘다.
       return d.copyWith(
         classSuggestions: choices,
+        // 여기만 조사가 `의` 라서 문구를 나눈다 — `$subject` 를 그대로 쓰면
+        // "해당되는 카드 의 분류코드" 가 된다.
         cardNotice:
-            '카드 $last4 의 분류코드 ${unresolved.join(', ')} 가 분류 마스터에 없습니다. '
+            '${exact ? '카드 $shown 의' : '$shown 에 해당되는 카드의'} '
+            '분류코드 ${unresolved.join(', ')} 가 분류 마스터에 없습니다. '
             '`_분류마스터` 탭을 확인하고, 지금은 분류를 직접 골라주세요.',
       );
     }
 
     if (choices.length == 1) {
       final only = choices.single;
+      // **카드가 여럿이어도 분류가 하나로 모이면 묻지 않는다.** 우리가 카드
+      // 시트를 읽는 이유는 분류 하나뿐이고, 그 답이 이미 정해졌으면 어느
+      // 카드인지는 물을 필요가 없다.
+      //
+      // 다만 한 장으로 좁혀졌을 때만 **실제 뒤 4자리를 시트에 쓴다.** 여러
+      // 장이 남았으면 어느 번호인지 모르므로 패턴을 그대로 남긴다 —
+      // 모르는 것을 아는 것처럼 적으면 회계 담당자가 카드를 잘못 짚는다.
+      final settled = active.length == 1 ? active.single.last4 : null;
       return d.copyWith(
+        cardLast4: settled ?? d.cardLast4,
         classCode: only.code,
         className: only.name,
         // 근거를 안 보여주면 사용자가 못 믿고 46개 목록을 다시 연다.
-        classReason: '카드 $last4 · ${only.name}',
+        // 추측이 섞였으면 그 사실도 같이 적는다 — 확정 매칭과 같은 모양으로
+        // 보이면 사용자가 검토 없이 지나친다.
+        classReason: exact
+            ? '카드 $shown · ${only.name}'
+            : settled != null
+            ? '카드 $settled · ${only.name} ($shown 로 추정)'
+            : '카드 $shown · ${only.name} (후보 ${active.length}장이 모두 같은 분류)',
       );
     }
 
-    // 뒤 4자리가 겹친다. **조용히 첫 번째를 고르지 않는다** —
+    // 분류가 갈린다. **조용히 첫 번째를 고르지 않는다** —
     // 겹치는 순간부터 절반이 틀린 예산에 잡힌다.
     return d.copyWith(
       classSuggestions: choices,
-      cardNotice:
-          '뒤 4자리가 $last4 인 카드가 ${choices.length}장입니다. '
-          '어느 쪽인지 골라주세요.',
+      cardNotice: exact
+          ? '뒤 4자리가 $shown 인 카드가 ${choices.length}장입니다. '
+                '어느 쪽인지 골라주세요.'
+          : '$shown 에 해당되는 카드 "${_cardList(active)}" 가 있습니다. '
+                '분류에서 직접 선택해주세요.',
     );
+  }
+
+  /// 문구에 쓸 카드 이름. 은행이 비어 있으면 번호만.
+  static String _cardLabel(CardInfo c) =>
+      c.bank.isEmpty ? c.last4 : '${c.bank} ${c.last4}';
+
+  /// 후보를 나열한다. **셋까지만** 적는다 — `7***` 같은 입력이면 스무 장이
+  /// 걸리는데, 다 적으면 배너가 화면을 덮고 아무도 읽지 않는다.
+  static String _cardList(List<CardInfo> cards) {
+    const limit = 3;
+    final head = cards.take(limit).map(_cardLabel).join(', ');
+    return cards.length <= limit ? head : '$head 외 ${cards.length - limit}장';
   }
 
   /// 사용자가 카드 뒤 4자리를 고쳤다. **분류를 다시 정한다.**
@@ -230,7 +286,13 @@ class ReviewController extends Notifier<ReviewState> {
   Future<void> setCardLast4(String raw) async {
     // 사용자가 전체 번호를 붙여넣을 수도 있다. 뒤 4자리만 남긴다 —
     // 앞자리는 저장하지 않는다(ADR: 카드번호는 뒤 4자리만).
-    final last4 = CardDirectory.last4Of(raw) ?? '';
+    //
+    // **가려진 자리를 버리지 않는다.** 예전엔 `last4Of` 로 연속된 숫자 4자리만
+    // 받아서, 사용자가 영수증에 보이는 대로 `766*` 를 쳐도 빈 값이 됐다.
+    final slots = CardDirectory.slotsOf(raw);
+    final last4 = slots == null || !CardDirectory.hasAnyDigit(slots)
+        ? ''
+        : CardDirectory.patternOf(slots);
     update((d) => d.copyWith(cardLast4: last4));
 
     // 아직 못 읽었으면 지금 읽어본다. 사용자 조작 중이지만 동의 화면은

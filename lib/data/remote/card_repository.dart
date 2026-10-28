@@ -113,16 +113,88 @@ class CardDirectory {
   List<CardInfo> findActive(String last4) =>
       find(last4).where((c) => c.active).toList();
 
+  /// 자리별로 대조해 후보를 돌려준다. **미사용 카드도 포함한다** —
+  /// 버리면 "못 찾았다" 와 "지금 안 쓰는 카드다" 를 구분해줄 수 없다.
+  ///
+  /// 순서는 활성 먼저, 그다음 뒤 4자리 오름차순이다. 화면에 "카드 A, 카드 B"
+  /// 로 나열하는 문구가 호출마다 뒤바뀌면 사용자가 다른 결과로 읽는다.
+  List<CardInfo> findByPattern(List<String?> slots) {
+    final out = <CardInfo>[];
+    for (final e in _byLast4.entries) {
+      if (_matches(e.key, slots)) out.addAll(e.value);
+    }
+    out.sort((a, b) {
+      if (a.active != b.active) return a.active ? -1 : 1;
+      return a.last4.compareTo(b.last4);
+    });
+    return out;
+  }
+
+  static bool _matches(String last4, List<String?> slots) {
+    if (last4.length != 4 || slots.length != 4) return false;
+    for (var i = 0; i < 4; i++) {
+      final want = slots[i];
+      if (want != null && last4[i] != want) return false;
+    }
+    return true;
+  }
+
   int get cardCount => _byLast4.values.fold(0, (a, v) => a + v.length);
 
-  /// 마스킹된 카드번호에서 뒤 4자리를 뽑는다.
+  /// 마스킹된 카드번호에서 뒤 4자리를 뽑는다. **뒤 4자리가 온전할 때만** 쓴다.
   ///
   /// 시트 표기는 `5531-46**-****-3927` 인데, 저쪽이 공백이나 구분자를 바꿔도
   /// 버티도록 **맨 뒤 연속된 숫자 4자리**만 본다. 사용자/OCR 이 `3927` 처럼
   /// 네 자리만 줘도 같은 규칙으로 걸린다.
+  ///
+  /// 뒤 4자리 **안에** 마스크가 끼면(`766*`·`*669`·`76*9`) `null` 이다 —
+  /// 그 경우는 [slotsOf] 로 자리별 대조를 한다.
   static String? last4Of(String raw) {
     final m = RegExp(r'(\d{4})\D*$').firstMatch(raw.trim());
     return m?.group(1);
+  }
+
+  /// 구분자. 자리를 맞추려면 **먼저 지워야 한다** — `5531-46**-****-766*` 의
+  /// `-` 와 `*` 는 둘 다 숫자가 아니지만 하나는 구분자고 하나는 가려진 자리다.
+  /// 구분자만 지우고 남은 비숫자를 마스크로 본다.
+  static final _separator = RegExp(r'[-\s·./_]');
+
+  /// 뒤 4자리를 **자리 단위**로 뽑는다. 숫자면 그 숫자, 가려진 자리는 `null`.
+  ///
+  /// 마스크 문자 종류를 열거하지 않는다 — `*`·`x`·`#`·`●` 중 무엇이 올지
+  /// 모르고, 목록에서 빠진 문자가 하나라도 있으면 그 영수증은 또 조회가 안 된다.
+  /// 구분자를 지운 뒤 **숫자가 아닌 것은 전부 가려진 자리**로 본다.
+  ///
+  /// 4칸을 못 채우면 `null` 이다. `66*` 가 뒤 4자리의 `?66*` 인지 `66*?` 인지
+  /// 알 수 없고, 한쪽으로 가정하면 **틀린 카드를 고른다** — 분류가 통째로
+  /// 틀리고 시트는 append-only 라 되돌릴 수 없다.
+  static List<String?>? slotsOf(String raw) {
+    final s = raw.trim().replaceAll(_separator, '');
+    if (s.length < 4) return null;
+    final out = <String?>[];
+    for (final ch in s.substring(s.length - 4).split('')) {
+      out.add(_isDigit(ch) ? ch : null);
+    }
+    return out;
+  }
+
+  /// 자리들을 표기로 되돌린다 — 가려진 자리는 `*`. 저장·문구에 이 형태를 쓴다.
+  ///
+  /// 원문이 `766x` 든 `766#` 든 `766*` 하나로 모은다. 같은 카드가 영수증마다
+  /// 다른 문자로 시트에 들어가면 나중에 사람이 훑을 때 다른 카드로 보인다.
+  static String patternOf(List<String?> slots) =>
+      slots.map((e) => e ?? '*').join();
+
+  /// 네 자리가 전부 숫자인가. 참이면 완전일치 조회와 같다.
+  static bool isExact(List<String?> slots) => slots.every((e) => e != null);
+
+  /// 아는 자리가 하나라도 있는가. 전부 가려졌으면(`****`·`카드없음`)
+  /// 모든 카드가 걸리므로 조회하지 않는다.
+  static bool hasAnyDigit(List<String?> slots) => slots.any((e) => e != null);
+
+  static bool _isDigit(String ch) {
+    final c = ch.codeUnitAt(0);
+    return c >= 0x30 && c <= 0x39;
   }
 
   /// `현재사용여부`. 시트는 지금 `O` 만 쓰지만, 사람이 손으로 적는 칸이라
