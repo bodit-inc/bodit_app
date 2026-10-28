@@ -8,6 +8,7 @@ import 'package:bodit_app/core/utils/korean_amount.dart';
 import 'package:bodit_app/core/widgets/amount_keypad.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/providers.dart';
+import 'package:bodit_app/data/remote/card_repository.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
 import 'package:bodit_app/models/class_choice.dart';
 import 'package:bodit_app/models/entry_draft.dart';
@@ -978,9 +979,31 @@ class _EvidenceTypePickerSheet extends ConsumerWidget {
 class _ClassPickerSheet extends ConsumerWidget {
   const _ClassPickerSheet();
 
+  /// 그 분류로 쓰는 카드 뒷 4자리를 한 줄로.
+  ///
+  /// **셋까지만** 적는다. 한 분류에 카드가 여럿이면 줄이 길어지는데, 번호는
+  /// 영수증과 맞춰보는 용도라 전부 있을 필요가 없다 — `last4OfClass` 가
+  /// 활성 카드를 앞에 세우므로 잘려도 지금 쓰는 카드가 남는다.
+  ///
+  /// 카드가 없으면 null 이다. 빈 문자열을 돌려주면 **없는 것을 있는 것처럼**
+  /// 빈 줄이 생긴다.
+  static String? _cardsOfClass(CardDirectory? cards, int code) {
+    if (cards == null) return null;
+    final last4 = cards.last4OfClass(code);
+    if (last4.isEmpty) return null;
+    const limit = 3;
+    final head = last4.take(limit).join(' · ');
+    return last4.length <= limit
+        ? '카드 $head'
+        : '카드 $head 외 ${last4.length - limit}장';
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final names = ref.watch(classNamesProvider);
+    // **카드를 못 읽어도 분류는 고를 수 있어야 한다.** 번호는 보조 정보이고,
+    // 여기서 로딩·에러를 기다리면 정작 급한 선택이 막힌다.
+    final cards = ref.watch(cardDirectoryProvider).asData?.value;
     final current = ref.watch(reviewControllerProvider).current?.className;
 
     return DraggableScrollableSheet(
@@ -1013,7 +1036,15 @@ class _ClassPickerSheet extends ConsumerWidget {
             selectedLabel: current,
             items: [
               for (final code in codes)
-                PickerItem(label: map[code]!, code: '$code'),
+                PickerItem(
+                  label: map[code]!,
+                  code: '$code',
+                  // **분류는 카드가 정한다.** 번호가 같이 보이면 영수증의
+                  // 번호와 맞춰볼 수 있다 — 여기까지 온 사용자는 카드 조회가
+                  // 실패해서(번호를 못 읽음·시트에 없음·뒤 4자리 겹침)
+                  // 직접 고르는 중이다.
+                  subtitle: _cardsOfClass(cards, code),
+                ),
             ],
             onSelected: (item) {
               ref

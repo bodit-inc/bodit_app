@@ -130,6 +130,29 @@ class CardDirectory {
     return out;
   }
 
+  /// 그 분류로 집행하는 카드들의 **뒤 4자리**.
+  ///
+  /// 분류 선택 목록에서 "이 분류가 어느 카드인가" 를 보여주는 데 쓴다 —
+  /// 분류는 카드가 정하므로, 번호가 같이 보이면 영수증의 번호와 맞춰볼 수 있다.
+  /// 카드를 못 찾았거나 뒤 4자리가 겹쳐 직접 골라야 할 때가 바로 그 순간이다.
+  ///
+  /// `_byLast4` 는 반대 방향 색인이라 순회한다. 카드가 스물한 장이라 싸다.
+  ///
+  /// **미사용 카드도 넣는다.** 몇 달 지난 영수증을 뒤늦게 올리는 일은 흔하고,
+  /// 그때는 미사용 카드가 맞다. 다만 활성을 먼저 세워서, 목록이 잘릴 때
+  /// 지금 쓰는 카드가 남는다.
+  List<String> last4OfClass(int classCode) {
+    final hits = <CardInfo>[];
+    for (final list in _byLast4.values) {
+      hits.addAll(list.where((c) => c.classCode == classCode));
+    }
+    hits.sort((a, b) {
+      if (a.active != b.active) return a.active ? -1 : 1;
+      return a.last4.compareTo(b.last4);
+    });
+    return hits.map((c) => c.last4).toList();
+  }
+
   static bool _matches(String last4, List<String?> slots) {
     if (last4.length != 4 || slots.length != 4) return false;
     for (var i = 0; i < 4; i++) {
