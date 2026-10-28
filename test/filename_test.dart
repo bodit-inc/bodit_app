@@ -80,4 +80,27 @@ void main() {
       }
     });
   });
+
+  group('stripDatePrefix — 목록은 월로 묶여 있다', () {
+    test('여섯 자리 날짜 접두를 뗀다', () {
+      expect(
+        stripDatePrefix('260805_영풍문고_8월 도서_영수증_19,000'),
+        '영풍문고_8월 도서_영수증_19,000',
+      );
+    });
+
+    test('규칙을 안 따르는 이름은 그대로 둔다', () {
+      // 사용자가 검토 화면에서 직접 고칠 수 있다 — 앞을 잘라내면 그 이름이
+      // 사라진다.
+      expect(stripDatePrefix('영풍문고 8월 도서'), '영풍문고 8월 도서');
+      expect(stripDatePrefix('2608_영풍문고'), '2608_영풍문고');
+      expect(stripDatePrefix('26080512_영풍문고'), '26080512_영풍문고');
+      expect(stripDatePrefix('260805영풍문고'), '260805영풍문고');
+      expect(stripDatePrefix(''), '');
+    });
+
+    test('날짜만 있고 뒤가 비어도 깨지지 않는다', () {
+      expect(stripDatePrefix('260805_'), '');
+    });
+  });
 }

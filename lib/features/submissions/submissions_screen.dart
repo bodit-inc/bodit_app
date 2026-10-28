@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
@@ -105,24 +103,87 @@ class _SubmissionsScreenState extends ConsumerState<SubmissionsScreen> {
               Expanded(
                 child: shown.isEmpty
                     ? const Center(child: Text('검색 결과가 없습니다.'))
-                    : ListView(
-                        controller: _scroll,
-                        padding: screenPadding,
+                    // 이동 버튼을 **목록 위**에 올린다. Scaffold 의
+                    // floatingActionButton 으로는 상단 중앙에 둘 수 없고,
+                    // 화면 전체를 덮는 Stack 으로 올리면 검색창을 가린다.
+                    : Stack(
                         children: [
-                          for (final g in groups) ...[
-                            SectionHeader('${g.label} · ${g.rows.length}건'),
-                            AppCard(
-                              children: [
-                                for (final s in g.rows) SubmissionRow(s),
+                          CustomScrollView(
+                            controller: _scroll,
+                            slivers: [
+                              for (final g in groups) ...[
+                                // 묶음 헤더를 스크롤 중에도 붙여둔다.
+                                SliverPersistentHeader(
+                                  pinned: true,
+                                  delegate: _MonthHeaderDelegate(
+                                    '${g.label} · ${g.rows.length}건',
+                                  ),
+                                ),
+                                SliverPadding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    Gap.lg,
+                                    0,
+                                    Gap.lg,
+                                    Gap.lg,
+                                  ),
+                                  sliver: SliverToBoxAdapter(
+                                    child: AppCard(
+                                      children: [
+                                        for (final s in g.rows)
+                                          // 묶음이 연·월을 말하므로 일자만.
+                                          SubmissionRow(s, dayOnly: true),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ],
+                              const SliverPadding(
+                                padding: EdgeInsets.fromLTRB(
+                                  Gap.lg,
+                                  0,
+                                  Gap.lg,
+                                  Gap.xxl,
+                                ),
+                                sliver: SliverToBoxAdapter(
+                                  child: NoteText(
+                                    '목적지가 3곳이라 하나만 실패할 수 있습니다. '
+                                    '실패한 곳만 다시 보내므로 시트에 같은 행이 두 번 들어가지 않습니다.\n'
+                                    '행을 왼쪽으로 밀면 목록에서 지울 수 있습니다 — '
+                                    '이미 올라간 파일과 시트 행은 지워지지 않습니다.',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (list.length >= _jumpButtonsFrom) ...[
+                            Positioned(
+                              top: Gap.sm,
+                              left: 0,
+                              right: 0,
+                              child: Center(
+                                child: FloatingActionButton.small(
+                                  heroTag: 'top',
+                                  tooltip: '맨 위로',
+                                  onPressed: () => _jumpTo(0),
+                                  child: const Icon(Icons.keyboard_arrow_up),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              bottom: Gap.sm,
+                              left: 0,
+                              right: 0,
+                              child: Center(
+                                child: FloatingActionButton.small(
+                                  heroTag: 'bottom',
+                                  tooltip: '맨 아래로',
+                                  onPressed: () =>
+                                      _jumpTo(_scroll.position.maxScrollExtent),
+                                  child: const Icon(Icons.keyboard_arrow_down),
+                                ),
+                              ),
                             ),
                           ],
-                          const NoteText(
-                            '목적지가 3곳이라 하나만 실패할 수 있습니다. '
-                            '실패한 곳만 다시 보내므로 시트에 같은 행이 두 번 들어가지 않습니다.\n'
-                            '행을 왼쪽으로 밀면 목록에서 지울 수 있습니다 — '
-                            '이미 올라간 파일과 시트 행은 지워지지 않습니다.',
-                          ),
                         ],
                       ),
               ),
@@ -130,31 +191,55 @@ class _SubmissionsScreenState extends ConsumerState<SubmissionsScreen> {
           );
         },
       ),
-      floatingActionButton: rows.maybeWhen(
-        data: (list) => list.length < _jumpButtonsFrom
-            ? null
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  FloatingActionButton.small(
-                    heroTag: 'top',
-                    tooltip: '맨 위로',
-                    onPressed: () => _jumpTo(0),
-                    child: const Icon(Icons.keyboard_arrow_up),
-                  ),
-                  const SizedBox(height: Gap.sm),
-                  FloatingActionButton.small(
-                    heroTag: 'bottom',
-                    tooltip: '맨 아래로',
-                    onPressed: () => _jumpTo(_scroll.position.maxScrollExtent),
-                    child: const Icon(Icons.keyboard_arrow_down),
-                  ),
-                ],
-              ),
-        orElse: () => null,
+    );
+  }
+}
+
+/// 월 헤더를 **스크롤 중에도 붙여둔다.**
+///
+/// 월로 묶은 이유가 회계가 일하는 단위가 해당년월이기 때문인데, 스크롤하는
+/// 동안 지금 보는 게 몇 월 건인지 모르면 묶은 의미가 없다.
+///
+/// pinned 헤더가 여럿이면 다음 달 헤더가 앞 것을 밀어낸다 — 그래서 **그 달의
+/// 행이 보이는 동안만** 그 달 헤더가 남는다. 따로 계산할 게 없다.
+class _MonthHeaderDelegate extends SliverPersistentHeaderDelegate {
+  const _MonthHeaderDelegate(this.label);
+
+  final String label;
+
+  /// `SectionHeader` 의 높이(Gap.lg + labelMedium 16px + Gap.sm).
+  ///
+  /// Sliver 는 높이를 **미리** 알아야 해서 재지 못하고 적어둔다. 타이포
+  /// 스케일을 건드리면 여기도 같이 봐야 한다 — 작으면 글자가 잘린다.
+  static const _height = 48.0;
+
+  @override
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    // 배경을 깔지 않으면 카드가 헤더 뒤로 지나가며 글자가 겹쳐 보인다.
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Gap.lg),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: SectionHeader(label),
+        ),
       ),
     );
   }
+
+  @override
+  bool shouldRebuild(_MonthHeaderDelegate old) => old.label != label;
 }
 
 /// 한 달치 묶음.
@@ -173,7 +258,7 @@ class _MonthGroup {
 List<_MonthGroup> _groupByMonth(List<Submission> rows) {
   final buckets = <String, List<Submission>>{};
   for (final r in rows) {
-    final d = _belongDateOf(r) ?? r.createdAt;
+    final d = belongDateOf(r) ?? r.createdAt;
     final key = '${d.year}-${d.month.toString().padLeft(2, '0')}';
     (buckets[key] ??= <Submission>[]).add(r);
   }
@@ -186,20 +271,4 @@ List<_MonthGroup> _groupByMonth(List<Submission> rows) {
         buckets[k]!,
       ),
   ];
-}
-
-/// 큐에 저장된 JSON 에서 소속날짜만 꺼낸다.
-///
-/// `PurchaseEntry` 로 통째로 되살리지 않는 이유: 2차 사업비처럼 **다른 타입**이
-/// 들어와도 `belongDate` 만 있으면 묶을 수 있어야 한다. 타입을 맞춰 되살리면
-/// 종류가 늘어날 때마다 여기도 같이 고쳐야 한다.
-DateTime? _belongDateOf(Submission row) {
-  try {
-    final m = jsonDecode(row.entryJson) as Map<String, dynamic>;
-    final v = m['belongDate'];
-    return v is String ? DateTime.tryParse(v) : null;
-  } on Object {
-    // 묶음이 깨지는 것뿐이라 조용히 넘어간다 — 호출부가 제출일로 떨어뜨린다.
-    return null;
-  }
 }
