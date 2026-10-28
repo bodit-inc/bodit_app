@@ -120,14 +120,16 @@ void main() {
     const master = {3: '법인(신용)', 44: '글로벌팁스(카드)'};
 
     test('카드 시트에 적힌 이름이 아니라 마스터 이름을 쓴다', () {
-      final card = CardDirectory.fromRows([
-        row(_masked, 44, name: '딥테크(카드)'),
-      ]).find('3927').single;
+      final card = CardDirectory.fromRows([row(_masked, 44, name: '딥테크(카드)')])
+          .find('3927')
+          .single;
       expect(resolveClass(card, master)?.name, '글로벌팁스(카드)');
     });
 
     test('마스터에 없는 코드는 null — 이름 없이 코드만 넣지 않는다', () {
-      final card = CardDirectory.fromRows([row(_masked, 99)]).find('3927').single;
+      final card = CardDirectory.fromRows([row(_masked, 99)])
+          .find('3927')
+          .single;
       expect(resolveClass(card, master), isNull);
     });
   });
@@ -214,10 +216,8 @@ void main() {
 
     test('사용자가 직접 고른 분류는 카드가 바뀌어도 안 지운다', () {
       // 46개 목록에서 고르면 classReason 이 없다 — 그게 "내가 골랐다" 는 표시다.
-      final picked = draftWith('3356').copyWith(
-        classCode: 32,
-        className: '수출바우처',
-      );
+      final picked = draftWith('3356')
+          .copyWith(classCode: 32, className: '수출바우처');
       final after = ReviewController.applyCardClass(
         picked.copyWith(cardLast4: '0000'),
         cards,
@@ -251,6 +251,239 @@ void main() {
       // 카드가 채운 값이었으니 카드가 바뀌면 같이 내려가야 한다.
       // 남겨두면 3356 의 분류가 0000 짜리 건에 조용히 붙는다.
       expect(second.classCode, isNull);
+    });
+  });
+
+  group('자리별로 대조하기', () {
+    test('가려진 자리를 null 로, 아는 자리는 그대로 뽑는다', () {
+      expect(CardDirectory.slotsOf('766*'), <String?>['7', '6', '6', null]);
+      expect(CardDirectory.slotsOf('*669'), <String?>[null, '6', '6', '9']);
+      expect(CardDirectory.slotsOf('76*9'), <String?>['7', '6', null, '9']);
+      expect(CardDirectory.slotsOf('7***'), <String?>['7', null, null, null]);
+    });
+
+    test('마스크 문자 종류를 가리지 않는다', () {
+      // `*` 만 받으면 목록에서 빠진 문자가 나오는 순간 또 조회가 안 된다.
+      for (final mask in <String>['*', 'x', 'X', '#', '●', '?']) {
+        expect(CardDirectory.slotsOf('766$mask'), <String?>[
+          '7',
+          '6',
+          '6',
+          null,
+        ], reason: '마스크 "$mask" 를 못 받았다');
+      }
+    });
+
+    test('구분자는 지우고 자리를 맞춘다', () {
+      // `-` 와 `*` 는 둘 다 숫자가 아니지만 하나는 구분자다.
+      expect(CardDirectory.slotsOf('5531-46**-****-766*'), <String?>[
+        '7',
+        '6',
+        '6',
+        null,
+      ]);
+      expect(CardDirectory.slotsOf('5531 46** **** 76*9'), <String?>[
+        '7',
+        '6',
+        null,
+        '9',
+      ]);
+    });
+
+    test('네 자리를 못 채우면 추측하지 않는다', () {
+      // `66*` 가 `?66*` 인지 `66*?` 인지 알 수 없다. 한쪽으로 가정하면
+      // 틀린 카드를 고르고 분류가 통째로 틀린다.
+      expect(CardDirectory.slotsOf('66*'), isNull);
+      expect(CardDirectory.slotsOf('*'), isNull);
+      expect(CardDirectory.slotsOf(''), isNull);
+    });
+
+    test('아는 자리가 하나도 없으면 조회 대상이 아니다', () {
+      final allMasked = CardDirectory.slotsOf('****')!;
+      expect(CardDirectory.hasAnyDigit(allMasked), isFalse);
+      // 네 글자지만 숫자가 없다 — 전부 와일드카드면 모든 카드가 걸린다.
+      final korean = CardDirectory.slotsOf('카드없음')!;
+      expect(CardDirectory.hasAnyDigit(korean), isFalse);
+    });
+
+    test('전부 숫자면 완전일치다', () {
+      final slots = CardDirectory.slotsOf('3927')!;
+      expect(CardDirectory.isExact(slots), isTrue);
+      expect(CardDirectory.hasAnyDigit(slots), isTrue);
+      expect(CardDirectory.isExact(CardDirectory.slotsOf('392*')!), isFalse);
+    });
+
+    test('표기를 하나로 모은다', () {
+      // 같은 카드가 영수증마다 다른 문자로 시트에 들어가면 안 된다.
+      expect(CardDirectory.patternOf(CardDirectory.slotsOf('766x')!), '766*');
+      expect(CardDirectory.patternOf(CardDirectory.slotsOf('766#')!), '766*');
+      expect(CardDirectory.patternOf(CardDirectory.slotsOf('3927')!), '3927');
+    });
+
+    test('후보를 활성 먼저, 번호순으로 돌려준다', () {
+      // 문구가 호출마다 뒤바뀌면 사용자가 다른 결과로 읽는다.
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('5525-76**-****-7663', 44),
+        row('5525-76**-****-7662', 44, active: 'X'),
+        row('5525-76**-****-7661', 44),
+        row('9410-19**-****-3356', 24),
+      ]);
+      final hits = cards.findByPattern(CardDirectory.slotsOf('766*')!);
+      expect(hits.map((c) => c.last4), <String>['7661', '7663', '7662']);
+      expect(hits.last.active, isFalse);
+    });
+
+    test('아는 자리가 하나면 그 자리만 맞는 카드가 다 걸린다', () {
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('5525-76**-****-7001', 44),
+        row('5525-76**-****-7999', 44),
+        row('9410-19**-****-3356', 24),
+      ]);
+      final hits = cards.findByPattern(CardDirectory.slotsOf('7***')!);
+      expect(hits.length, 2);
+      expect(hits.every((c) => c.last4.startsWith('7')), isTrue);
+    });
+  });
+
+  group('가려진 자리로 분류 정하기', () {
+    const master = {3: '법인(신용)', 24: 'CTS(체크)', 44: '글로벌팁스(카드)'};
+
+    EntryDraft draftWith(String? last4) =>
+        EntryDraft(evidencePath: '/tmp/x.jpg', cardLast4: last4);
+
+    test('후보가 한 장이면 실제 뒤 4자리로 바꿔 넣는다', () {
+      // 패턴이 그대로 시트에 들어가면 회계 담당자가 카드를 특정할 수 없다.
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('5525-76**-****-7662', 44),
+        row('9410-19**-****-3356', 24),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('766*'),
+        cards,
+        master,
+      );
+      expect(d.cardLast4, '7662');
+      expect(d.classCode, 44);
+      // 추측이 섞였다는 것이 보여야 한다.
+      expect(d.classReason, contains('766*'));
+      expect(d.classReason, contains('추정'));
+      expect(d.cardNotice, isNull);
+    });
+
+    test('후보가 여럿이어도 분류가 같으면 묻지 않는다', () {
+      // 카드 시트를 읽는 이유는 분류 하나다. 답이 정해졌으면 물을 게 없다.
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('5525-76**-****-7662', 44),
+        row('5525-76**-****-7663', 44),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('766*'),
+        cards,
+        master,
+      );
+      expect(d.classCode, 44);
+      expect(d.cardNotice, isNull);
+      // 어느 카드인지는 모르므로 번호는 패턴을 그대로 남긴다.
+      expect(d.cardLast4, '766*');
+      expect(d.classReason, contains('후보 2장'));
+    });
+
+    test('분류가 갈리면 후보 카드를 보여주고 고르게 한다', () {
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('5525-76**-****-7662', 44),
+        row('9410-76**-****-7663', 24),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('766*'),
+        cards,
+        master,
+      );
+      expect(d.classCode, isNull);
+      expect(d.classSuggestions.length, 2);
+      expect(d.cardNotice, contains('766*'));
+      expect(d.cardNotice, contains('7662'));
+      expect(d.cardNotice, contains('7663'));
+      expect(d.cardNotice, contains('직접 선택'));
+    });
+
+    test('후보가 많으면 셋까지만 적는다', () {
+      // 다 적으면 배너가 화면을 덮고 아무도 읽지 않는다.
+      const wide = {40: '가', 41: '나', 42: '다', 43: '라', 44: '글로벌팁스(카드)'};
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        for (var i = 0; i < 5; i++) row('5525-76**-****-700$i', 40 + i),
+      ]);
+      final d = ReviewController.applyCardClass(draftWith('7***'), cards, wide);
+      // 분류가 다섯으로 갈렸으니 골라야 한다. 카드 이름은 셋까지.
+      expect(d.classCode, isNull);
+      expect(d.cardNotice, contains('외 2장'));
+    });
+
+    test('분류 마스터에 없는 코드면 패턴도 문구에 그대로 쓴다', () {
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('5525-76**-****-7662', 99),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('766*'),
+        cards,
+        master,
+      );
+      // "해당되는 카드 의 분류코드" 처럼 조사가 떠버리지 않아야 한다.
+      expect(d.cardNotice, contains('766* 에 해당되는 카드의 분류코드 99'));
+    });
+
+    test('가려진 자리로도 못 찾으면 그렇게 말한다', () {
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('9410-19**-****-3356', 24),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('766*'),
+        cards,
+        master,
+      );
+      expect(d.cardNotice, contains('766*'));
+      expect(d.cardNotice, contains('찾지 못했습니다'));
+    });
+
+    test('미사용 카드만 걸리면 "없다" 가 아니라 "안 쓴다" 고 말한다', () {
+      // 사용자가 할 일이 다르다 — 번호를 고칠 일인지, 그냥 고르면 되는지.
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('5525-76**-****-7662', 44, active: 'X'),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('766*'),
+        cards,
+        master,
+      );
+      expect(d.cardNotice, contains('사용하지 않는'));
+    });
+
+    test('네 자리를 못 채우거나 아는 자리가 없으면 멈춘다', () {
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('5525-76**-****-7662', 44),
+      ]);
+      for (final raw in <String>['66*', '****', '카드없음']) {
+        final d = ReviewController.applyCardClass(
+          draftWith(raw),
+          cards,
+          master,
+        );
+        expect(d.classCode, isNull, reason: raw);
+        expect(d.cardNotice, contains('읽지 못했습니다'), reason: raw);
+      }
+    });
+
+    test('완전일치는 문구가 예전과 같다', () {
+      // 가려진 자리가 없는 흔한 경우의 말투를 바꾸지 않았다.
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('9410-19**-****-3356', 24),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('3356'),
+        cards,
+        master,
+      );
+      expect(d.classReason, '카드 3356 · CTS(체크)');
+      expect(d.classReason, isNot(contains('추정')));
     });
   });
 }

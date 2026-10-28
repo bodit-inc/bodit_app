@@ -607,8 +607,11 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       context,
       title: '카드 뒤 4자리',
       initial: draft.cardLast4 ?? '',
-      hintText: '예: 3927 · 카드 결제가 아니면 비워둡니다',
-      keyboardType: TextInputType.number,
+      hintText: '예: 3927 · 가려진 자리는 766* 처럼 · 카드 결제가 아니면 비워둡니다',
+      // **숫자 키패드를 쓰지 않는다.** 영수증에 `766*` 처럼 가려진 자리가
+      // 찍혀 있으면 보이는 대로 입력해야 앱이 후보를 좁히는데, 숫자 키패드에는
+      // `*` 가 없어서 사용자가 아예 칠 수 없다.
+      keyboardType: TextInputType.text,
     );
     if (v == null) return;
     await ref.read(reviewControllerProvider.notifier).setCardLast4(v);
