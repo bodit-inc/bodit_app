@@ -82,3 +82,17 @@ String buildEvidenceFilename({
   ];
   return parts.join('_');
 }
+
+/// 파일명에서 날짜 접두(`260805_`)를 뗀다.
+///
+/// 제출 목록이 **월로 묶여** 있어서 행마다 연월을 또 보여줄 이유가 없다.
+/// 묶음 헤더가 `2026년 8월` 을 말하고 행은 일자만 적는다.
+///
+/// 접두가 **여섯 자리 숫자 + `_`** 인 경우에만 뗀다. 규칙은
+/// `소속일자_업체명_내역_증빙자료명_총금액` 이지만 **사용자가 검토 화면에서
+/// 파일명을 직접 고칠 수 있다**(CLAUDE.md). 규칙을 따른다고 가정해 앞을
+/// 잘라내면 사용자가 적은 이름이 사라진다.
+String stripDatePrefix(String filename) {
+  final m = RegExp(r'^\d{6}_').firstMatch(filename);
+  return m == null ? filename : filename.substring(m.end);
+}

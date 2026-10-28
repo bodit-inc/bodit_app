@@ -6,8 +6,10 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:bodit_app/core/theme/tokens.dart';
+import 'package:bodit_app/core/utils/filename.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
 import 'package:bodit_app/data/providers.dart';
@@ -16,6 +18,26 @@ import 'package:bodit_app/router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+/// 큐에 저장된 JSON 에서 **소속날짜**만 꺼낸다.
+///
+/// `PurchaseEntry` 로 통째로 되살리지 않는 이유: 2차 사업비처럼 **다른 타입**이
+/// 들어와도 `belongDate` 만 있으면 쓸 수 있어야 한다. 타입을 맞춰 되살리면
+/// 종류가 늘어날 때마다 여기도 같이 고쳐야 한다.
+///
+/// **행의 일자와 목록의 묶음이 같은 기준을 써야 한다.** 행에는 `5일` 이라고
+/// 적혀 있는데 8월 묶음에 들어가 있으면 사용자는 어느 쪽이 맞는지 모른다.
+/// 그래서 `submissions_screen` 도 이 함수를 쓴다.
+DateTime? belongDateOf(Submission row) {
+  try {
+    final m = jsonDecode(row.entryJson) as Map<String, dynamic>;
+    final v = m['belongDate'];
+    return v is String ? DateTime.tryParse(v) : null;
+  } on Object {
+    // 묶음이 깨지는 것뿐이라 조용히 넘어간다 — 호출부가 제출일로 떨어뜨린다.
+    return null;
+  }
+}
 
 /// 목적지 하나의 상태.
 enum _Leg {
@@ -28,9 +50,19 @@ enum _Leg {
 }
 
 class SubmissionRow extends ConsumerWidget {
-  const SubmissionRow(this.row, {super.key});
+  const SubmissionRow(this.row, {super.key, this.dayOnly = false});
 
   final Submission row;
+
+  /// 날짜를 **일자만** 보여준다.
+  ///
+  /// 월별로 묶인 `내 제출` 목록에서 참이다 — 묶음 헤더가 `2026년 8월` 을
+  /// 말하므로 행에서 또 보여주면 연월이 두 번 찍힌다.
+  ///
+  /// 홈의 전송 대기 큐는 묶음이 없고 **몇 달 지난 영수증이 섞일 수 있다**
+  /// (뒤늦게 올리는 일은 흔하다). 거기서 일자만 적으면 어느 달 건인지 알 수
+  /// 없으므로 월까지 보여준다.
+  final bool dayOnly;
 
   bool get _allDone => row.driveDone && row.sheetsDone && row.slackDone;
   bool get _hasError => row.lastError != null && !_allDone;
@@ -40,6 +72,17 @@ class SubmissionRow extends ConsumerWidget {
   /// Drive 에 이미 올라간 건을 고치면 올라간 파일명과 시트에 들어갈 내용이
   /// 어긋난다. 그래서 진행이 조금이라도 된 건은 잠근다.
   bool get _editable => !row.driveDone && !row.sheetsDone && !row.slackDone;
+
+  /// 행 왼쪽에 적는 날짜. 예전엔 파일명 전체
+  /// (`260805_영풍문고_8월 도서_영수증_19,000`)를 보여줘서 월별 묶음 안에서
+  /// 연월이 두 번 찍혔다.
+  ///
+  /// 기준은 **소속날짜**다 — 목록을 묶는 기준과 같아야 한다. 행에 `5일` 이라고
+  /// 적혀 있는데 8월 묶음에 들어가 있으면 어느 쪽이 맞는지 모른다.
+  String get _date {
+    final d = belongDateOf(row) ?? row.createdAt;
+    return dayOnly ? '${d.day}일' : '${d.month}/${d.day}';
+  }
 
   /// 목적지별 상태. 전송은 Drive → Sheets → Slack 순서라
   /// 앞이 실패하면 뒤는 **실패가 아니라 미시도**다. 그걸 구분해서 보여준다.
@@ -129,8 +172,8 @@ class SubmissionRow extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           LabeledRow(
-            label: '',
-            value: row.filename,
+            label: _date,
+            value: stripDatePrefix(row.filename),
             trailing: StatusPill(label, tone: tone),
             // 오른쪽 알약이 이미 "완료" 라고 말한다. 여기서 또 쓰면 같은 줄에
             // 완료가 두 번 찍힌다 — 실제로 그렇게 보였다.
