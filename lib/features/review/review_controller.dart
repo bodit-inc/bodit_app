@@ -675,8 +675,14 @@ class ReviewController extends Notifier<ReviewState> {
         row.copyWith(
           entryJson: jsonEncode(d.toEntry(createdBy: email).toJson()),
           filename: d.filename,
-          // 다시 보낼 것이므로 지난 실패 사유는 지운다.
+          // 다시 보낼 것이므로 지난 실패 사유는 지운다. **목적지별 사유까지**
+          // 지운다 — 고칠 수 있는 건은 아직 어느 목적지에도 안 나간 건이라
+          // (`SubmissionRow._editable`) 남겨둘 사유가 없다. 남기면 아직
+          // 시도도 안 한 건에 "드라이브 실패" 칩이 붙는다.
           lastError: const Value(null),
+          driveError: const Value(null),
+          sheetsError: const Value(null),
+          slackError: const Value(null),
         ),
       );
       ids.add(editingId);

@@ -3,6 +3,26 @@
 /// scope 는 `drive.file` 뿐이다 — **앱이 만든 파일만** 접근할 수 있다.
 /// 남의 증빙을 읽거나 지우는 게 원천적으로 불가능하다(ADR Decision 5).
 /// 대신 폴더를 검색할 수도 없으므로 **폴더 ID 를 미리 알고 있어야 한다.**
+///
+/// ## 월 폴더를 만들지 않는다 — 증빙은 설정된 폴더 한 곳에 모인다
+///
+/// 예전에는 `[YYYY-MM]` 폴더를 찾아서 없으면 만들었다. 그런데 `drive.file`
+/// 에서 `files.list` 는 **그 계정에서 이 앱이 만든 파일만** 돌려준다.
+/// 다른 사람이 만들어둔 `2026-10` 은 조회에 안 잡히고, 앱은 "없네" 하고 하나
+/// 더 만든다 — 실제로 드라이브에 `2026-10` 이 두 개 생겼다.
+/// 공유 설정으로는 안 풀린다. 사람이 드라이브에서 찾을 수 있는 것과 앱이
+/// API 로 조회할 수 있는 것이 **다른 규칙**이라서, 폴더를 회사 전체에
+/// 공개해도 조회 결과는 그대로다.
+///
+/// 남은 길은 셋이었고(스코프 넓히기 · 월 폴더 ID 를 설정으로 받기 · 월 폴더
+/// 없애기) 세 번째를 골랐다:
+///
+///   - 스코프를 `drive` 로 넓히면 ADR Decision 5 가 무효가 된다 —
+///     앱이 그 사람 드라이브 전체를 보게 된다
+///   - 월 폴더 ID 를 `.env` 로 받으면 매달 재빌드·재배포다
+///   - 폴더가 하나뿐이면 **조회할 일 자체가 없다.** 파일명이
+///     `260805_…` 로 시작해 이름순이 곧 시간순이고, 드라이브 검색창에
+///     `2608` 을 치면 그 달 것만 나온다
 library;
 
 import 'dart:io';
@@ -16,6 +36,8 @@ class DriveRepository {
 
   /// 증빙을 모아두는 공유 드라이브 폴더 ID.
   /// `drive.file` scope 로는 이 폴더를 조회할 수 없으므로 설정값으로 주입한다.
+  ///
+  /// 증빙은 **전부 여기 바로** 들어간다 — 하위 폴더를 만들지 않는다(위 설명).
   final String rootFolderId;
 
   /// 증빙을 올리고 파일 URL 을 돌려준다.
@@ -27,10 +49,8 @@ class DriveRepository {
     required gapis.AuthClient client,
     required File source,
     required String filename,
-    required DateTime belongDate,
   }) async {
     final api = drive.DriveApi(client);
-    final folderId = await _ensureMonthFolder(api, belongDate);
 
     final ext = source.path.contains('.') ? source.path.split('.').last : 'jpg';
     final mime = lookupMimeType(source.path) ?? 'application/octet-stream';
@@ -39,7 +59,7 @@ class DriveRepository {
     final created = await api.files.create(
       drive.File()
         ..name = '$filename.$ext'
-        ..parents = <String>[folderId],
+        ..parents = <String>[rootFolderId],
       uploadMedia: drive.Media(source.openRead(), length, contentType: mime),
       // 공유 드라이브에 쓰려면 반드시 켜야 한다. 안 켜면 404 가 난다.
       supportsAllDrives: true,
@@ -51,37 +71,6 @@ class DriveRepository {
       throw DriveException('업로드는 됐지만 링크를 못 받았습니다 (id=${created.id}).');
     }
     return link;
-  }
-
-  /// `[YYYY-MM]` 폴더를 찾거나 만든다.
-  ///
-  /// `drive.file` scope 로는 **앱이 만든 폴더만** 검색된다. 사람이 Drive 에서
-  /// 직접 만든 같은 이름 폴더는 안 보이므로 앱이 하나 더 만들 수 있다.
-  /// 폴더는 회계 담당자가 먼저 만들어두는 운영이라면, 그 ID 를 설정으로 받는 편이 낫다.
-  Future<String> _ensureMonthFolder(drive.DriveApi api, DateTime d) async {
-    final name = '${d.year}-${d.month.toString().padLeft(2, '0')}';
-    final q =
-        "name = '$name' and '$rootFolderId' in parents "
-        "and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
-
-    final found = await api.files.list(
-      q: q,
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-      $fields: 'files(id)',
-    );
-    final existing = found.files;
-    if (existing != null && existing.isNotEmpty) return existing.first.id!;
-
-    final created = await api.files.create(
-      drive.File()
-        ..name = name
-        ..mimeType = 'application/vnd.google-apps.folder'
-        ..parents = <String>[rootFolderId],
-      supportsAllDrives: true,
-      $fields: 'id',
-    );
-    return created.id!;
   }
 }
 

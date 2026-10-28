@@ -15,6 +15,7 @@ import 'package:bodit_app/core/utils/filename.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
 import 'package:bodit_app/data/providers.dart';
+import 'package:bodit_app/data/send_status.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
 import 'package:bodit_app/router.dart';
 import 'package:flutter/material.dart';
@@ -61,16 +62,6 @@ enum OpenTarget {
   nothing,
 }
 
-/// 목적지 하나의 상태.
-enum _Leg {
-  done('완료'),
-  failed('실패'),
-  pending('대기');
-
-  _Leg(this.label);
-  final String label;
-}
-
 class SubmissionRow extends ConsumerWidget {
   const SubmissionRow(this.row, {super.key, this.dayOnly = false});
 
@@ -87,7 +78,15 @@ class SubmissionRow extends ConsumerWidget {
   final bool dayOnly;
 
   bool get _allDone => row.driveDone && row.sheetsDone && row.slackDone;
-  bool get _hasError => row.lastError != null && !_allDone;
+
+  /// 목적지별 상태. 전송은 Drive → Sheets → Slack 순서지만 **서로 독립이라**
+  /// 앞이 실패해도 뒤는 시도된다 — 그래서 각자의 사유로 칠한다.
+  List<LegStatus> get _legs => legStatusesOf(row);
+
+  /// 실패한 목적지들의 사유 + 목적지를 가리지 않는 사유를 한 덩어리로.
+  String? get _failureDetail => failureDetail(_legs, blocked: row.lastError);
+
+  bool get _hasError => _failureDetail != null && !_allDone;
 
   /// 아직 **어느 목적지에도 안 나간** 건만 고칠 수 있다.
   ///
@@ -104,26 +103,6 @@ class SubmissionRow extends ConsumerWidget {
   String get _date {
     final d = belongDateOf(row) ?? row.createdAt;
     return dayOnly ? '${d.day}일' : '${d.month}/${d.day}';
-  }
-
-  /// 목적지별 상태. 전송은 Drive → Sheets → Slack 순서라
-  /// 앞이 실패하면 뒤는 **실패가 아니라 미시도**다. 그걸 구분해서 보여준다.
-  List<(String, _Leg)> get _legs {
-    var failedAlready = false;
-    (String, _Leg) leg(String name, {required bool done}) {
-      if (done) return (name, _Leg.done);
-      if (_hasError && !failedAlready) {
-        failedAlready = true;
-        return (name, _Leg.failed);
-      }
-      return (name, _Leg.pending);
-    }
-
-    return [
-      leg('드라이브', done: row.driveDone),
-      leg('스프레드시트', done: row.sheetsDone),
-      leg('슬랙', done: row.slackDone),
-    ];
   }
 
   @override
@@ -215,9 +194,7 @@ class SubmissionRow extends ConsumerWidget {
               child: Wrap(
                 spacing: Gap.sm,
                 runSpacing: Gap.xs,
-                children: [
-                  for (final (name, leg) in _legs) _LegChip(name, leg),
-                ],
+                children: [for (final leg in _legs) _LegChip(leg)],
               ),
             ),
           if (_hasError)
@@ -225,7 +202,7 @@ class SubmissionRow extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.md),
               child: ErrorDisclosure(
                 '실패 사유 보기',
-                detail: row.lastError!,
+                detail: _failureDetail!,
                 align: MainAxisAlignment.start,
               ),
             ),
@@ -314,17 +291,16 @@ class SubmissionRow extends ConsumerWidget {
 
 /// 목적지 하나를 나타내는 작은 칩.
 class _LegChip extends StatelessWidget {
-  const _LegChip(this.name, this.leg);
+  const _LegChip(this.leg);
 
-  final String name;
-  final _Leg leg;
+  final LegStatus leg;
 
   @override
   Widget build(BuildContext context) {
-    final (fg, icon) = switch (leg) {
-      _Leg.done => (AppColors.success, Icons.check_circle),
-      _Leg.failed => (AppColors.danger, Icons.cancel),
-      _Leg.pending => (AppColors.neutralFg, Icons.schedule),
+    final (fg, icon) = switch (leg.state) {
+      LegState.done => (AppColors.success, Icons.check_circle),
+      LegState.failed => (AppColors.danger, Icons.cancel),
+      LegState.pending => (AppColors.neutralFg, Icons.schedule),
     };
 
     return Container(
@@ -339,7 +315,7 @@ class _LegChip extends StatelessWidget {
           Icon(icon, size: 13, color: fg),
           const SizedBox(width: 4),
           Text(
-            '$name ${leg.label}',
+            '${leg.destination.label} ${leg.state.label}',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg),
           ),
         ],

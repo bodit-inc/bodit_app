@@ -169,10 +169,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!mounted) return;
 
       final failed = results.where((r) => !r.allDone).toList();
+      // 스낵바에는 **어디가** 실패했는지만 적는다. 목적지가 독립이라 한 건에서
+      // 둘이 동시에 실패할 수 있는데, 예외 원문을 그대로 깔면 접을 수 없는
+      // 알림이 화면 절반을 덮는다. 원문은 아래 목록의 [실패 사유 보기] 가 맡는다.
+      final where = failed.isEmpty ? null : failed.first.failedWhere;
       final message = failed.isEmpty
           ? '${results.length}건을 모두 보냈습니다.'
           : '${results.length - failed.length}건 성공, '
-                '${failed.length}건 실패 — ${failed.first.error}';
+                '${failed.length}건 실패'
+                '${where == null ? '' : ' ($where)'} — 목록에서 사유를 볼 수 있습니다.';
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
     } finally {
