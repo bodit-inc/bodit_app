@@ -127,7 +127,6 @@ class SubmissionSender {
           currency: entry.currency,
           className: entry.className,
           submittedBy: entry.createdBy,
-          driveUrl: driveUrl,
         );
         current = current.copyWith(
           slackDone: true,

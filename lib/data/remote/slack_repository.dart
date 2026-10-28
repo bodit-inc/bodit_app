@@ -14,14 +14,14 @@
 ///
 /// ## 대안이 남아 있다
 ///
-/// Incoming Webhook 으로 **텍스트 + Drive 링크**만 보내면 이 3단계가 통째로 사라지고
-/// Bot 토큰도 필요 없다. 회계 담당자 답변을 받으면 다시 재본다.
+/// Incoming Webhook 으로 텍스트만 보내면 이 3단계가 통째로 사라진다. 다만
+/// **제출자 멘션 때문에 Bot 토큰은 여전히 필요하다** — 이메일로 user id 를
+/// 찾는 데 `users.lookupByEmail` 을 쓴다. 회계 담당자 답변을 받으면 다시 재본다.
 library;
 
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:bodit_app/core/links.dart';
 import 'package:bodit_app/core/utils/currency.dart';
 import 'package:bodit_app/core/utils/filename.dart';
 import 'package:flutter/foundation.dart';
@@ -31,17 +31,19 @@ class SlackRepository {
   SlackRepository({
     required String botToken,
     required this.channelId,
-    required this.spreadsheetId,
     http.Client? client,
   }) : _token = botToken,
        _client = client ?? http.Client();
 
   final String _token;
   final String channelId;
-
-  /// 메시지에 "스프레드시트에서보기" 링크를 넣으려면 필요하다.
-  final String spreadsheetId;
   final http.Client _client;
+
+  /// 이메일 → Slack user id. **앱 세션 동안 들고 있는다.**
+  ///
+  /// 같은 사람이 계속 올리는데 제출마다 조회할 이유가 없다. provider 가
+  /// 싱글톤이라 앱이 떠 있는 동안 유지된다.
+  final _userIds = <String, String>{};
 
   Map<String, String> get _auth => <String, String>{
     'Authorization': 'Bearer $_token',
@@ -61,7 +63,6 @@ class SlackRepository {
     required String currency,
     required String className,
     required String submittedBy,
-    required String driveUrl,
   }) async {
     final comment = buildComment(
       belongDate: belongDate,
@@ -70,8 +71,7 @@ class SlackRepository {
       totalAmount: totalAmount,
       currency: currency,
       className: className,
-      submittedBy: submittedBy,
-      driveUrl: driveUrl,
+      submittedBy: await mentionFor(submittedBy),
     );
 
     final length = await image.length();
@@ -143,15 +143,20 @@ class SlackRepository {
 
   /// 채널에 붙는 메시지.
   ///
-  /// 한 줄로 요약하고 링크는 아래에 둔다 — `#purchase` 는 흘러가는 채널이라
+  /// 한 줄로 요약하고 제출자를 아래에 둔다 — `#purchase` 는 흘러가는 채널이라
   /// 스크롤하면서 훑을 수 있어야 한다. 사람이 손으로 던지던 시절의 형태에 맞춘다.
   ///
   /// ```text
   /// 260910 / 드림디포(에이스) / 뽁뽁이 / 8,000원 / 법인(이체)
-  /// james@bodit.co
-  /// 드라이브에서보기
-  /// 스프레드시트에서보기
+  /// <@U12345>
   /// ```
+  ///
+  /// ## 링크를 넣지 않는다
+  ///
+  /// 예전엔 "드라이브에서보기"·"스프레드시트에서보기" 두 줄이 붙었다.
+  /// 증빙은 **메시지에 사진으로 붙어 있어** 드라이브 링크가 겹쳤고,
+  /// 시트는 홈 화면에 같은 링크가 있다. 흘러가는 채널에서 줄이 짧은 쪽이
+  /// 훑기 쉽다.
   @visibleForTesting
   String buildComment({
     required DateTime belongDate,
@@ -161,7 +166,6 @@ class SlackRepository {
     required String currency,
     required String className,
     required String submittedBy,
-    required String driveUrl,
   }) {
     return [
       [
@@ -172,10 +176,49 @@ class SlackRepository {
         className,
       ].join(' / '),
       submittedBy,
-      // Slack 링크 문법은 <url|보일 글자> 다.
-      '<$driveUrl|드라이브에서보기>',
-      '<${spreadsheetUrl(spreadsheetId)}|스프레드시트에서보기>',
     ].join('\n');
+  }
+
+  /// 이메일로 Slack 사용자를 찾아 **멘션 문자열**을 만든다.
+  ///
+  /// 멘션이면 그 사람에게 알림이 가고 채널에서 눌러 프로필로 갈 수 있다.
+  /// 이메일 글자만 적혀 있을 때는 둘 다 안 된다.
+  ///
+  /// ## 못 찾으면 이메일을 그대로 돌려준다
+  ///
+  /// Slack 계정이 없을 수도 있고, **Google 로그인 이메일과 Slack 이메일이
+  /// 다를 수도 있다**(둘 다 `@bodit.co` 라도 보장은 없다). 그때 제출자 줄이
+  /// 비면 누가 올렸는지 모른다.
+  ///
+  /// ## 실패가 게시를 막지 않는다
+  ///
+  /// 멘션은 부가 정보다. 이것 때문에 전송을 실패로 만들면 재시도에서
+  /// **사진이 두 번 올라간다** — `files.info` 와 같은 이유다.
+  @visibleForTesting
+  Future<String> mentionFor(String email) async {
+    if (email.isEmpty) return email;
+    final cached = _userIds[email];
+    if (cached != null) return '<@$cached>';
+    try {
+      final res = await _client.post(
+        Uri.parse('https://slack.com/api/users.lookupByEmail'),
+        headers: <String, String>{
+          ..._auth,
+          'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+        },
+        body: <String, String>{'email': email},
+      );
+      final r = _decode(res, 'users.lookupByEmail');
+      final user = r['user'];
+      if (user is Map && user['id'] is String) {
+        final id = user['id'] as String;
+        _userIds[email] = id;
+        return '<@$id>';
+      }
+    } on Object catch (e) {
+      debugPrint('Slack 사용자를 찾지 못했다 (이메일을 그대로 적는다): $e');
+    }
+    return email;
   }
 
   /// Slack 은 실패해도 **HTTP 200** 을 준다. 본문의 `ok` 를 봐야 한다.

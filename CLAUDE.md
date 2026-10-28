@@ -40,7 +40,11 @@
 - Drive scope 는 **`drive.file`** 만. 넓히지 않는다.
 - **클라이언트에 자격증명이 2개 있다** — 알고 감수한 결정이다(ADR).
   - Anthropic 키: **용도는 OCR 하나뿐.** 콘솔 지출 한도 없이 발급하지 않는다
-  - Slack Bot 토큰: scope 는 `chat:write`, `files:write` 만. 넓히지 않는다
+  - Slack Bot 토큰: scope 는 `chat:write`, `files:write`, `users:read.email`
+    **셋만.** 더 넓히지 않는다. `users:read.email` 은 **제출자 멘션 하나** 때문에
+    있다 — 이메일로 user id 를 찾아야 `<@U123>` 을 적을 수 있고, 그래야 올린
+    사람에게 알림이 간다. 읽기 전용이지만 **워크스페이스 전원의 이메일을
+    조회할 수 있다**는 뜻이므로, 멘션을 포기하면 다시 둘로 줄인다
 - 전 직원이 마스터 시트 편집 권한을 갖는 것은 감수한다 — **주기적 백업이 그 대가**다.
 - 카드번호는 **뒤 4자리만** 저장한다. OCR 결과의 전체 번호는 즉시 버린다.
 - 시크릿은 `.gitignore` 의 목록을 따른다. `secrets.dart`·`.env` 커밋 금지.
