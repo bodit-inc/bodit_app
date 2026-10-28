@@ -15,6 +15,11 @@ analyzer:
   errors:
     # 생성 코드가 아직 없을 때 IDE 가 빨개지는 걸 막는다 (build_runner 전)
     uri_has_not_been_generated: ignore
+    # 위 `plugins: custom_lint` 가 구 플러그인 방식이라 Dart 가 경고를 낸다.
+    # `flutter analyze` 는 warning 에도 exit 1 을 내므로 끄지 않으면 CI 가
+    # 코드와 무관하게 늘 빨갛다 — 그러면 빨간 CI 가 의미를 잃는다.
+    # custom_lint 가 새 플러그인 방식으로 옮겨가면 이 줄을 지운다.
+    analysis_options_deprecated_plugins: ignore
 
 linter:
   rules:

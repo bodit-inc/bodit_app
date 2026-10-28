@@ -1,0 +1,59 @@
+# analyze + test 를 자동으로 돌린다.
+#
+# ## 왜 필요한가
+#
+# `test/architecture_test.dart` 가 이 프로젝트의 규약 집행 장치다 — 화면에서
+# `showDialog`·`TextField`·`styleFrom` 을 직접 쓰는 것, `fontSize:` 를 직접
+# 적는 것을 막는다. 그런데 **사람이 로컬에서 안 돌리면 아무 일도 일어나지 않는다.**
+# 규약을 깨는 커밋이 그대로 들어가고, 나중에 발견하면 되돌릴 양이 커진다.
+#
+# 테스트가 7개뿐이라 매 push 에 돌려도 싸다.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# 공개 레포다. 읽기만 필요하므로 토큰 권한을 좁힌다.
+permissions:
+  contents: read
+
+# 같은 브랜치에 연달아 push 하면 앞선 실행을 버린다 — 마지막 것만 보면 된다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # .fvmrc 의 핀과 같은 버전이어야 한다. 한쪽만 올리면 로컬은 통과하는데
+      # CI 만 깨지는(또는 그 반대) 상태가 된다.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # 생성 코드를 커밋하지 않으므로 CI 에서 만들어야 한다. 그런데 envied 가
+      # `.env` 를 요구한다 — 없으면 build_runner 가 실패하고 테스트까지 못 간다.
+      #
+      # **실제 값을 CI 에 넣지 않는다.** analyze·test 는 외부 API 를 호출하지
+      # 않으므로 더미로 충분하고, 공개 레포에 비밀을 끌어들일 이유가 없다.
+      # `.env.example` 의 빈 값(`KEY=`)에만 더미를 붙인다 — 주석 줄은 `=` 로
+      # 끝나지 않아 그대로 지나간다.
+      - name: .env 를 더미 값으로 채운다
+        run: sed 's/=$/=ci-dummy/' .env.example > .env
+
+      - name: 생성 코드 만들기 (envied · freezed · drift · riverpod)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - run: flutter analyze
+
+      - run: flutter test
