@@ -53,6 +53,7 @@ envied 가 `.env` 를 build_runner 그래프 밖에서 읽기 때문에 생기�
 | `ANTHROPIC_API_KEY` | Anthropic 콘솔 | **용도는 OCR 하나뿐.** 지출 한도 없이 발급하지 않는다 (#4) |
 | `SLACK_BOT_TOKEN` | Slack 앱 | scope 는 `chat:write` · `files:write` 만 (#5) — 게시 방식이 #1 에서 갈린다 |
 | `SLACK_CHANNEL_ID` | 게시할 채널 | 사람이 손으로 증빙을 던지던 그 채널 |
+| `SLACK_USER_IDS` | 사내 Slack 매핑 페이지 | `email:ID` 를 쉼표로. 제출자 멘션용 — **명단이 바뀌면 고치고 build_runner 를 다시 돌린다** |
 | `SPREADSHEET_ID` | 매입내역 스프레드시트 | 회계 담당자가 정산할 때 읽는 원천. 앱은 **append 만** 한다 |
 | `CARD_SHEET_ID` | 카드보유내역 스프레드시트 | **매입내역과 다른 파일이다.** 운영팀 관리 · 우리는 보기 전용 |
 | `DRIVE_FOLDER_ID` | 증빙 공유 드라이브 폴더 | `drive.file` scope 로는 폴더를 검색할 수 없어 ID 를 박는다 (#6) |

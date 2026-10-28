@@ -14,9 +14,9 @@
 ///
 /// ## 대안이 남아 있다
 ///
-/// Incoming Webhook 으로 텍스트만 보내면 이 3단계가 통째로 사라진다. 다만
-/// **제출자 멘션 때문에 Bot 토큰은 여전히 필요하다** — 이메일로 user id 를
-/// 찾는 데 `users.lookupByEmail` 을 쓴다. 회계 담당자 답변을 받으면 다시 재본다.
+/// Incoming Webhook 으로 텍스트만 보내면 이 3단계가 통째로 사라진다.
+/// 멘션은 설정에 박힌 매핑으로 만들기 때문에 webhook 으로도 그대로 된다.
+/// 회계 담당자 답변을 받으면 다시 재본다.
 library;
 
 import 'dart:convert';
@@ -31,19 +31,18 @@ class SlackRepository {
   SlackRepository({
     required String botToken,
     required this.channelId,
+    String userIds = '',
     http.Client? client,
   }) : _token = botToken,
+       _userIds = parseUserIds(userIds),
        _client = client ?? http.Client();
 
   final String _token;
   final String channelId;
   final http.Client _client;
 
-  /// 이메일 → Slack user id. **앱 세션 동안 들고 있는다.**
-  ///
-  /// 같은 사람이 계속 올리는데 제출마다 조회할 이유가 없다. provider 가
-  /// 싱글톤이라 앱이 떠 있는 동안 유지된다.
-  final _userIds = <String, String>{};
+  /// 이메일 → Slack user id. 설정에서 통째로 받는다(`Config.slackUserIds`).
+  final Map<String, String> _userIds;
 
   Map<String, String> get _auth => <String, String>{
     'Authorization': 'Bearer $_token',
@@ -71,7 +70,7 @@ class SlackRepository {
       totalAmount: totalAmount,
       currency: currency,
       className: className,
-      submittedBy: await mentionFor(submittedBy),
+      submittedBy: mentionFor(submittedBy),
     );
 
     final length = await image.length();
@@ -179,46 +178,48 @@ class SlackRepository {
     ].join('\n');
   }
 
-  /// 이메일로 Slack 사용자를 찾아 **멘션 문자열**을 만든다.
+  /// 이메일로 **멘션 문자열**을 만든다.
   ///
   /// 멘션이면 그 사람에게 알림이 가고 채널에서 눌러 프로필로 갈 수 있다.
   /// 이메일 글자만 적혀 있을 때는 둘 다 안 된다.
   ///
+  /// ## 왜 `users.lookupByEmail` 을 쓰지 않나
+  ///
+  /// 그 API 는 **Slack 계정에 적힌 이메일**로만 찾는다. 회사 이메일과 다른
+  /// 사람이 실제로 있다 — 개인 Gmail 로 가입한 경우다. 그 사람은 조회로는
+  /// 영원히 못 찾고 이메일 글자로 떨어진다.
+  ///
+  /// 사내 매핑은 **사람이 연결해둔 것**이라 그 경우를 덮는다. 덤으로
+  /// `users:read.email` scope 와 제출마다 나가던 호출이 없어진다.
+  ///
   /// ## 못 찾으면 이메일을 그대로 돌려준다
   ///
-  /// Slack 계정이 없을 수도 있고, **Google 로그인 이메일과 Slack 이메일이
-  /// 다를 수도 있다**(둘 다 `@bodit.co` 라도 보장은 없다). 그때 제출자 줄이
-  /// 비면 누가 올렸는지 모른다.
-  ///
-  /// ## 실패가 게시를 막지 않는다
-  ///
-  /// 멘션은 부가 정보다. 이것 때문에 전송을 실패로 만들면 재시도에서
-  /// **사진이 두 번 올라간다** — `files.info` 와 같은 이유다.
+  /// Slack 계정이 아예 없는 사람이 있고(매핑에도 없다), 입사자가 매핑에
+  /// 추가되기 전일 수도 있다. 그때 제출자 줄이 비면 누가 올렸는지 모른다.
   @visibleForTesting
-  Future<String> mentionFor(String email) async {
-    if (email.isEmpty) return email;
-    final cached = _userIds[email];
-    if (cached != null) return '<@$cached>';
-    try {
-      final res = await _client.post(
-        Uri.parse('https://slack.com/api/users.lookupByEmail'),
-        headers: <String, String>{
-          ..._auth,
-          'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
-        },
-        body: <String, String>{'email': email},
-      );
-      final r = _decode(res, 'users.lookupByEmail');
-      final user = r['user'];
-      if (user is Map && user['id'] is String) {
-        final id = user['id'] as String;
-        _userIds[email] = id;
-        return '<@$id>';
-      }
-    } on Object catch (e) {
-      debugPrint('Slack 사용자를 찾지 못했다 (이메일을 그대로 적는다): $e');
+  String mentionFor(String email) {
+    // 이메일은 대소문자를 가리지 않는다. 매핑 쪽 표기가 달라도 찾아야 한다.
+    final id = _userIds[email.trim().toLowerCase()];
+    return id == null ? email : '<@$id>';
+  }
+
+  /// `email:ID` 를 쉼표로 이은 문자열을 맵으로 바꾼다.
+  ///
+  /// 형식이 깨진 조각은 **조용히 건너뛴다.** 한 사람의 표기가 틀렸다고
+  /// 나머지 열세 명의 멘션까지 죽을 이유가 없다 — 그쪽은 이메일 글자로
+  /// 떨어질 뿐이다.
+  @visibleForTesting
+  static Map<String, String> parseUserIds(String raw) {
+    final out = <String, String>{};
+    for (final piece in raw.split(',')) {
+      final i = piece.indexOf(':');
+      if (i <= 0) continue;
+      final email = piece.substring(0, i).trim().toLowerCase();
+      final id = piece.substring(i + 1).trim();
+      if (email.isEmpty || id.isEmpty) continue;
+      out[email] = id;
     }
-    return email;
+    return out;
   }
 
   /// Slack 은 실패해도 **HTTP 200** 을 준다. 본문의 `ok` 를 봐야 한다.

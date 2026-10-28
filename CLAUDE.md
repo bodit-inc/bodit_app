@@ -40,21 +40,17 @@
 - Drive scope 는 **`drive.file`** 만. 넓히지 않는다.
 - **클라이언트에 자격증명이 2개 있다** — 알고 감수한 결정이다(ADR).
   - Anthropic 키: **용도는 OCR 하나뿐.** 콘솔 지출 한도 없이 발급하지 않는다
-  - Slack Bot 토큰: scope 는 **넷만.** 더 넓히지 않는다.
+  - Slack Bot 토큰: scope 는 **셋만.** 더 넓히지 않는다.
     - `chat:write` · `files:write` — 게시
-    - `users:read.email` — **제출자 멘션.** 이메일로 user id 를 찾아야
-      (`users.lookupByEmail`) `<@U123>` 을 적을 수 있고, 그래야 올린 사람에게
-      알림이 간다. **대안이 없다** — 멘션은 user id 가 필수다
     - `files:read` — **제출 목록 탭 → 그 메시지로.** 파일 permalink 를 받는
       데 쓴다(`files.info`). `files.completeUploadExternal` 응답에는 ts 가 없다
 
-    뒤 둘은 **읽기 전용이지만 범위가 워크스페이스 전체**다 — 전원의 이메일,
-    전원이 올린 파일. 클라이언트에 심는 토큰이라 알고 넓힌 것이고, 기능을
-    포기하면 각각 뺄 수 있다(멘션 → 이메일 글자, permalink → 채널 열기 폴백).
+    `users:read.email` 은 **뺐다.** 제출자 멘션을 API 조회가 아니라 `.env` 의
+    `SLACK_USER_IDS` 매핑으로 만든다 — 그 API 는 Slack 계정에 적힌 이메일로만
+    찾는데 **회사 이메일과 다른 사람이 실제로 있다**(개인 Gmail 로 가입).
+    매핑은 사람이 연결해둔 것이라 그 경우를 덮고, 덤으로 워크스페이스 전원의
+    이메일을 조회할 수 있는 권한이 사라진다.
 
-    Slack 설정 UI 에서 `users:read.email` 을 고르면 `users:read` 가 **종속으로
-    같이 붙을 수 있다.** 그건 Slack 이 요구하는 것이라 그대로 두되, 그 외에는
-    늘리지 않는다
 - 전 직원이 마스터 시트 편집 권한을 갖는 것은 감수한다 — **주기적 백업이 그 대가**다.
 - 카드번호는 **뒤 4자리만** 저장한다. OCR 결과의 전체 번호는 즉시 버린다.
 - 시크릿은 `.gitignore` 의 목록을 따른다. `secrets.dart`·`.env` 커밋 금지.
