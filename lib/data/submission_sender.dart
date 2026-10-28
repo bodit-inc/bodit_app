@@ -117,7 +117,7 @@ class SubmissionSender {
 
       // ── 3. Slack ────────────────────────────────────────────────
       if (!current.slackDone) {
-        await slack.postEvidence(
+        final slackUrl = await slack.postEvidence(
           image: file,
           filename: current.filename,
           belongDate: entry.belongDate,
@@ -131,6 +131,8 @@ class SubmissionSender {
         );
         current = current.copyWith(
           slackDone: true,
+          // 목록에서 탭하면 이 링크로 간다. null 이면 화면이 채널까지만 보낸다.
+          slackUrl: Value(slackUrl),
           lastError: const Value(null),
         );
         await db.updateRow(current);
