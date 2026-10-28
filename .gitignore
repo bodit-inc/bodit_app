@@ -23,6 +23,10 @@ pubspec.lock
 # 로컬 비밀 — 절대 커밋 금지 (§ CLAUDE.md 보안)
 .env
 .env.*
+# .env.example 은 값이 비어 있는 키 목록이라 공유해야 한다. 위 `.env.*` 가
+# 이것까지 잡아서 레포에 없었고, README 가 안내하는 `cp .env.example .env` 가
+# 받는 사람 쪽에서 성립하지 않았다(CI 도 같은 이유로 깨졌다).
+!.env.example
 **/secrets.dart
 **/google-services.json
 **/GoogleService-Info.plist
