@@ -707,15 +707,28 @@ class ReviewController extends Notifier<ReviewState> {
     var sent = 0;
     String? firstError;
 
-    for (final id in ids) {
-      final row = await db.byId(id);
-      if (row == null) continue;
-      final outcome = await sender.sendOne(row);
-      if (outcome.allDone) {
-        sent++;
-      } else {
-        firstError ??= outcome.error;
+    try {
+      for (final id in ids) {
+        final row = await db.byId(id);
+        if (row == null) continue;
+        final outcome = await sender.sendOne(row);
+        if (outcome.allDone) {
+          sent++;
+        } else {
+          firstError ??= outcome.error;
+        }
       }
+    } on Object {
+      // **던지더라도 화면 잠금은 반드시 푼다.**
+      //
+      // 제출이 시작되면 화면이 잠긴다(`AbsorbPointer`) — 전송 중에 값을
+      // 고치면 큐에 들어간 내용과 화면이 어긋나기 때문이다. 그런데 여기서
+      // 예외가 나면 `isSubmitting` 이 true 인 채로 남아 **화면이 영영
+      // 잠긴다.** 제출 버튼도 스피너로 바뀐 채 돌아오지 않는다.
+      //
+      // 화면은 예외를 받아 사유를 보여주므로, 여기서는 잠금만 풀고 다시 던진다.
+      state = state.copyWith(isSubmitting: false);
+      rethrow;
     }
 
     state = const ReviewState();
