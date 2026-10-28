@@ -48,7 +48,10 @@ class SlackRepository {
   };
 
   /// 증빙사진 + 매입 내용을 채널에 올린다.
-  Future<void> postEvidence({
+  ///
+  /// 올라간 파일의 **permalink** 를 돌려준다. 못 받으면 `null` —
+  /// 그래도 게시는 성공이다(아래 주석 참조).
+  Future<String?> postEvidence({
     required File image,
     required String filename,
     required DateTime belongDate,
@@ -110,6 +113,32 @@ class SlackRepository {
       }),
     );
     _decode(step3, 'files.completeUploadExternal');
+
+    // ── 링크 받기 ─────────────────────────────────────────────────
+    //
+    // `files.completeUploadExternal` 응답에는 **메시지 ts 가 없다.** 파일
+    // permalink 를 열면 Slack 이 그 파일과 붙은 메시지를 같이 보여주므로
+    // 그걸로 충분하다 — ts 로 메시지 permalink 를 만들려면 `shares` 를 읽고
+    // `chat.getPermalink` 를 또 불러야 해서 호출이 두 번 늘어난다.
+    //
+    // **여기서 던지지 않는다.** 파일은 이미 채널에 올라갔다. 링크를 못 받은
+    // 것 때문에 전송을 실패로 만들면 재시도에서 **사진이 두 번 올라간다.**
+    try {
+      final info = await _client.post(
+        Uri.parse('https://slack.com/api/files.info'),
+        headers: <String, String>{
+          ..._auth,
+          'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+        },
+        body: <String, String>{'file': fileId},
+      );
+      final r = _decode(info, 'files.info');
+      final f = r['file'];
+      if (f is Map && f['permalink'] is String) return f['permalink'] as String;
+    } on Object catch (e) {
+      debugPrint('Slack 파일 링크를 받지 못했다 (게시는 성공): $e');
+    }
+    return null;
   }
 
   /// 채널에 붙는 메시지.

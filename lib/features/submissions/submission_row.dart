@@ -8,6 +8,8 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:bodit_app/core/config.dart';
+import 'package:bodit_app/core/links.dart';
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/utils/filename.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
@@ -18,6 +20,7 @@ import 'package:bodit_app/router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// 큐에 저장된 JSON 에서 **소속날짜**만 꺼낸다.
 ///
@@ -37,6 +40,25 @@ DateTime? belongDateOf(Submission row) {
     // 묶음이 깨지는 것뿐이라 조용히 넘어간다 — 호출부가 제출일로 떨어뜨린다.
     return null;
   }
+}
+
+/// 행을 탭했을 때 갈 곳.
+///
+/// **순서가 규칙이다.** 전송이 어디까지 갔는지에 따라 갈 수 있는 곳이 다르고,
+/// 아무 일도 안 하는 대신 왜 못 가는지 말해야 한다.
+enum OpenTarget {
+  /// Slack 에 올라간 그 파일(과 붙은 메시지).
+  slackMessage,
+
+  /// 올라갔는데 링크가 없다 — `slackUrl` 컬럼이 생기기 전에 보낸 건이다.
+  /// 채널까지는 보낼 수 있다.
+  slackChannel,
+
+  /// Slack 에는 아직 없고 Drive 에는 있다. "무엇을 올렸나" 는 확인할 수 있다.
+  drive,
+
+  /// 아무 데도 안 나갔다.
+  nothing,
 }
 
 /// 목적지 하나의 상태.
@@ -177,12 +199,14 @@ class SubmissionRow extends ConsumerWidget {
             trailing: StatusPill(label, tone: tone),
             // 오른쪽 알약이 이미 "완료" 라고 말한다. 여기서 또 쓰면 같은 줄에
             // 완료가 두 번 찍힌다 — 실제로 그렇게 보였다.
-            subtitle: _allDone
-                ? _time(row.createdAt)
-                : _editable
+            subtitle: _editable
                 ? '눌러서 내용을 고칠 수 있습니다'
+                : _allDone
+                ? '${_time(row.createdAt)} · 눌러서 Slack 에서 보기'
                 : null,
-            onTap: _editable ? () => _edit(context, ref) : null,
+            // 고칠 수 있는 건은 고치는 쪽이 먼저다. 이미 나간 건은 고칠 수
+            // 없으니(Drive 파일명과 시트 내용이 어긋난다) 원본으로 보낸다.
+            onTap: _editable ? () => _edit(context, ref) : () => _open(context),
           ),
           // 완료된 건은 목적지를 나열할 이유가 없다.
           if (!_allDone)
@@ -208,6 +232,74 @@ class SubmissionRow extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// 탭했을 때 갈 곳을 정한다. **순수 함수다** — 네 갈래가 조용히 뒤바뀌면
+  /// 사용자는 왜 다른 곳으로 가는지 모른다.
+  @visibleForTesting
+  static OpenTarget targetOf(Submission row) {
+    // 링크가 있으면 그 파일로. 가장 정확하다.
+    if (row.slackDone && row.slackUrl != null) return OpenTarget.slackMessage;
+    // 올라갔는데 링크가 없다 — 백필할 방법이 없으므로(파일 id 도 저장하지
+    // 않았다) 채널까지만 보낸다. `#purchase` 는 흘러가는 채널이고 찾는 건은
+    // 보통 최근 것이라 스크롤 몇 번이면 닿는다.
+    if (row.slackDone) return OpenTarget.slackChannel;
+    // Slack 에는 아직 없다. 증빙 파일이라도 있으면 거기로 — "무엇을 올렸나"
+    // 를 확인하려는 것이 탭의 목적이다.
+    if (row.driveUrl != null) return OpenTarget.drive;
+    return OpenTarget.nothing;
+  }
+
+  /// 전송된 건을 **원본으로** 보낸다.
+  ///
+  /// 아무 일도 안 하는 대신 **왜 못 가는지 말한다** — 눌렀는데 반응이 없으면
+  /// 사용자는 눌렀는지조차 모른다.
+  Future<void> _open(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    switch (targetOf(row)) {
+      case OpenTarget.slackMessage:
+        await _launch(messenger, row.slackUrl!, 'Slack');
+      case OpenTarget.slackChannel:
+        // 왜 채널을 여는지 **먼저 말한다.** 메시지로 갈 줄 알고 눌렀는데
+        // 채널 맨 위로 떨어지면 왜 그런지 모른다.
+        messenger.showSnackBar(
+          const SnackBar(content: Text('이 건은 전송 당시 링크를 저장하지 않아 채널만 엽니다.')),
+        );
+        await _launch(
+          messenger,
+          slackChannelUrl(Config.slackChannelId),
+          'Slack',
+        );
+      case OpenTarget.drive:
+        await _launch(messenger, row.driveUrl!, '드라이브');
+      case OpenTarget.nothing:
+        messenger.showSnackBar(
+          const SnackBar(content: Text('아직 어디에도 올라가지 않았습니다.')),
+        );
+    }
+  }
+
+  Future<void> _launch(
+    ScaffoldMessengerState messenger,
+    String url,
+    String what,
+  ) async {
+    try {
+      // 외부 앱(Slack·드라이브)이 깔려 있으면 그쪽이 받아간다.
+      final ok = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!ok) {
+        messenger.showSnackBar(SnackBar(content: Text('$what 을(를) 열지 못했습니다.')));
+      }
+    } on Object catch (e) {
+      // 조용히 실패하면 안 된다. 원문은 개발자용이지만 스낵바는 접을 대상이
+      // 아니라 한 줄로 끝낸다.
+      messenger.showSnackBar(
+        SnackBar(content: Text('$what 을(를) 열지 못했습니다: $e')),
+      );
+    }
   }
 
   Future<void> _edit(BuildContext context, WidgetRef ref) async {

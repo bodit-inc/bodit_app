@@ -45,6 +45,13 @@ class Submissions extends Table {
   /// → **Drive 를 가장 먼저 보낸다.**
   TextColumn get driveUrl => text().nullable()();
 
+  /// Slack 에 올라간 파일(과 그 파일이 붙은 메시지)로 가는 링크.
+  ///
+  /// **없을 수 있다.** 이 컬럼이 생기기 전에 올라간 건이 있고, 링크를 받는
+  /// 호출(`files.info`)이 실패해도 전송은 성공으로 둔다 — 링크를 못 받은
+  /// 것 때문에 재시도하면 **사진이 두 번 올라간다.**
+  TextColumn get slackUrl => text().nullable()();
+
   /// 마지막 실패 사유. 사용자에게 그대로 보여준다 — 조용히 실패하면 안 된다.
   TextColumn get lastError => text().nullable()();
 
@@ -58,17 +65,24 @@ class QueueDb extends _$QueueDb {
     : super(executor ?? driftDatabase(name: 'bodit_queue'));
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   /// v1 → v2: `entryKind` 추가.
   ///
   /// 실사용 데이터가 없는 시점에 넣어서 백필이 필요 없다. 기존 행이 있더라도
   /// 1차에는 매입내역밖에 없었으므로 기본값 `purchase` 가 정답이다.
+  ///
+  /// v2 → v3: `slackUrl` 추가.
+  ///
+  /// **백필할 수 없다.** 이미 올라간 건의 링크는 Slack 에 물어봐야 알 수 있고,
+  /// 그러려면 파일 id 를 들고 있어야 하는데 그것도 저장하지 않았다. 그래서
+  /// 기존 행은 null 로 남고, 화면이 그 경우 채널까지만 보낸다.
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
     onUpgrade: (m, from, to) async {
       if (from < 2) await m.addColumn(submissions, submissions.entryKind);
+      if (from < 3) await m.addColumn(submissions, submissions.slackUrl);
     },
   );
 
