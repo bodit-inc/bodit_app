@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:bodit_app/core/log.dart';
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/utils/currency.dart';
 import 'package:bodit_app/core/utils/filename.dart';
@@ -604,6 +605,22 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final state = ref.read(reviewControllerProvider);
 
+    // 눌렀다는 사실을 남긴다. "눌러도 아무 반응이 없다" 는 신고가 들어왔을 때
+    // 버튼이 안 먹힌 것인지, 먹었는데 조용히 끝난 것인지부터 갈라야 한다.
+    log.i(
+      '제출 누름: ${state.drafts.length}건 · allComplete=${state.allComplete} '
+      '· isSubmitting=${state.isSubmitting}',
+    );
+
+    // **조용히 끝나는 길을 막는다.** 아래 `allComplete` 는 draft 가 비었을
+    // 때도 false 라서, 그대로 두면 아무 말 없이 돌아간다.
+    if (state.drafts.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('제출할 증빙이 없습니다. 다시 촬영해 주세요.')),
+      );
+      return;
+    }
+
     if (!state.allComplete) {
       await _goToFirstMissing(state);
       return;
@@ -650,7 +667,15 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     // 다건이면 덜 채운 건을 먼저 띄운다 — 보고 있는 건은 다 찼는데
     // 다른 건이 비어 있을 수 있다.
     final index = state.drafts.indexWhere((d) => !d.isComplete);
-    if (index < 0) return;
+    if (index < 0) {
+      // 호출부가 먼저 거르지만 여기서도 조용히 끝내지 않는다 —
+      // 둘 중 하나라도 말없이 돌아가면 버튼이 고장난 것처럼 보인다.
+      log.w('제출 막힘: allComplete=false 인데 미완성 건을 못 찾았다');
+      messenger.showSnackBar(
+        const SnackBar(content: Text('제출할 증빙이 없습니다. 다시 촬영해 주세요.')),
+      );
+      return;
+    }
     if (index != state.selected) {
       ref.read(reviewControllerProvider.notifier).select(index);
       // 화면이 그 건으로 다시 그려진 뒤에야 키가 제자리를 가리킨다.
