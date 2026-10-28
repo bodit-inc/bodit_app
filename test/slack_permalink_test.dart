@@ -36,13 +36,6 @@ MockClient _client({String? infoBody}) {
     if (path.endsWith('files.completeUploadExternal')) {
       return http.Response(jsonEncode(<String, Object>{'ok': true}), 200);
     }
-    if (path.endsWith('users.lookupByEmail')) {
-      // 멘션은 이 테스트의 관심사가 아니다 — 못 찾은 것으로 두고 넘어간다.
-      return http.Response(
-        jsonEncode(<String, Object>{'ok': false, 'error': 'users_not_found'}),
-        200,
-      );
-    }
     if (path.endsWith('files.info')) {
       if (infoBody == null) return http.Response('nope', 500);
       return http.Response(infoBody, 200);

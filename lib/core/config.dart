@@ -37,12 +37,27 @@ abstract class Config {
   @EnviedField(varName: 'ANTHROPIC_API_KEY')
   static final String anthropicApiKey = _Config.anthropicApiKey;
 
-  /// scope 는 `chat:write` · `files:write` 만. 넓히지 않는다.
+  /// scope 는 `chat:write` · `files:write` · `files:read` 셋만. 넓히지 않는다.
+  /// (`files:read` 는 제출 목록에서 그 메시지로 보내는 permalink 용이다.)
   @EnviedField(varName: 'SLACK_BOT_TOKEN')
   static final String slackBotToken = _Config.slackBotToken;
 
   @EnviedField(varName: 'SLACK_CHANNEL_ID')
   static final String slackChannelId = _Config.slackChannelId;
+
+  /// 이메일 → Slack user id. `email:ID` 를 쉼표로 잇는다.
+  ///
+  /// **왜 API 조회가 아닌가** — `users.lookupByEmail` 은 Slack 계정에 적힌
+  /// 이메일로만 찾는데, 회사 이메일과 다른 사람이 실제로 있다(개인 Gmail 로
+  /// 가입). 그 사람은 조회로는 영원히 못 찾고 이메일 글자로 떨어진다.
+  /// 사내 매핑은 사람이 연결해둔 것이라 그 경우를 덮는다.
+  ///
+  /// **왜 코드가 아닌 `.env` 인가** — 이 레포는 공개돼 있다. 코드에 박으면
+  /// 사내 전원의 이메일과 Slack ID 명단이 그대로 공개된다.
+  ///
+  /// 비어 있어도 빌드된다(멘션 없이 이메일 글자가 들어간다).
+  @EnviedField(varName: 'SLACK_USER_IDS', defaultValue: '')
+  static final String slackUserIds = _Config.slackUserIds;
 
   /// 매입내역 스프레드시트.
   @EnviedField(varName: 'SPREADSHEET_ID')
