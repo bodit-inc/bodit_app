@@ -175,6 +175,9 @@ class ReviewController extends Notifier<ReviewState> {
       classSuggestions: const <ClassChoice>[],
       classCode: fromCard ? null : draft.classCode,
       className: fromCard ? null : draft.className,
+      // 카드번호가 바뀌었으니 **카드가 정한 분류도 다시 계산한다.** 남겨두면
+      // 예전 카드의 분류와 비교해서 엉뚱한 경고가 뜬다.
+      cardClass: null,
     );
 
     final raw = (d.cardLast4 ?? '').trim();
@@ -265,6 +268,8 @@ class ReviewController extends Notifier<ReviewState> {
         cardLast4: settled ?? d.cardLast4,
         classCode: only.code,
         className: only.name,
+        // 사용자가 나중에 다른 분류로 고치면 이 값과 비교해 알려준다.
+        cardClass: only,
         // 근거를 안 보여주면 사용자가 못 믿고 46개 목록을 다시 연다.
         // 추측이 섞였으면 그 사실도 같이 적는다 — 확정 매칭과 같은 모양으로
         // 보이면 사용자가 검토 없이 지나친다.
@@ -334,6 +339,9 @@ class ReviewController extends Notifier<ReviewState> {
         classCode: choice.code,
         className: choice.name,
         classReason: '카드 ${d.cardLast4 ?? ''} · ${choice.name} (직접 고름)',
+        // **카드가 준 후보 중 하나**를 고른 것이므로 카드와 어긋난 게 아니다.
+        // 여기서 안 적으면 정당한 선택에 "카드와 다르다" 경고가 붙는다.
+        cardClass: choice,
         // 골랐으니 안내와 후보는 치운다. 남겨두면 아직 덜 된 것처럼 보인다.
         cardNotice: null,
         classSuggestions: const <ClassChoice>[],
@@ -494,6 +502,10 @@ class ReviewController extends Notifier<ReviewState> {
           // 어느 예산으로 긁었는지는 카드가 정한다. 분류는 _applyCardClass 담당.
           draft = draft.copyWith(
             expenseCategory: s.expenseCategory,
+            // **추천값을 따로 들고 있는다.** 사용자가 다른 비목으로 고쳤는지는
+            // 원래 값이 남아 있어야 알 수 있다 — `suggestionReason` 은 근거
+            // 문구이고 값이 아니다.
+            suggestedCategory: s.expenseCategory,
             // 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
             suggestionReason: '$vendor는 지난 ${s.reason}',
             // 내역은 채우지 않고 후보로만 넘긴다(위 주석 참조).

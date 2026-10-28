@@ -68,6 +68,9 @@ james@bodit.co
       submittedBy: 'a@bodit.co',
       driveUrl: 'https://x',
     );
-    expect(msg.split('\n').first, '260302 / Apple Store / 어댑터 / 12.99 USD / 법인(신용)');
+    expect(
+      msg.split('\n').first,
+      '260302 / Apple Store / 어댑터 / 12.99 USD / 법인(신용)',
+    );
   });
 }

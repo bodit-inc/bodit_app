@@ -8,6 +8,7 @@
 library;
 
 import 'package:bodit_app/core/utils/filename.dart';
+import 'package:bodit_app/models/certainty.dart';
 import 'package:bodit_app/models/class_choice.dart';
 import 'package:bodit_app/models/evidence_type.dart';
 import 'package:bodit_app/models/purchase_entry.dart';
@@ -95,6 +96,20 @@ abstract class EntryDraft with _$EntryDraft {
     /// 내역은 건마다 달라서("8월 도서" → "9월 도서") 지난 값을 넣으면
     /// 9월에 8월 것이 조용히 들어간다. 고르는 건 사용자가 한다.
     @Default(<String>[]) List<String> descriptionSuggestions,
+
+    /// 업체 이력이 제안한 비목. **추천을 적용한 뒤에도 들고 있는다** —
+    /// 사용자가 다른 값으로 고쳤는지는 원래 값이 남아 있어야 알 수 있다.
+    /// `suggestionReason` 은 근거 문구이고 값이 아니다.
+    String? suggestedCategory,
+
+    /// 카드가 정한 분류. **코드와 이름을 같이 들고 있는다** — 화면에 코드만
+    /// 보여주면 제출자는 `44` 가 무슨 예산인지 모른다(코드로 말하는 건
+    /// 회계 담당자다).
+    ///
+    /// 사용자가 picker 에서 다른 분류를 고르면 `classCode` 만 바뀌고 이 값은
+    /// 남는다. 그 차이를 화면이 말해준다 — **분류는 카드가 이미 정해놓은
+    /// 사실**이라, 벗어나는 것은 비목을 고치는 것보다 무거운 일이다.
+    ClassChoice? cardClass,
   }) = _EntryDraft;
 
   /// 이미 제출해 큐에 들어간 건을 다시 편집할 때. 전송 전이라면 고칠 수 있다.
@@ -133,17 +148,51 @@ abstract class EntryDraft with _$EntryDraft {
 
   const EntryDraft._();
 
-  /// 그 항목을 사람이 한 번 더 봐야 하는가.
+  /// 그 항목의 확신도 **단계**.
   ///
   /// 기준을 0.7 로 둔 건 **경고가 드물어야 쓸모 있기 때문**이다. 절반이
   /// 노랗게 뜨면 아무도 안 본다. 모델이 "읽긴 했는데 자신 없다" 고 말한
   /// 것만 집어낸다.
   ///
-  /// 확신도가 아예 없으면(직접 친 값, OCR 실패, PDF) false 다 —
+  /// 0.4 아래를 따로 둔 건 `0.39` 와 `0.69` 가 **할 일이 다르기** 때문이다.
+  /// 앞쪽은 사실상 못 읽은 것이라 값을 믿을 수 없고, 뒤쪽은 한 번 훑으면
+  /// 된다. 예전엔 둘이 똑같이 떠서, 거의 못 읽은 값도 "확인해 주세요" 로만
+  /// 보였다.
+  ///
+  /// 확신도가 아예 없으면(직접 친 값, OCR 실패, PDF) [Certainty.unknown] 이다 —
   /// 모르는 것을 틀렸다고 말하지 않는다.
-  bool isUncertain(String ocrField) {
+  Certainty certaintyOf(String ocrField) {
     final c = confidence[ocrField];
-    return c != null && c < 0.7;
+    if (c == null) return Certainty.unknown;
+    if (c < 0.4) return Certainty.poor;
+    if (c < 0.7) return Certainty.check;
+    return Certainty.ok;
+  }
+
+  /// 그 항목을 사람이 한 번 더 봐야 하는가. 단계가 필요하면
+  /// [certaintyOf] 를 쓴다.
+  bool isUncertain(String ocrField) => certaintyOf(ocrField).needsAttention;
+
+  /// 비목을 **추천과 다르게** 고쳤는가.
+  ///
+  /// 비목 추천은 과거 이력이라 **추측이다** — "영풍문고는 지난 6건 모두
+  /// 도서인쇄비였다" 는 경향일 뿐이고, 이번 건이 다를 수 있다. 그래서
+  /// 벗어나는 것은 정상 동작이고, 화면도 조용히 알려주기만 한다.
+  bool get categoryDiffersFromSuggestion {
+    final s = suggestedCategory;
+    final v = expenseCategory;
+    return s != null && v != null && s != v;
+  }
+
+  /// 분류를 **카드가 정한 것과 다르게** 고쳤는가.
+  ///
+  /// 분류는 추측이 아니다 — 어느 예산으로 집행됐는지는 긁은 카드가 이미
+  /// 정해놨다. 벗어나면 그 카드의 예산이 아닌 곳에 잡히므로, 비목과 달리
+  /// **분명하게** 말해야 한다.
+  bool get classDiffersFromCard {
+    final c = cardClass;
+    final v = classCode;
+    return c != null && v != null && c.code != v;
   }
 
   /// 저장될 파일명. 항목이 바뀌면 따라 바뀌고, 사용자가 덮어쓸 수 있다.

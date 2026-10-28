@@ -486,4 +486,58 @@ void main() {
       expect(d.classReason, isNot(contains('추정')));
     });
   });
+
+  group('카드가 정한 분류를 기억한다', () {
+    const master = {3: '법인(신용)', 24: 'CTS(체크)', 44: '글로벌팁스(카드)'};
+
+    EntryDraft draftWith(String? last4) =>
+        EntryDraft(evidencePath: '/tmp/x.jpg', cardLast4: last4);
+
+    test('확정하면 cardClass 에 코드와 이름을 같이 남긴다', () {
+      // 나중에 사용자가 다른 분류로 고쳤는지 비교하려면 원래 값이 있어야 한다.
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('9410-19**-****-3356', 24),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('3356'),
+        cards,
+        master,
+      );
+      expect(d.cardClass?.code, 24);
+      expect(d.cardClass?.name, 'CTS(체크)');
+      expect(d.classDiffersFromCard, isFalse);
+    });
+
+    test('카드번호를 고치면 카드가 정했던 분류도 내려간다', () {
+      // 남겨두면 예전 카드의 분류와 비교해서 엉뚱한 경고가 뜬다.
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('9410-19**-****-3356', 24),
+      ]);
+      final first = ReviewController.applyCardClass(
+        draftWith('3356'),
+        cards,
+        master,
+      );
+      final second = ReviewController.applyCardClass(
+        first.copyWith(cardLast4: '0000'),
+        cards,
+        master,
+      );
+      expect(second.cardClass, isNull);
+      expect(second.classDiffersFromCard, isFalse);
+    });
+
+    test('사용자가 다른 분류로 고치면 카드와 다르다고 본다', () {
+      final cards = CardDirectory.fromRows(<List<Object?>>[
+        row('9410-19**-****-3356', 24),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('3356'),
+        cards,
+        master,
+      );
+      // picker 에서 직접 고른 상태를 흉내낸다 — classCode 만 바뀐다.
+      expect(d.copyWith(classCode: 3).classDiffersFromCard, isTrue);
+    });
+  });
 }
