@@ -699,22 +699,46 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 }
 
 /// 시안 ④ — OCR 진행 중.
-class _ReadingView extends StatelessWidget {
+/// 시안 ④ — OCR 진행 중.
+///
+/// **읽는 동안에도 쓸 만하지 않은 사진을 알린다.** 예전엔 끝날 때까지 돌아가는
+/// 동그라미만 보여줬다. 그래서 열 장을 찍으면 전부 끝난 뒤에야 "셋째 장이
+/// 흔들렸다" 를 알았는데, 그때는 이미 가게를 나왔고 영수증도 없다.
+///
+/// 사진 품질은 OCR 응답에 같이 오므로(`ocr_service.dart`) 기기에서 따로 재지
+/// 않는다 — 읽을 수 있었는지는 읽어본 쪽이 가장 잘 안다.
+class _ReadingView extends ConsumerWidget {
   const _ReadingView();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(reviewControllerProvider);
+    final total = state.drafts.length;
+
+    // 이미 문제가 드러난 장. 읽기가 끝나기 전에 보여준다.
+    final problems = <int>[
+      for (var i = 0; i < state.drafts.length; i++)
+        if (state.drafts[i].imageProblem != null) i,
+    ];
+
     return Scaffold(
       appBar: AppBar(title: const Text('분석 중')),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: Gap.lg),
-            const Text('영수증을 읽는 중…'),
-            const SizedBox(height: Gap.sm),
-            Padding(
+      body: ListView(
+        padding: screenPadding,
+        children: [
+          const SizedBox(height: Gap.xxl),
+          const Center(child: CircularProgressIndicator()),
+          const SizedBox(height: Gap.lg),
+          Center(
+            child: Text(
+              total > 1
+                  ? '영수증을 읽는 중… ($total장 중 ${state.readCount}장)'
+                  : '영수증을 읽는 중…',
+            ),
+          ),
+          const SizedBox(height: Gap.sm),
+          Center(
+            child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: Gap.xxl),
               child: Text(
                 '비목과 분류는 영수증에 없습니다.\n'
@@ -725,8 +749,30 @@ class _ReadingView extends StatelessWidget {
                     ?.copyWith(color: AppColors.neutralFg),
               ),
             ),
+          ),
+          if (problems.isNotEmpty) ...[
+            const SizedBox(height: Gap.xxl),
+            NoticeBanner(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final i in problems) ...[
+                    Text(
+                      total > 1
+                          ? '${i + 1}번째 사진 — '
+                                '${state.drafts[i].imageProblem}'
+                          : state.drafts[i].imageProblem!,
+                    ),
+                    const SizedBox(height: Gap.sm),
+                  ],
+                  // 읽는 중에 다시 찍게 하지 않는다 — 분석 중인 장을 바꿔치면
+                  // 늦게 도착한 결과가 새 사진 위에 덮인다. 끝나고 받는다.
+                  const NoteText('읽기가 끝나면 [다시 찍기] 를 누를 수 있습니다.'),
+                ],
+              ),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }

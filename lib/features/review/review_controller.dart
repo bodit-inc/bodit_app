@@ -5,6 +5,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:bodit_app/core/log.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
@@ -17,6 +18,7 @@ import 'package:bodit_app/models/entry_draft.dart';
 import 'package:bodit_app/models/purchase_entry.dart';
 import 'package:bodit_app/models/sheet_row.dart';
 import 'package:drift/drift.dart' show Value;
+
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
@@ -31,6 +33,7 @@ class ReviewState {
     this.drafts = const <EntryDraft>[],
     this.selected = 0,
     this.isReading = false,
+    this.readCount = 0,
     this.isSubmitting = false,
     this.editingId,
     this.error,
@@ -43,6 +46,10 @@ class ReviewState {
 
   /// OCR 진행 중 (시안 ④).
   final bool isReading;
+
+  /// 끝까지 읽은 건 수. **진행 화면이 이걸 보여준다** — 열 장을 찍으면
+  /// 몇 장이 남았는지 모르는 채로 한참 기다리게 된다.
+  final int readCount;
 
   /// 제출 후 전송 시도 중.
   final bool isSubmitting;
@@ -69,6 +76,7 @@ class ReviewState {
     List<EntryDraft>? drafts,
     int? selected,
     bool? isReading,
+    int? readCount,
     bool? isSubmitting,
     int? editingId,
     String? error,
@@ -78,6 +86,7 @@ class ReviewState {
       drafts: drafts ?? this.drafts,
       selected: selected ?? this.selected,
       isReading: isReading ?? this.isReading,
+      readCount: readCount ?? this.readCount,
       isSubmitting: isSubmitting ?? this.isSubmitting,
       editingId: editingId ?? this.editingId,
       error: clearError ? null : (error ?? this.error),
@@ -105,7 +114,18 @@ class ReviewController extends Notifier<ReviewState> {
   /// 카드·분류 마스터를 읽어둔다. **실패해도 던지지 않는다** —
   /// 분류 자동완성이 안 될 뿐 폼은 그대로 쓸 수 있다. 다만 왜 비었는지는
   /// `cardNotice` 로 화면에 남는다.
-  Future<void> _loadCardData(gapis.AuthClient client) async {
+  /// 진행 중인 읽기. 여러 장을 **동시에** 읽으면 세 장이 같은 순간에 이걸
+  /// 부른다 — 가드가 없으면 같은 시트를 세 번 읽는다.
+  Future<void>? _cardDataLoad;
+
+  Future<void> _loadCardData(gapis.AuthClient client) {
+    if (_cards != null && _classNames != null) return Future<void>.value();
+    return _cardDataLoad ??= _loadCardDataOnce(client).whenComplete(() {
+      _cardDataLoad = null;
+    });
+  }
+
+  Future<void> _loadCardDataOnce(gapis.AuthClient client) async {
     if (_cards != null && _classNames != null) return;
     try {
       _cards ??= await ref.read(cardRepositoryProvider).load(client);
@@ -339,12 +359,49 @@ class ReviewController extends Notifier<ReviewState> {
         .authorizedClient(interactive: false);
     if (client != null) await _loadCardData(client);
 
-    final out = <EntryDraft>[];
-    for (var i = 0; i < evidence.length; i++) {
-      out.add(await _readOne(evidence[i], state.drafts[i]));
+    // 장별로 **도착하는 즉시** 반영한다.
+    //
+    // 예전엔 전부 읽은 뒤 한 번에 넣었다. 그래서 열 장을 찍으면 마지막 장이
+    // 끝날 때까지 첫 장이 흔들렸다는 것도 몰랐다. 다시 찍어야 하는 사진은
+    // **빨리 알수록 그 자리에서 다시 찍는다** — 집에 와서 알면 영수증이 없다.
+    //
+    // 동시에 보내는 수를 셋으로 묶는다. 열 장을 한꺼번에 던지면 rate limit 에
+    // 걸려 전부 실패하고, 그러면 아무것도 못 읽은 것과 같다.
+    const concurrency = 3;
+    var next = 0;
+    Future<void> worker() async {
+      while (true) {
+        final i = next++;
+        if (i >= evidence.length) return;
+        final d = await _readOne(
+          evidence[i],
+          state.drafts[i],
+          // OCR 응답이 오면 **업체 이력·분류를 기다리지 않고** 먼저 보여준다.
+          // 사진 품질은 그 응답에 이미 들어 있다.
+          onProgress: (p) => _putDraft(i, p),
+        );
+        _putDraft(i, d, done: true);
+      }
     }
 
-    state = state.copyWith(drafts: out, isReading: false);
+    await Future.wait(<Future<void>>[
+      for (var k = 0; k < math.min(concurrency, evidence.length); k++) worker(),
+    ]);
+
+    state = state.copyWith(isReading: false);
+  }
+
+  /// 한 건만 갈아끼운다.
+  ///
+  /// 여러 장을 동시에 읽으므로 **도착 순서가 섞인다.** 목록을 통째로 덮으면
+  /// 나중에 끝난 장이 먼저 끝난 장의 결과를 되돌린다.
+  void _putDraft(int i, EntryDraft d, {bool done = false}) {
+    if (i >= state.drafts.length) return;
+    final next = <EntryDraft>[...state.drafts]..[i] = d;
+    state = state.copyWith(
+      drafts: next,
+      readCount: done ? state.readCount + 1 : state.readCount,
+    );
   }
 
   /// 증빙 한 장을 읽어 draft 를 채운다. **읽기 경로는 여기 하나다** —
@@ -353,7 +410,11 @@ class ReviewController extends Notifier<ReviewState> {
   ///
   /// 카드·분류 마스터는 이미 읽혀 있다고 본다(`_loadCardData`). 여기서 읽으면
   /// 10장 찍었을 때 시트를 20번 더 읽는다.
-  Future<EntryDraft> _readOne(CapturedEvidence e, EntryDraft initial) async {
+  Future<EntryDraft> _readOne(
+    CapturedEvidence e,
+    EntryDraft initial, {
+    void Function(EntryDraft partial)? onProgress,
+  }) async {
     var draft = initial;
     final capture = ref.read(captureServiceProvider);
     final ocr = ref.read(ocrServiceProvider);
@@ -383,6 +444,10 @@ class ReviewController extends Notifier<ReviewState> {
           // 정작 흔들린 사진의 경고도 같이 무시된다.
           imageProblem: r.quality.readable ? null : r.quality.problem,
         );
+        // 여기서 이미 **사진이 쓸 만했는지 안다.** 아래 업체 이력 조회는
+        // 네트워크를 한 번 더 타므로, 그걸 기다렸다 보여주면 다시 찍어야
+        // 하는 사진을 몇 초 늦게 알린다.
+        onProgress?.call(draft);
       } on Object catch (err) {
         // 한 장이 실패해도 나머지는 계속 읽는다. 사용자가 직접 채우면 된다.
         state = state.copyWith(error: '$err');
