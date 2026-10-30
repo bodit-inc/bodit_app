@@ -1,3 +1,4 @@
+import 'package:bodit_app/core/flavor.dart';
 import 'package:bodit_app/core/theme/app_theme.dart';
 import 'package:bodit_app/features/auth/auth_controller.dart';
 import 'package:bodit_app/router.dart';
@@ -34,10 +35,27 @@ class _BoditAppState extends ConsumerState<BoditApp> {
     });
 
     return MaterialApp.router(
-      title: '매입내역',
+      // 작업 전환 화면에 뜨는 이름. 개발 빌드는 여기서도 갈려 보여야 한다.
+      title: isDevFlavor ? '매입내역(개발)' : '매입내역',
       theme: AppTheme.light,
       routerConfig: ref.watch(routerProvider),
       debugShowCheckedModeBanner: false,
+      // 개발 빌드는 **어느 화면에서도** 개발인 줄 알아야 한다.
+      //
+      // 홈의 안내 배너만으로는 모자라다 — 검토 폼에서 바로 제출하면 홈을 안
+      // 거치고, 그러면 "운영에 보낸 줄 알았는데 개발이었다"(또는 그 반대)가
+      // 된다. 리본은 라우터 바깥에 있어서 모든 화면 위에 남는다.
+      //
+      // `debugShowCheckedModeBanner` 와 다른 것이다 — 그건 release 빌드에서
+      // 사라지는데, 개발 환경을 release 로도 빌드하기 때문이다.
+      builder: (context, child) {
+        if (!isDevFlavor || child == null) return child ?? const SizedBox();
+        return Banner(
+          message: 'DEV',
+          location: BannerLocation.topEnd,
+          child: child,
+        );
+      },
     );
   }
 }

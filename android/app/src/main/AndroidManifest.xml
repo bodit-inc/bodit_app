@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- android:label 은 환경별로 갈린다. build.gradle.kts 의 productFlavors 가
+         resValue 로 넣는다 — 운영은 지금까지와 같은 "bodit_app", 개발은
+         "Bodit_dev". 태그 안에는 주석을 둘 수 없어 여기에 적는다. -->
     <application
-        android:label="bodit_app"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

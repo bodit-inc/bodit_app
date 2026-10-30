@@ -6,8 +6,12 @@
 		<true/>
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
+		<!-- 홈 화면에 뜨는 이름. 환경마다 다르다 — 값은 ios/Flutter 의
+	     Prod.xcconfig(운영: Bodit App) · Dev.xcconfig(개발: Bodit_dev) 에 있다.
+	     flavor 를 주지 않는 빌드도 Debug/Release.xcconfig 가 Prod 를
+	     include 하므로 지금까지와 같은 이름이 나온다. -->
 		<key>CFBundleDisplayName</key>
-		<string>Bodit App</string>
+		<string>$(APP_DISPLAY_NAME)</string>
 		<key>CFBundleExecutable</key>
 		<string>$(EXECUTABLE_NAME)</string>
 		<key>CFBundleIdentifier</key>
@@ -31,8 +35,9 @@
 	       123456-abc.apps.googleusercontent.com
 	       → com.googleusercontent.apps.123456-abc
 
-	     TODO(james): 아래 REPLACE_ME 를 실제 값으로 바꿀 것.
-	     GCP 콘솔 → OAuth 클라이언트(iOS, 번들 ID co.bodit.boditApp) 에서 받는다.
+	     **환경마다 다르다.** 구글 클라이언트는 번들 ID 로 매칭되는데 개발
+	     빌드는 co.bodit.boditApp.dev 로 깔리기 때문이다. 그래서 값을 여기
+	     박지 않고 ios/Flutter 의 Prod.xcconfig · Dev.xcconfig 에서 받는다.
 	──────────────────────────────────────────────────────────── -->
 		<key>CFBundleURLTypes</key>
 		<array>
@@ -41,7 +46,7 @@
 				<string>Editor</string>
 				<key>CFBundleURLSchemes</key>
 				<array>
-					<string>com.googleusercontent.apps.768953981137-9b2dmd95dbg8bru00qf06d3th7k38ui9</string>
+					<string>$(GOOGLE_REVERSED_CLIENT_ID)</string>
 				</array>
 			</dict>
 		</array>

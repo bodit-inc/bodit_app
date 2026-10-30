@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bodit_app/core/config.dart';
+import 'package:bodit_app/core/flavor.dart';
 import 'package:bodit_app/core/links.dart';
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
@@ -39,10 +40,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         const [];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('매입내역'), actions: [_AccountMenu()]),
+      appBar: AppBar(
+        title: Text(isDevFlavor ? '매입내역(개발)' : '매입내역'),
+        actions: [_AccountMenu()],
+      ),
       body: ListView(
         padding: screenPadding,
         children: [
+          // 개발 빌드에서만. **무엇이 다른지**까지 적는다 — "개발 환경입니다"
+          // 만으로는 제출이 어디로 가는지 모르고, 그걸 확인하려고 아래
+          // 바로가기를 눌러보게 된다.
+          if (isDevFlavor) ...[
+            const NoticeBanner(
+              child: Text(
+                '개발 환경입니다. 제출은 개발용 시트·드라이브·Slack 으로만 갑니다 — '
+                '여기서 만든 행은 회계 담당자가 보는 시트에 들어가지 않습니다.',
+              ),
+            ),
+            const SizedBox(height: Gap.md),
+          ],
           Row(
             children: [
               Expanded(

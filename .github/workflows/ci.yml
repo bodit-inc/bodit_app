@@ -42,14 +42,18 @@ jobs:
       - run: flutter pub get
 
       # 생성 코드를 커밋하지 않으므로 CI 에서 만들어야 한다. 그런데 envied 가
-      # `.env` 를 요구한다 — 없으면 build_runner 가 실패하고 테스트까지 못 간다.
+      # `.env.dev`·`.env.prod` 를 **둘 다** 요구한다 — 하나만 있어도
+      # build_runner 가 실패하고 테스트까지 못 간다.
       #
       # **실제 값을 CI 에 넣지 않는다.** analyze·test 는 외부 API 를 호출하지
       # 않으므로 더미로 충분하고, 공개 레포에 비밀을 끌어들일 이유가 없다.
-      # `.env.example` 의 빈 값(`KEY=`)에만 더미를 붙인다 — 주석 줄은 `=` 로
-      # 끝나지 않아 그대로 지나간다.
-      - name: .env 를 더미 값으로 채운다
-        run: sed 's/=$/=ci-dummy/' .env.example > .env
+      # 예제 파일의 빈 값(`KEY=`)에만 더미를 붙인다 — 주석 줄은 `=` 로
+      # 끝나지 않아 그대로 지나간다. `REPLACE_ME` 자리값은 그대로 둬도 된다
+      # (빌드만 통과하면 되고, 앱을 켜는 것은 CI 가 하지 않는다).
+      - name: .env.dev · .env.prod 를 더미 값으로 채운다
+        run: |
+          sed 's/=$/=ci-dummy/' .env.dev.example > .env.dev
+          sed 's/=$/=ci-dummy/' .env.prod.example > .env.prod
 
       - name: 생성 코드 만들기 (envied · freezed · drift · riverpod)
         run: dart run build_runner build --delete-conflicting-outputs
