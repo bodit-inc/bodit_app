@@ -26,6 +26,7 @@ library;
 import 'dart:io';
 
 import 'package:bodit_app/core/config.dart';
+import 'package:bodit_app/core/flavor.dart';
 import 'package:bodit_app/core/log.dart';
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -39,6 +40,10 @@ const googleScopes = <String>[
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/spreadsheets',
 ];
+
+/// 비었거나 자리값이면 `null`. 설정이 '있는 척' 하는 상태를 없는 것으로 본다.
+String? _orNull(String v) =>
+    (v.isEmpty || v == Config.placeholder) ? null : v;
 
 class GoogleAuthService {
   GoogleSignInAccount? _account;
@@ -57,29 +62,40 @@ class GoogleAuthService {
     // GCP 콘솔에서 만든 **웹 애플리케이션** 유형 클라이언트 ID 다.
     // Android 클라이언트(패키지명 + SHA-1)는 따로 등록해두되 코드에 넣지 않는다 —
     // 서명으로 매칭되므로 전달할 필요가 없다.
-    final serverClientId = Config.googleServerClientId;
-    final iosClientId = Config.googleIosClientId;
-    if (Platform.isAndroid && serverClientId.isEmpty) {
+    //
+    // **자리값(`REPLACE_ME`)도 빈 것으로 본다.** 비어 있지 않다는 이유로
+    // 통과시키면 구글이 "클라이언트를 찾을 수 없다" 는 식으로 거절하는데,
+    // 그 메시지로는 설정을 안 채운 것인지 등록이 잘못된 것인지 구분이 안 된다.
+    final serverClientId = _orNull(Config.googleServerClientId);
+    final iosClientId = _orNull(Config.googleIosClientId);
+    if (Platform.isAndroid && serverClientId == null) {
       throw StateError(
-        'GOOGLE_SERVER_CLIENT_ID 가 비어 있습니다.\n'
+        'GOOGLE_SERVER_CLIENT_ID 가 비어 있습니다 (${flavor.label} 환경).\n'
         'GCP 콘솔에서 "웹 애플리케이션" 유형 OAuth 클라이언트를 만들고 '
-        '.env 에 넣은 뒤 build_runner 를 다시 돌리세요.',
+        '.env.${flavor.name} 에 넣은 뒤 `make gen` 을 다시 돌리세요.',
       );
     }
-    if (Platform.isIOS && iosClientId.isEmpty) {
+    if (Platform.isIOS && iosClientId == null) {
+      // 번들 ID 가 환경마다 다르므로 **환경마다 다른 클라이언트**가 필요하다.
+      // 배포 여부와 무관하다 — 내 기기 debug 빌드도 번들 ID 로 매칭된다.
+      final bundleId = switch (flavor) {
+        AppFlavor.dev => 'co.bodit.boditApp.dev',
+        AppFlavor.prod => 'co.bodit.boditApp',
+      };
       throw StateError(
-        'GOOGLE_IOS_CLIENT_ID 가 비어 있습니다.\n'
-        'GCP 콘솔에서 "iOS" 유형 OAuth 클라이언트(번들 ID co.bodit.boditApp)를 '
-        '만들어 .env 에 넣고 build_runner 를 다시 돌리세요.\n'
-        '그리고 ios/Runner/Info.plist 의 REPLACE_ME 를 '
-        '뒤집은 클라이언트 ID 로 바꿔야 로그인 후 앱으로 돌아옵니다.',
+        'GOOGLE_IOS_CLIENT_ID 가 비어 있습니다 (${flavor.label} 환경).\n'
+        'GCP 콘솔에서 "iOS" 유형 OAuth 클라이언트(번들 ID $bundleId)를 '
+        '만들어 .env.${flavor.name} 에 넣고 `make gen` 을 다시 돌리세요.\n'
+        '그리고 뒤집은 클라이언트 ID 를 ios/Flutter 의 '
+        '${flavor == AppFlavor.dev ? 'Dev' : 'Prod'}.xcconfig 에 넣어야 '
+        '로그인 후 앱으로 돌아옵니다.',
       );
     }
 
     await GoogleSignIn.instance.initialize(
       // iOS 전용. Android 에서는 무시된다.
-      clientId: iosClientId.isEmpty ? null : iosClientId,
-      serverClientId: serverClientId.isEmpty ? null : serverClientId,
+      clientId: iosClientId,
+      serverClientId: serverClientId,
       // 사내 계정만 계정 선택기에 뜨게 한다. Android 도 지원한다.
       hostedDomain: 'bodit.co',
     );

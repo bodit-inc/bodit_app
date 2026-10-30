@@ -42,7 +42,7 @@ make run-dev     # 개발용 시트·드라이브·Slack
 make run-prod    # 운영 (실제 매입내역이 올라간다)
 ```
 
-**`.env.prod` 도 있어야 빌드가 된다.** 운영 값이 없는 사람은 예제의
+**`.env.prod` 도 있어야 빌드가 된다.** 운영 값이 아직 없으면 예제의
 `REPLACE_ME` 를 그대로 두면 된다 — 개발 빌드는 그대로 돌아가고, 운영 빌드는
 `make` 가 거부한다.
 
@@ -59,15 +59,20 @@ envied 가 `.env.*` 를 build_runner 그래프 밖에서 읽기 때문에 생기
 |  | 개발(dev) | 운영(prod) |
 |---|---|---|
 | 쓰임 | 내 기기에서 debug 로만. **배포하지 않는다** | 스토어 · Firebase 에 등록된 그 앱 |
-| 설정 | `.env.dev` | `.env.prod` — 지금까지 쓰던 값 그대로 |
+| 설정 | `.env.dev` — 원래 쓰던 Slack 앱·시트·드라이브 | `.env.prod` — **새로 만든** Slack 앱·시트·드라이브 |
 | iOS 번들 ID | `co.bodit.boditApp.dev` | `co.bodit.boditApp` (변경 없음) |
 | Android applicationId | `co.bodit.bodit_app.dev` | `co.bodit.bodit_app` (변경 없음) |
 | 앱 이름 | `Bodit_dev` | `Bodit App` / `bodit_app` (변경 없음) |
 | 아이콘 | 가운데 주황 `dev` 띠 | 변경 없음 |
 | 화면 | 우상단 `DEV` 리본 + 홈 안내 배너 | 변경 없음 |
 
-운영 쪽은 **번들 ID·이름·아이콘·설정 무엇도 바뀌지 않았다.** 개발만 덧붙였다.
+운영 쪽 **번들 ID·이름·아이콘은 바뀌지 않았다.** 개발만 덧붙였다.
 `--flavor` 없이 빌드하던 기존 경로(Xcode 의 `Runner` 스킴)도 그대로 동작한다.
+
+다만 **가리키는 곳은 자리를 바꿨다.** 원래 쓰던 Slack 앱·매입내역 시트·증빙
+폴더가 개발 쪽으로 가고, 운영은 새로 만든 것을 본다. 그래서 이미 배포된
+빌드는 지금 개발 자원을 보고 있는 셈이다 — 운영 자원을 만든 뒤 새로 빌드해
+올려야 갈라진다.
 
 고르는 방법은 플래그 둘이다 — `--flavor` 는 네이티브(번들 ID·이름·아이콘),
 `--dart-define=FLAVOR` 는 Dart(시트·드라이브·Slack). **둘이 엇갈리면
@@ -91,13 +96,13 @@ envied 가 `.env.*` 를 build_runner 그래프 밖에서 읽기 때문에 생기
 | 키 | 어디서 | 개발 ↔ 운영 |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Anthropic 콘솔 | 같아도 됨. **용도는 OCR 하나뿐** — 지출 한도 없이 발급하지 않는다 (#4). 나누면 콘솔에서 지출이 갈려 보인다 |
-| `SLACK_BOT_TOKEN` | Slack 앱 | **달라야 함.** 개발용 앱을 따로 만든다 — 같은 토큰이면 채널 ID 한 글자 실수로 운영 채널에 글이 간다. scope 는 `chat:write` · `files:write` · `files:read` 셋만 |
-| `SLACK_CHANNEL_ID` | 게시할 채널 | **달라야 함.** 개발용 채널을 하나 파고 봇을 초대한다 |
+| `SLACK_BOT_TOKEN` | Slack 앱 | **달라야 함.** 원래 앱이 개발, **새로 만든 앱이 운영**. 같은 토큰이면 채널 ID 한 글자 실수로 실사용 채널에 글이 간다. scope 는 `chat:write` · `files:write` · `files:read` 셋만 |
+| `SLACK_CHANNEL_ID` | 게시할 채널 | **달라야 함.** 개발은 테스트 채널, 운영은 실사용 채널. 각 환경의 봇이 그 채널에 들어가 있어야 한다 |
 | `SLACK_USER_IDS` | 사내 Slack 매핑 | 같아도 됨 — user id 는 워크스페이스 단위라 앱을 새로 만들어도 그대로다. `email:ID` 를 쉼표로 |
-| `SPREADSHEET_ID` | 매입내역 스프레드시트 | **달라야 함.** 개발용은 운영 시트의 **사본** — 수식 컬럼과 `_비목마스터`·`_분류마스터` 탭이 같이 복사돼야 한다 |
+| `SPREADSHEET_ID` | 매입내역 스프레드시트 | **달라야 함.** 원래 시트가 개발, **새 시트가 운영**. 새 시트에 과거 이력을 같이 옮긴다 — 비목 추천이 과거 행을 읽어서 나오므로 빈 시트로 시작하면 한동안 추천이 안 뜬다. 수식 컬럼과 `_비목마스터`·`_분류마스터` 탭도 같이 |
 | `CARD_SHEET_ID` | 카드보유내역 스프레드시트 | 같아도 됨 — 앱이 **읽기만** 한다. 사본을 두면 카드가 늘 때 한쪽만 낡는다 |
-| `DRIVE_FOLDER_ID` | 증빙 공유 드라이브 폴더 | **달라야 함.** 섞이면 회계 담당자가 테스트 파일을 보게 된다 |
-| `GOOGLE_IOS_CLIENT_ID` | Google Cloud OAuth 클라이언트 | **달라야 함** — 클라이언트는 번들 ID 로 매칭되고 개발은 `co.bodit.boditApp.dev` 다. 뒤집은 값을 [`ios/Flutter/Dev.xcconfig`](ios/Flutter/Dev.xcconfig) 에도 넣는다 |
+| `DRIVE_FOLDER_ID` | 증빙 공유 드라이브 폴더 | **달라야 함.** 원래 폴더가 개발, **새 폴더가 운영**. 섞이면 회계 담당자가 테스트 파일을 보게 된다 |
+| `GOOGLE_IOS_CLIENT_ID` | Google Cloud OAuth 클라이언트 | **달라야 함** — 클라이언트는 번들 ID 로 매칭되고 개발은 `co.bodit.boditApp.dev` 다. **배포 여부와 무관하다**: 내 기기 debug 빌드도 번들 ID 가 다르면 로그인이 거부된다. 뒤집은 값을 [`ios/Flutter/Dev.xcconfig`](ios/Flutter/Dev.xcconfig) 에도 넣는다 |
 | `GOOGLE_SERVER_CLIENT_ID` | Google Cloud OAuth 클라이언트 | 같아도 됨(웹 클라이언트라 패키지명과 무관). 단 GCP 에 Android 클라이언트 `co.bodit.bodit_app.dev` + SHA-1 을 따로 등록해야 개발 빌드에서 로그인이 통과한다 |
 
 `envied` 는 **난독화일 뿐 보안이 아니다.** 런타임에는 평문으로 헤더에 실려 나간다.
