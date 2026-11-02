@@ -13,6 +13,7 @@ import 'package:bodit_app/core/links.dart';
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/utils/filename.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
+import 'package:bodit_app/data/background_send.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
 import 'package:bodit_app/data/providers.dart';
 import 'package:bodit_app/data/send_status.dart';
@@ -107,6 +108,11 @@ class SubmissionRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 지금 백그라운드로 나가고 있는 건인가. 상태 표시와 **고치기·지우기를
+    // 막는 것**에 쓴다 — 보내는 중에 행을 고치면 `sendOne` 이 들고 있던
+    // 예전 내용으로 되돌려 쓴다(목적지별 완료 여부를 그 복사본에 적는다).
+    final sending = ref.watch(backgroundSendProvider).inFlight.contains(row.id);
+
     // 왼쪽으로 밀어 삭제. 되돌릴 수 없으므로 반드시 확인을 받는다.
     return Dismissible(
       key: ValueKey('submission-${row.id}'),
@@ -117,11 +123,23 @@ class SubmissionRow extends ConsumerWidget {
         color: AppColors.danger,
         child: const Icon(Icons.delete_outline, color: Colors.white),
       ),
-      confirmDismiss: (_) => _confirmDelete(context),
+      confirmDismiss: (_) async {
+        // 보내는 중에 지우면 증빙 파일이 업로드 도중 사라진다 —
+        // 어디까지 올라갔는지 아무도 모르는 상태가 된다.
+        if (sending) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('전송 중인 건은 지울 수 없습니다. 전송이 끝난 뒤에 지워주세요.'),
+            ),
+          );
+          return false;
+        }
+        return await _confirmDelete(context);
+      },
       onDismissed: (_) async {
         await ref.read(queueDbProvider).discard(row);
       },
-      child: _body(context, ref),
+      child: _body(context, ref, sending: sending),
     );
   }
 
@@ -154,12 +172,20 @@ class SubmissionRow extends ConsumerWidget {
     );
   }
 
-  Widget _body(BuildContext context, WidgetRef ref) {
+  Widget _body(BuildContext context, WidgetRef ref, {required bool sending}) {
+    // 나가고 있는 중이면 **"전송 중"** 이라고 적는다. "대기" 로 적으면
+    // 사용자는 아무 일도 안 일어나는 줄 알고 [전송 시도] 를 또 누른다.
+    // 지난 실패 사유보다 지금 돌고 있다는 사실이 먼저다 — 사유는 아래에 남는다.
     final (label, tone) = _allDone
         ? ('완료', PillTone.ok)
+        : sending
+        ? ('전송 중', PillTone.waiting)
         : _hasError
         ? ('실패', PillTone.error)
         : ('대기', PillTone.waiting);
+
+    // 보내는 중에는 고치지 못한다(위 `sending` 설명).
+    final editable = _editable && !sending;
 
     return Container(
       decoration: _hasError
@@ -178,14 +204,16 @@ class SubmissionRow extends ConsumerWidget {
             trailing: StatusPill(label, tone: tone),
             // 오른쪽 알약이 이미 "완료" 라고 말한다. 여기서 또 쓰면 같은 줄에
             // 완료가 두 번 찍힌다 — 실제로 그렇게 보였다.
-            subtitle: _editable
+            subtitle: sending
+                ? '전송하고 있습니다 — 끝나면 결과가 표시됩니다'
+                : editable
                 ? '눌러서 내용을 고칠 수 있습니다'
                 : _allDone
                 ? '${_time(row.createdAt)} · 눌러서 Slack 에서 보기'
                 : null,
             // 고칠 수 있는 건은 고치는 쪽이 먼저다. 이미 나간 건은 고칠 수
             // 없으니(Drive 파일명과 시트 내용이 어긋난다) 원본으로 보낸다.
-            onTap: _editable ? () => _edit(context, ref) : () => _open(context),
+            onTap: editable ? () => _edit(context, ref) : () => _open(context),
           ),
           // 완료된 건은 목적지를 나열할 이유가 없다.
           if (!_allDone)

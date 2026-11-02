@@ -628,31 +628,18 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 
     final navigator = Navigator.of(context);
     try {
-      // 저장하고 바로 보낸다. 실패한 건만 전송 대기에 남는다.
+      // 큐에 넣는 것까지만 기다린다(로컬 쓰기라 즉시 끝난다).
+      // **전송은 백그라운드로 돌고 화면은 바로 돌아간다** — 사진이 크면
+      // 전송에 수십 초가 걸리는데 그동안 이 화면에 갇혀 있을 이유가 없다.
       final r = await ref.read(reviewControllerProvider.notifier).submitAll();
+      // 이 화면은 홈(또는 목록)에서 올라왔으므로 닫으면 거기로 돌아간다.
       navigator.pop();
 
+      // 결과가 아니라 **접수**를 알린다. 전송 결과는 끝난 뒤에 앱 전체가
+      // 보는 스낵바가 따로 말한다(`_sendMessage`).
       messenger.showSnackBar(
         SnackBar(
-          content: Text(
-            r.allSent
-                ? '${r.sent}건을 전송했습니다.'
-                : r.sent > 0
-                ? '${r.sent}건 전송, ${r.failed}건은 전송 대기로 넘겼습니다.'
-                : '전송하지 못해 전송 대기로 넘겼습니다.',
-          ),
-          // 실패했으면 사유를 볼 수 있어야 한다 — 조용히 넘기지 않는다.
-          action: r.firstError == null
-              ? null
-              : SnackBarAction(
-                  label: '사유 보기',
-                  onPressed: () => showDetailDialog(
-                    navigator.context,
-                    title: '전송 실패',
-                    detail: r.firstError!,
-                  ),
-                ),
-          duration: const Duration(seconds: 6),
+          content: Text('${r.total}건을 등록했습니다. 전송은 계속 진행됩니다 — 위쪽 띠에서 볼 수 있습니다.'),
         ),
       );
     } on Object catch (e) {
