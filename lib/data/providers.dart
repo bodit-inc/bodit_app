@@ -8,6 +8,7 @@ import 'package:bodit_app/core/config.dart';
 import 'package:bodit_app/core/log.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
 import 'package:bodit_app/data/remote/card_repository.dart';
+import 'package:bodit_app/data/remote/drive_folder_index.dart';
 import 'package:bodit_app/data/remote/drive_repository.dart';
 import 'package:bodit_app/data/remote/google_auth.dart';
 import 'package:bodit_app/data/remote/ocr_service.dart';
@@ -29,8 +30,20 @@ final queueDbProvider = Provider<QueueDb>((ref) {
   return db;
 });
 
+/// 날짜 폴더 ID 를 시트에 적어두고 공유한다 — `drive.file` 로는 폴더를
+/// 조회할 수 없어서다. 기록은 **매입내역 시트**에 둔다(환경마다 갈린다).
+///
+/// 알아낸 폴더 ID 를 들고 있으므로 **싱글턴이어야** 한다 — 건마다 새로
+/// 만들면 캐시가 비어 같은 날짜를 매번 시트에서 다시 읽는다.
+final driveFolderIndexProvider = Provider<DriveFolderIndex>((ref) {
+  return DriveFolderIndex(
+    spreadsheetId: Config.spreadsheetId,
+    rootFolderId: Config.driveFolderId,
+  );
+});
+
 final driveRepositoryProvider = Provider<DriveRepository>((ref) {
-  return DriveRepository(rootFolderId: Config.driveFolderId);
+  return DriveRepository(folders: ref.watch(driveFolderIndexProvider));
 });
 
 final sheetsRepositoryProvider = Provider<SheetsRepository>((ref) {

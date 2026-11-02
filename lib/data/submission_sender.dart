@@ -127,6 +127,9 @@ class SubmissionSender {
           client: client,
           source: file,
           filename: current.filename,
+          // 날짜 폴더를 정하는 날짜다. 파일명 접두와 **같은 소속일자**를
+          // 넘긴다 — 둘을 따로 계산하면 `260805` 폴더에 `260806_…` 이 들어간다.
+          belongDate: entry.belongDate,
         );
         current = current.copyWith(
           driveDone: true,
