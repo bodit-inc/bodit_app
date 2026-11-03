@@ -13,22 +13,25 @@ import 'package:flutter/material.dart';
 /// 목록을 좁히는 검색 입력.
 ///
 /// 분류 44개처럼 스크롤로 찾기 번거로운 목록 위에 둔다.
+///
+/// **자동으로 포커스를 가져가지 않는다.** 바텀시트가 올라오자마자 키보드가
+/// 따라 올라오면 고르러 온 목록이 절반쯤 가린다. 대부분은 눈으로 훑어
+/// 고르고(비목 33개·증빙자료명 6개), 검색은 그게 안 될 때 쓰는 수단이다.
+/// 필요한 사람은 칸을 누르면 된다 — 한 번 더 누르는 대가가, 매번 키보드를
+/// 내리는 대가보다 싸다.
 class SearchField extends StatelessWidget {
   const SearchField({
     required this.hintText,
     required this.onChanged,
-    this.autofocus = true,
     super.key,
   });
 
   final String hintText;
   final ValueChanged<String> onChanged;
-  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
-      autofocus: autofocus,
       onChanged: onChanged,
       decoration: InputDecoration(
         hintText: hintText,
@@ -39,9 +42,9 @@ class SearchField extends StatelessWidget {
         //
         // 이 필드가 올라가는 자리가 둘인데(분류 바텀시트·제출 목록) 둘 다
         // 바탕이 옅은 회색이라, 기본 외곽선은 그 위에서 한 겹 더 두꺼워
-        // 보였다. 포커스 색(파란 테두리)도 뺐다 — 바텀시트에서는 열리는
-        // 순간 자동으로 포커스가 와서(`autofocus`) 늘 켜져 있는 것과 같고,
-        // 그러면 강조가 아니라 그냥 파란 테두리다.
+        // 보였다. 포커스 색(파란 테두리)도 같은 색으로 맞췄다 — 눌렀는지는
+        // 커서와 키보드가 이미 말해주고, 칸 하나뿐인 자리에서 테두리까지
+        // 바뀌면 그건 강조가 아니라 깜빡임이다.
         border: const OutlineInputBorder(
           borderSide: BorderSide(color: AppColors.neutralBg),
         ),

@@ -206,9 +206,6 @@ class _SubmissionsScreenState extends ConsumerState<SubmissionsScreen> {
               padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, 0),
               child: SearchField(
                 hintText: '업체명·내역·금액으로 검색',
-                // 목록을 보러 들어온 화면이다. 열자마자 키보드가 올라오면
-                // 정작 보려던 목록이 가려진다.
-                autofocus: false,
                 onChanged: (v) => setState(() => _query = v),
               ),
             ),
