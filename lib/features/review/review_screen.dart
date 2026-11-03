@@ -192,6 +192,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         key: _fieldKeys['소속날짜'],
                         label: '소속날짜',
                         certainty: draft.certaintyOf('belong_date'),
+                        // **고치는 줄이다.** 값을 달력에서 고르든 키보드로
+                        // 치든 사용자에게는 같은 일이다 — 연필과 밑줄을
+                        // 달아 총금액·업체명과 같은 모양으로 둔다.
+                        editable: true,
                         value: _fmtDate(draft.belongDate),
                         placeholder: '입력 필요',
                         subtitle: '계산서 발행일자 또는 카드 결제일자',
@@ -212,12 +216,17 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         ),
 
                       const RowDivider(),
+                      // **누를 수 없는 줄이다.** 영수증에서 고칠 수 있는 날짜는
+                      // 소속날짜 하나고, 지출날짜는 그 값을 따라간다
+                      // (`EntryDraft.toEntry` 의 `spendDate ?? belongDate`).
+                      //
+                      // 전에는 `onTap: () {}` 가 달려 있어서 줄 끝에 `›` 가
+                      // 뜨고 눌러도 아무 일이 없었다 — 고장난 줄로 보인다.
                       LabeledRow(
                         label: '지출날짜',
                         value: _fmtDate(draft.spendDate ?? draft.belongDate),
                         placeholder: '소속날짜와 동일',
                         subtitle: '실제로 비용을 집행한 일자',
-                        onTap: () {},
                       ),
                       const RowDivider(),
                       InlineEditRow(
@@ -667,6 +676,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       // 으로 구분된다.
                       LabeledRow(
                         label: '분류',
+                        // 바텀시트에서 고르지만 **고치는 줄**이다. 아래 파일명
+                        // 줄과 같은 카드에 있으면서 한쪽만 `›` 면, 둘이 서로
+                        // 다른 동작으로 보인다.
+                        editable: true,
                         value: draft.evidenceType,
                         onTap: () => _pickEvidenceType(context, ref),
                       ),
