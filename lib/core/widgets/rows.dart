@@ -24,6 +24,7 @@ class LabeledRow extends StatelessWidget {
     this.certainty = Certainty.unknown,
     this.valueWidget,
     this.maxLines,
+    this.valueOnOneLine = false,
   });
 
   final String label;
@@ -85,6 +86,26 @@ class LabeledRow extends StatelessWidget {
   /// 난 것이 렌더링 오류처럼 보이고, 뒤에 더 있다는 것도 알 수 없다.
   final int? maxLines;
 
+  /// 값을 **한 줄에 다 보여준다.** 폭이 모자라면 값을 줄이는 대신
+  /// 라벨·[subtitle] 쪽을 `…` 으로 줄인다.
+  ///
+  /// 기본 동작은 반대다 — 값 칸만 `Flexible` 이라 좁아지면 값이 두 줄로
+  /// 늘어난다. 그런데 라벨 쪽에 설명이 붙으면 그쪽이 폭을 많이 먹어서
+  /// (소속날짜의 "계산서 발행일자 또는 카드 결제일자") 좁은 화면에서
+  /// `2026-11-03` 이 `2026-` / `11-03` 으로 갈렸다 — 한 값이 둘로 보인다.
+  ///
+  /// **설명은 줄여도 되고 값은 안 된다.** 설명은 두 날짜의 차이를 알려주는
+  /// 보조 문구라 앞부분만 읽어도 뜻이 통하지만, 반 토막 난 날짜는 못 읽는다.
+  ///
+  /// 두 가지를 지키고 쓴다:
+  ///
+  ///   - **값이 짧은 줄에만.** 값 칸이 `Flexible` 을 벗어나 폭을 무한으로
+  ///     받으므로, 긴 값은 줄어들지 않고 그대로 **넘친다**. 날짜처럼 길이가
+  ///     정해진 값이 대상이다 — 금액·파일명은 아니다
+  ///   - [valueWidget] 과 같이 쓰지 않는다. 폭이 무한이면 그 안의 `TextField`
+  ///     가 레이아웃에서 던진다(아래 '값 칸은 Flexible 이어야 한다' 주석)
+  final bool valueOnOneLine;
+
   final Widget? trailing;
   final VoidCallback? onTap;
 
@@ -103,22 +124,37 @@ class LabeledRow extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: t.titleSmall?.copyWith(color: AppColors.neutralFg),
-                ),
-                if (subtitle != null)
+            // 값을 한 줄로 지킬 때는 **이쪽이 줄어든다.** 그래서 `Flexible` 은
+            // 여기에 붙고, 설명은 `…` 으로 끊긴다([valueOnOneLine]).
+            _maybeFlexible(
+              flexible: valueOnOneLine,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    subtitle!,
-                    style: t.bodySmall?.copyWith(color: AppColors.neutralFg),
+                    label,
+                    style: t.titleSmall?.copyWith(color: AppColors.neutralFg),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-              ],
+                  if (subtitle != null)
+                    Text(
+                      subtitle!,
+                      style: t.bodySmall?.copyWith(color: AppColors.neutralFg),
+                      maxLines: valueOnOneLine ? 1 : null,
+                      overflow: valueOnOneLine
+                          ? TextOverflow.ellipsis
+                          : TextOverflow.clip,
+                    ),
+                ],
+              ),
             ),
             const SizedBox(width: Gap.sm),
-            Flexible(
+            // 값 쪽 묶음(값 + 확신도 아이콘 + 연필). [valueOnOneLine] 이면
+            // 이쪽도 `Flexible` 을 벗어난다 — 여기가 남아 있으면 안쪽 값 칸만
+            // 풀어줘도 이 줄이 폭을 반만 받아서 그 안에서 넘친다.
+            _maybeFlexible(
+              flexible: !valueOnOneLine,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -132,7 +168,11 @@ class LabeledRow extends StatelessWidget {
                   //
                   // loose 라서 보여주기만 할 때(`Text`)는 글자 폭만 차지하고,
                   // 편집 중에는 남은 폭을 다 쓴다.
-                  Flexible(
+                  // 값 칸을 **`Flexible` 에서 빼는 유일한 경우**가
+                  // [valueOnOneLine] 이다. 폭이 무한이 되므로 글자가 접히지
+                  // 않는다 — 그게 이 플래그가 하는 일이다.
+                  _maybeFlexible(
+                    flexible: !valueOnOneLine,
                     child: Container(
                       // 입력칸처럼 보이게 하는 밑줄. 값이 오른쪽 정렬이라 밑줄도
                       // 글자 폭이 아니라 줄 전체에 깔린다 — 빈 칸도 누를 자리가 보인다.
@@ -151,8 +191,11 @@ class LabeledRow extends StatelessWidget {
                           Text(
                             hasValue ? value! : (placeholder ?? ''),
                             textAlign: TextAlign.right,
-                            maxLines: maxLines,
-                            overflow: maxLines == null
+                            maxLines: valueOnOneLine ? 1 : maxLines,
+                            // 폭이 무한이라 접힐 일이 없지만, 값에 줄바꿈이
+                            // 섞여 들어와도 한 줄을 지키게 같이 끈다.
+                            softWrap: valueOnOneLine ? false : null,
+                            overflow: maxLines == null && !valueOnOneLine
                                 ? null
                                 : TextOverflow.ellipsis,
                             style: t.bodyMedium?.copyWith(
@@ -209,6 +252,13 @@ class LabeledRow extends StatelessWidget {
     );
   }
 }
+
+/// `Flexible` 을 조건부로 씌운다.
+///
+/// `Row` 의 자식을 `if` 로 가르면 같은 위젯이 두 번 적히고, 한쪽만 고쳐서
+/// 어긋나기 쉽다. 여기서는 감싸는 쪽만 가른다.
+Widget _maybeFlexible({required bool flexible, required Widget child}) =>
+    flexible ? Flexible(child: child) : child;
 
 /// 탭하면 **그 자리가 입력칸**이 되는 줄.
 ///
