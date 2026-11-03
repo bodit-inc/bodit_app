@@ -76,11 +76,16 @@ class AppCard extends StatelessWidget {
 /// 그래야 그 줄이 안 나올 때 선도 같이 사라진다. 뒤에 붙이는 규칙으로 하면
 /// 마지막 줄이 조건부일 때 카드 밑에 선만 남는다.
 class RowDivider extends StatelessWidget {
-  const RowDivider({super.key});
+  const RowDivider({this.indent = true, super.key});
+
+  final bool indent;
 
   @override
-  Widget build(BuildContext context) =>
-      const Divider(height: 1, indent: Gap.lg, endIndent: Gap.lg);
+  Widget build(BuildContext context) => Divider(
+    height: 1,
+    indent: indent ? Gap.lg : 0,
+    endIndent: indent ? Gap.lg : 0,
+  );
 }
 
 /// 홈의 큰 액션 버튼(촬영 / 파일 선택). 시안의 `.big`

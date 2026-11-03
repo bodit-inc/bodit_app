@@ -99,6 +99,7 @@ class LabeledRow extends StatelessWidget {
                   ),
               ],
             ),
+            const SizedBox(width: Gap.sm),
             Flexible(
               child: Row(
                 mainAxisSize: MainAxisSize.min,

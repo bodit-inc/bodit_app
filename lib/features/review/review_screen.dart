@@ -163,8 +163,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       ),
                       // OCR 이 읽은 날짜와 다르게 골랐다. 어느 쪽이 맞는지는
                       // 사용자가 안다 — 막지 않고 알리고 되돌릴 길만 둔다.
-                      if (draft.belongDateOcrConflict != null) ...[
-                        const RowDivider(),
+                      if (draft.belongDateOcrConflict != null)
                         OcrConflictNote(
                           ocrValue: _fmtDate(draft.belongDateOcrConflict)!,
                           onRevert: () => ref
@@ -175,7 +174,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                 ),
                               ),
                         ),
-                      ],
+
                       const RowDivider(),
                       LabeledRow(
                         label: '지출날짜',
@@ -195,8 +194,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             .read(reviewControllerProvider.notifier)
                             .update((d) => d.copyWith(vendor: v)),
                       ),
-                      if (draft.vendorOcrConflict != null) ...[
-                        const RowDivider(),
+                      if (draft.vendorOcrConflict != null)
                         OcrConflictNote(
                           ocrValue: draft.vendorOcrConflict!,
                           onRevert: () => ref
@@ -206,7 +204,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                     d.copyWith(vendor: draft.vendorOcrConflict),
                               ),
                         ),
-                      ],
+
                       const RowDivider(),
                       // 카드번호는 **분류를 정하는 입력**이다. 예전엔 OCR 이 읽은
                       // 값이 화면에 아예 안 나와서, 숫자 하나를 잘못 읽어도
@@ -230,15 +228,14 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       ),
                       // 되돌리기도 `setCardLast4` 를 탄다. 숫자 하나가 바뀌면
                       // 분류가 통째로 달라지므로 값만 바꿔선 안 된다.
-                      if (draft.cardLast4OcrConflict != null) ...[
-                        const RowDivider(),
+                      if (draft.cardLast4OcrConflict != null)
                         OcrConflictNote(
                           ocrValue: draft.cardLast4OcrConflict!,
                           onRevert: () => ref
                               .read(reviewControllerProvider.notifier)
                               .setCardLast4(draft.cardLast4OcrConflict!),
                         ),
-                      ],
+
                       const RowDivider(),
                       // 내역은 OCR 이 읽은 품목명이 그대로 들어가 있기 쉬운데,
                       // 회계가 원하는 건 "무슨 건인지" 다. **직접 써야 하는 칸**이라는
@@ -249,13 +246,11 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         certainty: draft.certaintyOf('description'),
                         value: draft.description,
                         placeholder: '직접 입력',
-                        warnPlaceholder: true,
                         onSubmit: (v) => ref
                             .read(reviewControllerProvider.notifier)
                             .update((d) => d.copyWith(description: v)),
                       ),
                       if (draft.descriptionOcrConflict != null) ...[
-                        const RowDivider(),
                         OcrConflictNote(
                           ocrValue: draft.descriptionOcrConflict!,
                           onRevert: () => ref
@@ -274,30 +269,29 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       //
                       // 채워지면 거둔다. 늘 빨간 글씨가 떠 있으면 아무도 안
                       // 본다 — 확신도 경고를 드물게 띄우는 것과 같은 이유다.
-                      if ((draft.description ?? '').trim().isEmpty) ...[
-                        const RowDivider(),
+                      if ((draft.description ?? '').trim().isEmpty)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(
                             Gap.lg,
-                            Gap.sm,
-                            Gap.lg,
                             0,
+                            Gap.lg,
+                            Gap.lg,
                           ),
                           child: Text(
-                            '내역은 직접 작성해야 합니다.',
+                            '내역을 모르면 비워두세요.\n"$needsOpsReview" 으로 제출됩니다.',
                             style: Theme.of(context).textTheme.labelSmall
                                 ?.copyWith(
-                                  color: AppColors.dangerFg,
+                                  color: AppColors.noticeFg,
                                   fontWeight: FontWeight.w600,
                                 ),
+                            textAlign: TextAlign.end,
                           ),
                         ),
-                      ],
+
                       // 같은 업체로 과거에 쓴 내역. **자동으로 안 채운다** —
                       // 내역은 건마다 달라서("8월 도서" → "9월 도서") 지난 값을
                       // 넣으면 9월에 8월 것이 조용히 들어간다. 눌러서 고른다.
-                      if (draft.descriptionSuggestions.isNotEmpty) ...[
-                        const RowDivider(),
+                      if (draft.descriptionSuggestions.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(
                             Gap.lg,
@@ -306,7 +300,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             Gap.md,
                           ),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text(
                                 '이 업체로 전에 쓴 내역',
@@ -316,6 +310,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                               Wrap(
                                 spacing: Gap.sm,
                                 runSpacing: Gap.sm,
+
                                 children: [
                                   for (final d in draft.descriptionSuggestions)
                                     SuggestChip(
@@ -334,21 +329,11 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             ],
                           ),
                         ),
-                      ],
-                      // 모르면 지어내는 것보다 비워두는 게 낫다 — 그 사실을
-                      // 알려야 사용자가 아무 말이나 채워 넣지 않는다.
-                      //
-                      // **카드 안**에 둔다. 밖에 있으면 어느 칸에 대한 말인지
-                      // 안 보였다 — 내역 칸과 두 줄 떨어져 떠 있었다.
-                      const RowDivider(),
-                      const NoteText(
-                        '내역을 모르면 비워두세요. "$needsOpsReview" 으로 제출됩니다.',
-                      ),
                     ],
                   ),
 
                   // 시안 ⑦ — 영수증에 없는 항목은 과거 이력으로 추천
-                  const SectionHeader('분류 — 영수증에 없는 항목'),
+                  const SectionHeader('분류'),
                   AppCard(
                     children: [
                       Padding(
@@ -359,7 +344,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             Text(
                               '비목',
                               key: _fieldKeys['비목'],
-                              style: Theme.of(context).textTheme.bodySmall,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(color: AppColors.neutralFg),
                             ),
                             const SizedBox(height: Gap.sm),
                             Wrap(
@@ -381,6 +367,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                 else
                                   SuggestChip(
                                     '선택하기',
+                                    initialState: true,
                                     onTap: () => _pickCategory(context, ref),
                                   ),
                               ],
@@ -406,10 +393,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                               ),
 
                             const SizedBox(height: Gap.lg),
+                            const RowDivider(indent: false),
+                            const SizedBox(height: Gap.lg),
                             Text(
                               '분류',
                               key: _fieldKeys['분류코드'],
-                              style: Theme.of(context).textTheme.bodySmall,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(color: AppColors.neutralFg),
                             ),
                             const SizedBox(height: Gap.sm),
                             // 분류코드와 분류명은 따로 받지 않는다 — 마스터에서 하나를
@@ -430,6 +420,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                 else
                                   SuggestChip(
                                     '선택하기',
+                                    initialState: true,
                                     onTap: () => _pickClass(context, ref),
                                   ),
                               ],
@@ -517,8 +508,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       // 되돌리기도 `setTotalAmount` 를 탄다. 총금액은 혼자
                       // 바뀌지 않는다 — 공급가액·부가세가 따라와야 하고,
                       // 그 규칙은 컨트롤러가 갖는다.
-                      if (draft.totalAmountOcrConflict != null) ...[
-                        const RowDivider(),
+                      if (draft.totalAmountOcrConflict != null)
                         OcrConflictNote(
                           ocrValue: _fmtAmount(
                             draft.totalAmountOcrConflict,
@@ -531,7 +521,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                 currencyCode: draft.currency,
                               ),
                         ),
-                      ],
+
                       const RowDivider(),
                       LabeledRow(
                         label: '공급가액',

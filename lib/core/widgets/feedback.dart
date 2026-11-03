@@ -284,12 +284,12 @@ class OcrConflictNote extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.md),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(
-            '"$ocrValue" 로 인식했습니다. 다시 확인해주세요.',
+            '"$ocrValue" (으)로 인식했습니다. 다시 확인해주세요.',
             style: Theme.of(context).textTheme.labelSmall
-                ?.copyWith(color: AppColors.noticeFg),
+                ?.copyWith(color: AppColors.dangerFg),
           ),
           const SizedBox(height: Gap.sm),
           SuggestChip(ocrValue, onTap: onRevert),
