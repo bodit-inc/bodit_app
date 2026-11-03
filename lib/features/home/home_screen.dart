@@ -122,7 +122,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     _ShortcutRow(label: 'Slack', value: '#purchase', id: Config.slackChannelId, url: slackChannelUrl),
                   ],
                 ),
-                const NoteText('조회는 앱에서 다시 만들지 않고 원본으로 연결합니다.'),
               ],
             ),
           ),
@@ -134,7 +133,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), label: '홈'),
-          NavigationDestination(icon: Icon(Icons.list_alt), label: '내 제출'),
+          NavigationDestination(icon: Icon(Icons.list_alt), label: '제출 목록'),
         ],
       ),
     );
@@ -198,7 +197,7 @@ class _AccountMenu extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('등록자', style: Theme.of(context).textTheme.labelSmall),
+                Text('계정', style: Theme.of(context).textTheme.labelSmall),
                 const SizedBox(height: 2),
                 Text(email, style: Theme.of(context).textTheme.bodySmall),
               ],
