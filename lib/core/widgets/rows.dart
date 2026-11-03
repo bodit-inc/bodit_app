@@ -89,15 +89,25 @@ class LabeledRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Gap.lg, vertical: Gap.md),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Gap.lg,
+          vertical: Gap.md,
+        ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: t.titleSmall?.copyWith(color: AppColors.neutralFg)),
-                if (subtitle != null) Text(subtitle!, style: t.bodySmall?.copyWith(color: AppColors.neutralFg)),
+                Text(
+                  label,
+                  style: t.titleSmall?.copyWith(color: AppColors.neutralFg),
+                ),
+                if (subtitle != null)
+                  Text(
+                    subtitle!,
+                    style: t.bodySmall?.copyWith(color: AppColors.neutralFg),
+                  ),
               ],
             ),
             const SizedBox(width: Gap.sm),
@@ -121,20 +131,32 @@ class LabeledRow extends StatelessWidget {
                       // 글자 폭이 아니라 줄 전체에 깔린다 — 빈 칸도 누를 자리가 보인다.
                       decoration: editable
                           ? const BoxDecoration(
-                              border: Border(bottom: BorderSide(color: Color(0xFFD8D8DE))),
+                              border: Border(
+                                bottom: BorderSide(color: Color(0xFFD8D8DE)),
+                              ),
                             )
                           : null,
-                      padding: editable ? const EdgeInsets.only(bottom: 3) : EdgeInsets.zero,
+                      padding: editable
+                          ? const EdgeInsets.only(bottom: 3)
+                          : EdgeInsets.zero,
                       child:
                           valueWidget ??
                           Text(
                             hasValue ? value! : (placeholder ?? ''),
                             textAlign: TextAlign.right,
                             maxLines: maxLines,
-                            overflow: maxLines == null ? null : TextOverflow.ellipsis,
+                            overflow: maxLines == null
+                                ? null
+                                : TextOverflow.ellipsis,
                             style: t.bodyMedium?.copyWith(
-                              fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
-                              color: hasValue ? null : (warnPlaceholder ? AppColors.dangerFg : Theme.of(context).disabledColor),
+                              fontWeight: hasValue
+                                  ? FontWeight.w500
+                                  : FontWeight.w400,
+                              color: hasValue
+                                  ? null
+                                  : (warnPlaceholder
+                                        ? AppColors.dangerFg
+                                        : Theme.of(context).disabledColor),
                             ),
                           ),
                     ),
@@ -142,21 +164,34 @@ class LabeledRow extends StatelessWidget {
                   if (certainty.needsAttention) ...[
                     const SizedBox(width: Gap.xs),
                     Tooltip(
-                      message: certainty == Certainty.poor ? '거의 못 읽었습니다. 값이 맞는지 꼭 확인하세요.' : '읽긴 했는데 자신 없습니다. 확인해 주세요.',
+                      message: certainty == Certainty.poor
+                          ? '거의 못 읽었습니다. 값이 맞는지 꼭 확인하세요.'
+                          : '읽긴 했는데 자신 없습니다. 확인해 주세요.',
                       child: Icon(
-                        certainty == Certainty.poor ? Icons.error_outline : Icons.help_outline,
+                        certainty == Certainty.poor
+                            ? Icons.error_outline
+                            : Icons.help_outline,
                         size: 16,
                         // 거의 못 읽은 것만 빨강이다. 둘을 같은 색으로 두면 정도가
                         // 안 보이고, 빨강이 흔해지면 빨강이 무뎌진다.
-                        color: certainty == Certainty.poor ? AppColors.dangerFg : AppColors.noticeFg,
+                        color: certainty == Certainty.poor
+                            ? AppColors.dangerFg
+                            : AppColors.noticeFg,
                       ),
                     ),
                   ],
-                  if (trailing != null) ...[const SizedBox(width: Gap.sm), trailing!],
+                  if (trailing != null) ...[
+                    const SizedBox(width: Gap.sm),
+                    trailing!,
+                  ],
                   if (onTap != null)
                     Padding(
                       padding: const EdgeInsets.only(left: Gap.xs),
-                      child: Icon(editable ? Icons.edit_outlined : Icons.chevron_right, size: editable ? 16 : 20, color: const Color(0xFFC2C2C7)),
+                      child: Icon(
+                        editable ? Icons.edit_outlined : Icons.chevron_right,
+                        size: editable ? 16 : 20,
+                        color: const Color(0xFFC2C2C7),
+                      ),
                     ),
                 ],
               ),
@@ -255,7 +290,9 @@ class _InlineEditRowState extends State<InlineEditRow> {
       _controller = TextEditingController(text: widget.value ?? '')
         // 바로 고쳐 쓰는 경우가 많아서 **끝에 커서**를 둔다. 전체 선택으로
         // 두면 아무 글자나 누르는 순간 기존 값이 날아간다.
-        ..selection = TextSelection.collapsed(offset: (widget.value ?? '').length);
+        ..selection = TextSelection.collapsed(
+          offset: (widget.value ?? '').length,
+        );
     });
     _focus.requestFocus();
     // 레이아웃이 바뀐 뒤에 스크롤해야 제자리를 찾는다.
@@ -307,7 +344,8 @@ class _InlineEditRowState extends State<InlineEditRow> {
         textAlign: TextAlign.right,
         keyboardType: widget.keyboardType,
         textInputAction: TextInputAction.done,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+        style: Theme.of(context).textTheme.bodyMedium
+            ?.copyWith(fontWeight: FontWeight.w500),
         decoration: InputDecoration(
           isDense: true,
           contentPadding: EdgeInsets.zero,

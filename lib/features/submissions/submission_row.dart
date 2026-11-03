@@ -127,7 +127,11 @@ class SubmissionRow extends ConsumerWidget {
         // 보내는 중에 지우면 증빙 파일이 업로드 도중 사라진다 —
         // 어디까지 올라갔는지 아무도 모르는 상태가 된다.
         if (sending) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('전송 중인 건은 지울 수 없습니다. 전송이 끝난 뒤에 지워주세요.')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('전송 중인 건은 지울 수 없습니다. 전송이 끝난 뒤에 지워주세요.'),
+            ),
+          );
           return false;
         }
         return await _confirmDelete(context);
@@ -141,7 +145,11 @@ class SubmissionRow extends ConsumerWidget {
 
   /// 삭제 확인. **무엇이 지워지고 무엇이 안 지워지는지** 분명히 말한다.
   Future<bool> _confirmDelete(BuildContext context) async {
-    final sent = <String>[if (row.driveDone) '드라이브', if (row.sheetsDone) '스프레드시트', if (row.slackDone) '슬랙'];
+    final sent = <String>[
+      if (row.driveDone) '드라이브',
+      if (row.sheetsDone) '스프레드시트',
+      if (row.slackDone) '슬랙',
+    ];
     return await confirmDestructive(
       context,
       title: '이 건을 목록에서 지울까요?',
@@ -182,7 +190,9 @@ class SubmissionRow extends ConsumerWidget {
     return Container(
       decoration: _hasError
           ? const BoxDecoration(
-              border: Border(left: BorderSide(color: AppColors.danger, width: 3)),
+              border: Border(
+                left: BorderSide(color: AppColors.danger, width: 3),
+              ),
             )
           : null,
       child: Column(
@@ -214,12 +224,20 @@ class SubmissionRow extends ConsumerWidget {
           if (!_allDone)
             Padding(
               padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.md),
-              child: Wrap(spacing: Gap.sm, runSpacing: Gap.xs, children: [for (final leg in _legs) _LegChip(leg)]),
+              child: Wrap(
+                spacing: Gap.sm,
+                runSpacing: Gap.xs,
+                children: [for (final leg in _legs) _LegChip(leg)],
+              ),
             ),
           if (_hasError)
             Padding(
               padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.md),
-              child: ErrorDisclosure('실패 사유 보기', detail: _failureDetail!, align: MainAxisAlignment.start),
+              child: ErrorDisclosure(
+                '실패 사유 보기',
+                detail: _failureDetail!,
+                align: MainAxisAlignment.start,
+              ),
             ),
         ],
       ),
@@ -254,26 +272,43 @@ class SubmissionRow extends ConsumerWidget {
       case OpenTarget.slackChannel:
         // 왜 채널을 여는지 **먼저 말한다.** 메시지로 갈 줄 알고 눌렀는데
         // 채널 맨 위로 떨어지면 왜 그런지 모른다.
-        messenger.showSnackBar(const SnackBar(content: Text('이 건은 전송 당시 링크를 저장하지 않아 채널만 엽니다.')));
-        await _launch(messenger, slackChannelUrl(Config.slackChannelId), 'Slack');
+        messenger.showSnackBar(
+          const SnackBar(content: Text('이 건은 전송 당시 링크를 저장하지 않아 채널만 엽니다.')),
+        );
+        await _launch(
+          messenger,
+          slackChannelUrl(Config.slackChannelId),
+          'Slack',
+        );
       case OpenTarget.drive:
         await _launch(messenger, row.driveUrl!, '드라이브');
       case OpenTarget.nothing:
-        messenger.showSnackBar(const SnackBar(content: Text('아직 어디에도 올라가지 않았습니다.')));
+        messenger.showSnackBar(
+          const SnackBar(content: Text('아직 어디에도 올라가지 않았습니다.')),
+        );
     }
   }
 
-  Future<void> _launch(ScaffoldMessengerState messenger, String url, String what) async {
+  Future<void> _launch(
+    ScaffoldMessengerState messenger,
+    String url,
+    String what,
+  ) async {
     try {
       // 외부 앱(Slack·드라이브)이 깔려 있으면 그쪽이 받아간다.
-      final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      final ok = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
       if (!ok) {
         messenger.showSnackBar(SnackBar(content: Text('$what 을(를) 열지 못했습니다.')));
       }
     } on Object catch (e) {
       // 조용히 실패하면 안 된다. 원문은 개발자용이지만 스낵바는 접을 대상이
       // 아니라 한 줄로 끝낸다.
-      messenger.showSnackBar(SnackBar(content: Text('$what 을(를) 열지 못했습니다: $e')));
+      messenger.showSnackBar(
+        SnackBar(content: Text('$what 을(를) 열지 못했습니다: $e')),
+      );
     }
   }
 
@@ -303,13 +338,19 @@ class _LegChip extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Gap.sm, vertical: 3),
-      decoration: BoxDecoration(color: fg.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(Radii.pill)),
+      decoration: BoxDecoration(
+        color: fg.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(Radii.pill),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 13, color: fg),
           const SizedBox(width: 4),
-          Text('${leg.destination.label} ${leg.state.label}', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg)),
+          Text(
+            '${leg.destination.label} ${leg.state.label}',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg),
+          ),
         ],
       ),
     );
