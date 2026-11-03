@@ -1,7 +1,11 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
 import 'package:bodit_app/data/providers.dart';
+import 'package:bodit_app/features/submissions/sending_banner.dart';
 import 'package:bodit_app/features/submissions/submission_row.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,7 +21,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// 일하는 단위가 **해당년월**이라(Drive 폴더도 시트 필터도 그 기준이다)
 /// 같은 단위로 묶는 게 머릿속 모양과 맞는다.
 class SubmissionsScreen extends ConsumerStatefulWidget {
-  const SubmissionsScreen({super.key});
+  const SubmissionsScreen({super.key, this.focusId});
+
+  /// 열면서 **그 건으로 스크롤할** 큐 행 id (`/submissions?focus=12`).
+  ///
+  /// 전송 진행 띠를 누르면 여기로 온다 — 맨 위로 떨어뜨리면 수십 건 중
+  /// 어느 것이 방금 제출한 그건지 다시 찾아야 한다.
+  final int? focusId;
 
   @override
   ConsumerState<SubmissionsScreen> createState() => _SubmissionsScreenState();
@@ -27,14 +37,106 @@ class _SubmissionsScreenState extends ConsumerState<SubmissionsScreen> {
   final _scroll = ScrollController();
   String _query = '';
 
+  /// 지금 가리키고 있는 건. 그 행에만 [_focusKey] 와 강조색이 붙는다.
+  int? _focus;
+
+  /// 가리킨 행의 위치를 알아내는 열쇠. **한 번에 한 행에만** 붙는다.
+  final GlobalKey _focusKey = GlobalKey();
+
+  /// 강조를 거두는 타이머. 계속 칠해두면 "이 건이 특별하다" 로 읽힌다.
+  Timer? _unfocus;
+
   /// 이 개수를 넘으면 위아래 이동 버튼을 띄운다. 몇 건뿐인데 버튼이 떠 있으면
   /// 목록을 가리기만 한다.
   static const _jumpButtonsFrom = 8;
 
   @override
+  void initState() {
+    super.initState();
+    final id = widget.focusId;
+    if (id == null) return;
+    // 첫 build 전이라 setState 를 부르지 않는다 — 어차피 바로 그려진다.
+    // 스크롤은 그려진 **다음**이라야 하므로 [_scrollToFocus] 가 프레임을 기다린다.
+    _focus = id;
+    unawaited(_scrollToFocus());
+  }
+
+  @override
   void dispose() {
+    _unfocus?.cancel();
     _scroll.dispose();
     super.dispose();
+  }
+
+  /// 그 건으로 가리키는 것을 **화면을 보는 중에** 바꾼다 —
+  /// 이미 목록에 있는 사용자가 진행 띠를 눌렀을 때.
+  Future<void> _focusOn(int id) async {
+    setState(() => _focus = id);
+    await _scrollToFocus();
+  }
+
+  /// [_focus] 가 가리키는 행이 보이도록 스크롤하고 잠깐 강조한다.
+  ///
+  /// ## 왜 한 번에 못 가나
+  ///
+  /// 목록은 lazy 다 — **화면 밖의 행은 아직 만들어지지도 않았다.** 그래서
+  /// `GlobalKey` 가 가리킬 엘리먼트가 없고, `ensureVisible` 도 쓸 수 없다.
+  /// 행 높이가 제각각(칩·실패 사유 줄이 붙는다)이라 위치를 계산할 수도 없다.
+  ///
+  /// 그래서 **한 화면씩 내려가며** 키가 잡히는지 보고, 잡히면 그 자리에
+  /// 맞춘다. 보통 찾는 건은 최근 제출이라 첫 화면에서 바로 끝난다.
+  ///
+  /// 걸음 수를 제한한다 — 검색에 걸러졌거나 방금 지운 건이면 아무리 내려도
+  /// 안 나온다. 그때는 멈추고 **왜 못 찾았는지 말한다**(조용히 끝내지 않는다).
+  Future<void> _scrollToFocus() async {
+    _unfocus?.cancel();
+
+    var found = false;
+    for (var step = 0; step < 24; step++) {
+      if (!mounted) return;
+      final ctx = _focusKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        found = true;
+        await Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          // 맨 위에 딱 붙이면 떠 있는 [맨 위로] 버튼과 월 헤더에 가린다.
+          alignment: 0.3,
+        );
+        break;
+      }
+      // 목록이 아직 안 그려졌다(스트림 로딩 중). 다음 프레임에 다시 본다.
+      if (!_scroll.hasClients) {
+        await WidgetsBinding.instance.endOfFrame;
+        continue;
+      }
+      final pos = _scroll.position;
+      // 끝까지 내려왔는데 없다 — 더 내려갈 곳이 없으니 그만둔다.
+      if (pos.pixels >= pos.maxScrollExtent) break;
+      await _scroll.animateTo(
+        math.min(pos.pixels + pos.viewportDimension * 0.8, pos.maxScrollExtent),
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+      );
+    }
+
+    if (!mounted) return;
+    if (!found) {
+      // 거의 이 경우다 — 검색어가 걸려 그 행이 목록에 없다.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _query.trim().isEmpty
+                ? '그 건을 목록에서 찾지 못했습니다.'
+                : '검색 결과에 없어서 찾지 못했습니다. 검색을 비우고 다시 눌러주세요.',
+          ),
+        ),
+      );
+    }
+    _unfocus = Timer(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _focus = null);
+    });
   }
 
   void _jumpTo(double offset) {
@@ -64,133 +166,152 @@ class _SubmissionsScreenState extends ConsumerState<SubmissionsScreen> {
           ),
         ],
       ),
-      body: rows.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: screenPadding,
-            child: ErrorDisclosure('목록을 불러오지 못했습니다.', detail: '$e'),
-          ),
+      // 전송 진행 띠는 **스크롤 밖 맨 위**에 둔다 — 목록 안에 두면 밀려
+      // 사라진다. 여기서 누르면 화면을 또 띄우지 않고 그 자리에서 스크롤한다.
+      body: Column(
+        children: [
+          SendingBanner(onTap: (id) => unawaited(_focusOn(id))),
+          Expanded(child: _list(rows)),
+        ],
+      ),
+    );
+  }
+
+  Widget _list(AsyncValue<List<Submission>> rows) {
+    return rows.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Padding(
+          padding: screenPadding,
+          child: ErrorDisclosure('목록을 불러오지 못했습니다.', detail: '$e'),
         ),
-        data: (list) {
-          if (list.isEmpty) {
-            return const Center(child: Text('아직 제출한 건이 없습니다.'));
-          }
+      ),
+      data: (list) {
+        if (list.isEmpty) {
+          return const Center(child: Text('아직 제출한 건이 없습니다.'));
+        }
 
-          // 파일명에 날짜·업체명·내역·증빙자료명·금액이 전부 들어 있다.
-          // 따로 색인을 만들 이유가 없다 — 파일명 하나로 다 걸린다.
-          final q = _query.trim().toLowerCase();
-          final shown = q.isEmpty
-              ? list
-              : list
-                    .where((s) => s.filename.toLowerCase().contains(q))
-                    .toList();
+        // 파일명에 날짜·업체명·내역·증빙자료명·금액이 전부 들어 있다.
+        // 따로 색인을 만들 이유가 없다 — 파일명 하나로 다 걸린다.
+        final q = _query.trim().toLowerCase();
+        final shown = q.isEmpty
+            ? list
+            : list.where((s) => s.filename.toLowerCase().contains(q)).toList();
 
-          final groups = _groupByMonth(shown);
+        final groups = _groupByMonth(shown);
 
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, 0),
-                child: SearchField(
-                  hintText: '업체명·내역·금액으로 검색',
-                  // 목록을 보러 들어온 화면이다. 열자마자 키보드가 올라오면
-                  // 정작 보려던 목록이 가려진다.
-                  autofocus: false,
-                  onChanged: (v) => setState(() => _query = v),
-                ),
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, 0),
+              child: SearchField(
+                hintText: '업체명·내역·금액으로 검색',
+                // 목록을 보러 들어온 화면이다. 열자마자 키보드가 올라오면
+                // 정작 보려던 목록이 가려진다.
+                autofocus: false,
+                onChanged: (v) => setState(() => _query = v),
               ),
-              Expanded(
-                child: shown.isEmpty
-                    ? const Center(child: Text('검색 결과가 없습니다.'))
-                    // 이동 버튼을 **목록 위**에 올린다. Scaffold 의
-                    // floatingActionButton 으로는 상단 중앙에 둘 수 없고,
-                    // 화면 전체를 덮는 Stack 으로 올리면 검색창을 가린다.
-                    : Stack(
-                        children: [
-                          CustomScrollView(
-                            controller: _scroll,
-                            slivers: [
-                              for (final g in groups) ...[
-                                // 묶음 헤더를 스크롤 중에도 붙여둔다.
-                                SliverPersistentHeader(
-                                  pinned: true,
-                                  delegate: _MonthHeaderDelegate(
-                                    '${g.label} · ${g.rows.length}건',
-                                  ),
+            ),
+            Expanded(
+              child: shown.isEmpty
+                  ? const Center(child: Text('검색 결과가 없습니다.'))
+                  // 이동 버튼을 **목록 위**에 올린다. Scaffold 의
+                  // floatingActionButton 으로는 상단 중앙에 둘 수 없고,
+                  // 화면 전체를 덮는 Stack 으로 올리면 검색창을 가린다.
+                  : Stack(
+                      children: [
+                        CustomScrollView(
+                          controller: _scroll,
+                          slivers: [
+                            for (final g in groups) ...[
+                              // 묶음 헤더를 스크롤 중에도 붙여둔다.
+                              SliverPersistentHeader(
+                                pinned: true,
+                                delegate: _MonthHeaderDelegate(
+                                  '${g.label} · ${g.rows.length}건',
                                 ),
-                                SliverPadding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    Gap.lg,
-                                    0,
-                                    Gap.lg,
-                                    Gap.lg,
-                                  ),
-                                  sliver: SliverToBoxAdapter(
-                                    child: AppCard(
-                                      children: [
-                                        for (final s in g.rows)
-                                          // 묶음이 연·월을 말하므로 일자만.
-                                          SubmissionRow(s, dayOnly: true),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              const SliverPadding(
-                                padding: EdgeInsets.fromLTRB(
+                              ),
+                              SliverPadding(
+                                padding: const EdgeInsets.fromLTRB(
                                   Gap.lg,
                                   0,
                                   Gap.lg,
-                                  Gap.xxl,
+                                  Gap.lg,
                                 ),
                                 sliver: SliverToBoxAdapter(
-                                  child: NoteText(
-                                    '목적지가 3곳이라 하나만 실패할 수 있습니다. '
-                                    '실패한 곳만 다시 보내므로 시트에 같은 행이 두 번 들어가지 않습니다.\n'
-                                    '행을 왼쪽으로 밀면 목록에서 지울 수 있습니다 — '
-                                    '이미 올라간 파일과 시트 행은 지워지지 않습니다.',
+                                  child: AppCard(
+                                    children: [for (final s in g.rows) _row(s)],
                                   ),
                                 ),
                               ),
                             ],
-                          ),
-                          if (list.length >= _jumpButtonsFrom) ...[
-                            Positioned(
-                              top: Gap.sm,
-                              left: 0,
-                              right: 0,
-                              child: Center(
-                                child: FloatingActionButton.small(
-                                  heroTag: 'top',
-                                  tooltip: '맨 위로',
-                                  onPressed: () => _jumpTo(0),
-                                  child: const Icon(Icons.keyboard_arrow_up),
-                                ),
+                            const SliverPadding(
+                              padding: EdgeInsets.fromLTRB(
+                                Gap.lg,
+                                0,
+                                Gap.lg,
+                                Gap.xxl,
                               ),
-                            ),
-                            Positioned(
-                              bottom: Gap.sm,
-                              left: 0,
-                              right: 0,
-                              child: Center(
-                                child: FloatingActionButton.small(
-                                  heroTag: 'bottom',
-                                  tooltip: '맨 아래로',
-                                  onPressed: () =>
-                                      _jumpTo(_scroll.position.maxScrollExtent),
-                                  child: const Icon(Icons.keyboard_arrow_down),
+                              sliver: SliverToBoxAdapter(
+                                child: NoteText(
+                                  '목적지가 3곳이라 하나만 실패할 수 있습니다. '
+                                  '실패한 곳만 다시 보내므로 시트에 같은 행이 두 번 들어가지 않습니다.\n'
+                                  '행을 왼쪽으로 밀면 목록에서 지울 수 있습니다 — '
+                                  '이미 올라간 파일과 시트 행은 지워지지 않습니다.',
                                 ),
                               ),
                             ),
                           ],
+                        ),
+                        if (list.length >= _jumpButtonsFrom) ...[
+                          Positioned(
+                            top: Gap.sm,
+                            left: 0,
+                            right: 0,
+                            child: Center(
+                              child: FloatingActionButton.small(
+                                heroTag: 'top',
+                                tooltip: '맨 위로',
+                                onPressed: () => _jumpTo(0),
+                                child: const Icon(Icons.keyboard_arrow_up),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: Gap.sm,
+                            left: 0,
+                            right: 0,
+                            child: Center(
+                              child: FloatingActionButton.small(
+                                heroTag: 'bottom',
+                                tooltip: '맨 아래로',
+                                onPressed: () =>
+                                    _jumpTo(_scroll.position.maxScrollExtent),
+                                child: const Icon(Icons.keyboard_arrow_down),
+                              ),
+                            ),
+                          ),
                         ],
-                      ),
-              ),
-            ],
-          );
-        },
-      ),
+                      ],
+                    ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 목록의 한 행. **가리킨 건이면** 열쇠와 강조색을 얹는다.
+  ///
+  /// 스크롤만 해두면 화면에 들어온 여러 행 가운데 어느 줄이 그건인지 알 수
+  /// 없다 — 날짜·업체명이 비슷한 행이 줄줄이 있다. 잠깐 칠해서 가리킨다.
+  Widget _row(Submission s) {
+    // 묶음 헤더가 연·월을 말하므로 행에서는 일자만.
+    final row = SubmissionRow(s, dayOnly: true);
+    if (s.id != _focus) return row;
+    return KeyedSubtree(
+      key: _focusKey,
+      child: ColoredBox(color: AppColors.suggestBg, child: row),
     );
   }
 }

@@ -1,0 +1,16 @@
+// 개발 환경의 네이티브 값. **배포하지 않는다** — 내 기기에서 debug 로만 돈다.
+//
+// 번들 ID 가 운영과 달라야 한 기기에 둘 다 깔린다. 그래서 구글 iOS 클라이언트도
+// 따로 필요하다 — 클라이언트는 **번들 ID 로** 매칭되므로 운영 것을 그대로 쓰면
+// 로그인이 막힌다. **배포 여부와는 상관이 없다**: 내 기기에 debug 로 깔아도
+// 구글은 번들 ID 를 보고 거절한다.
+//
+// 값은 GCP 콘솔 → 사용자 인증 정보 → "iOS" 유형, 번들 ID co.bodit.boditApp.dev
+// 로 만든 클라이언트 ID 를 거꾸로 적은 것이다
+// (123-abc.apps.googleusercontent.com → com.googleusercontent.apps.123-abc).
+// .env.dev 의 GOOGLE_IOS_CLIENT_ID 와 **같은 클라이언트**여야 한다 —
+// 한쪽만 바꾸면 로그인 창은 뜨는데 앱으로 돌아오지 못한다.
+
+APP_DISPLAY_NAME = Bodit_dev
+
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.768953981137-cvg91rcm8obucv7js72kspt1mub6am2k

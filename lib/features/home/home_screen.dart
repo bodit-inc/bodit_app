@@ -1,13 +1,16 @@
 import 'dart:async';
 
 import 'package:bodit_app/core/config.dart';
+import 'package:bodit_app/core/flavor.dart';
 import 'package:bodit_app/core/links.dart';
 import 'package:bodit_app/core/theme/tokens.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
+import 'package:bodit_app/data/background_send.dart';
 import 'package:bodit_app/data/providers.dart';
 import 'package:bodit_app/features/auth/auth_controller.dart';
 import 'package:bodit_app/features/capture/capture_service.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
+import 'package:bodit_app/features/submissions/sending_banner.dart';
 import 'package:bodit_app/features/submissions/submission_row.dart';
 import 'package:bodit_app/router.dart';
 import 'package:flutter/material.dart';
@@ -27,8 +30,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  bool _sending = false;
-
   @override
   Widget build(BuildContext context) {
     final queue = ref.watch(pendingSubmissionsProvider);
@@ -37,90 +38,122 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ?.where((s) => !s.slackDone || !s.sheetsDone || !s.driveDone)
             .toList() ??
         const [];
+    // 전송이 백그라운드로 돌고 있는지. [전송 시도] 를 가리는 데 쓴다 —
+    // 돌고 있는 중에 또 누르면 아무 일도 안 일어나는데, 사용자는 눌렀는지도
+    // 모른다. 진행 상황은 아래 띠가 말한다.
+    final sending = ref.watch(backgroundSendProvider).isSending;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('매입내역'), actions: [_AccountMenu()]),
-      body: ListView(
-        padding: screenPadding,
+      appBar: AppBar(
+        title: Text(isDevFlavor ? '매입내역(개발)' : '매입내역'),
+        actions: [_AccountMenu()],
+      ),
+      // 전송 진행 띠는 **스크롤 밖 맨 위**에 둔다 — 목록 안에 두면 스크롤에
+      // 밀려 사라지고, 사용자는 전송이 끝났는지 모르는 채로 또 누른다.
+      body: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: BigActionCard(
-                  icon: Icons.photo_camera_outlined,
-                  title: '증빙 촬영',
-                  subtitle: '영수증·전표',
-                  onTap: _capture,
-                ),
-              ),
-              const SizedBox(width: Gap.md),
-              Expanded(
-                child: BigActionCard(
-                  icon: Icons.image_outlined,
-                  title: '파일 선택',
-                  subtitle: 'PDF·JPG·PNG',
-                  onTap: _pickFiles,
-                ),
-              ),
-            ],
-          ),
-          if (pending.isNotEmpty) ...[
-            Row(
+          const SendingBanner(),
+          Expanded(
+            child: ListView(
+              padding: screenPadding,
               children: [
-                Expanded(
-                  child: SectionHeader('전송 대기 ${pending.length}건 · 최근순'),
+                // 개발 빌드에서만. **무엇이 다른지**까지 적는다 — "개발 환경입니다"
+                // 만으로는 제출이 어디로 가는지 모르고, 그걸 확인하려고 아래
+                // 바로가기를 눌러보게 된다.
+                if (isDevFlavor) ...[
+                  const NoticeBanner(
+                    child: Text(
+                      '개발 환경입니다. 제출은 개발용 시트·드라이브·Slack 으로만 갑니다 — '
+                      '여기서 만든 행은 회계 담당자가 보는 시트에 들어가지 않습니다.',
+                    ),
+                  ),
+                  const SizedBox(height: Gap.md),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: BigActionCard(
+                        icon: Icons.photo_camera_outlined,
+                        title: '증빙 촬영',
+                        subtitle: '영수증·전표',
+                        onTap: _capture,
+                      ),
+                    ),
+                    const SizedBox(width: Gap.md),
+                    Expanded(
+                      child: BigActionCard(
+                        icon: Icons.image_outlined,
+                        title: '파일 선택',
+                        subtitle: 'PDF·JPG·PNG',
+                        onTap: _pickFiles,
+                      ),
+                    ),
+                  ],
                 ),
-                TextButton(
-                  onPressed: () => _clearAll(context),
-                  child: const Text('전체 삭제'),
+                if (pending.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SectionHeader('전송 대기 ${pending.length}건 · 최근순'),
+                      ),
+                      TextButton(
+                        onPressed: () => _clearAll(context),
+                        child: const Text('전체 삭제'),
+                      ),
+                    ],
+                  ),
+                  AppCard(
+                    // `내 제출` 과 같은 위젯이다 — 목적지별 성패도, 전송 전 건
+                    // 편집도 여기서 그대로 된다.
+                    children: [
+                      for (final s in pending.take(3)) SubmissionRow(s),
+                    ],
+                  ),
+                  const SizedBox(height: Gap.md),
+                  // 전송은 **백그라운드로** 돈다 — 홈을 떠나도 계속된다.
+                  // 그래서 버튼 안에서 기다리지 않고 띠에게 진행을 넘긴다.
+                  FilledButton(
+                    onPressed: sending
+                        ? null
+                        : () => unawaited(
+                            ref
+                                .read(backgroundSendProvider.notifier)
+                                .startPending(),
+                          ),
+                    child: Text(sending ? '전송 중' : '전송 시도'),
+                  ),
+                  const NoteText(
+                    '제출할 때 보내지 못한 건입니다. 기기에 보관돼 있으니 '
+                    '인터넷 연결이 원활해지면 전송 시도해주세요.',
+                  ),
+                ],
+                const SectionHeader('바로가기'),
+                AppCard(
+                  children: [
+                    _ShortcutRow(
+                      label: '스프레드시트',
+                      value: '매입내역',
+                      id: Config.spreadsheetId,
+                      url: spreadsheetUrl,
+                    ),
+                    _ShortcutRow(
+                      label: '드라이브',
+                      value: '증빙 폴더',
+                      id: Config.driveFolderId,
+                      url: driveFolderUrl,
+                    ),
+                    _ShortcutRow(
+                      label: 'Slack',
+                      value: '#purchase',
+                      id: Config.slackChannelId,
+                      url: slackChannelUrl,
+                    ),
+                  ],
                 ),
+                const NoteText('조회는 앱에서 다시 만들지 않고 원본으로 연결합니다.'),
               ],
             ),
-            AppCard(
-              // `내 제출` 과 같은 위젯이다 — 목적지별 성패도, 전송 전 건
-              // 편집도 여기서 그대로 된다.
-              children: [for (final s in pending.take(3)) SubmissionRow(s)],
-            ),
-            const SizedBox(height: Gap.md),
-            FilledButton(
-              onPressed: _sending ? null : _sendPending,
-              child: _sending
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('전송 시도'),
-            ),
-            const NoteText(
-              '제출할 때 보내지 못한 건입니다. 기기에 보관돼 있으니 '
-              '인터넷 연결이 원활해지면 전송 시도해주세요.',
-            ),
-          ],
-          const SectionHeader('바로가기'),
-          AppCard(
-            children: [
-              _ShortcutRow(
-                label: '스프레드시트',
-                value: '매입내역',
-                id: Config.spreadsheetId,
-                url: spreadsheetUrl,
-              ),
-              _ShortcutRow(
-                label: '드라이브',
-                value: '증빙 폴더',
-                id: Config.driveFolderId,
-                url: driveFolderUrl,
-              ),
-              _ShortcutRow(
-                label: 'Slack',
-                value: '#purchase',
-                id: Config.slackChannelId,
-                url: slackChannelUrl,
-              ),
-            ],
           ),
-          const NoteText('조회는 앱에서 다시 만들지 않고 원본으로 연결합니다.'),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -160,29 +193,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final n = await confirmClearAll(context, ref);
     if (n == null || !mounted) return;
     messenger.showSnackBar(SnackBar(content: Text('$n건을 지웠습니다.')));
-  }
-
-  Future<void> _sendPending() async {
-    setState(() => _sending = true);
-    try {
-      final results = await ref.read(submissionSenderProvider).sendPending();
-      if (!mounted) return;
-
-      final failed = results.where((r) => !r.allDone).toList();
-      // 스낵바에는 **어디가** 실패했는지만 적는다. 목적지가 독립이라 한 건에서
-      // 둘이 동시에 실패할 수 있는데, 예외 원문을 그대로 깔면 접을 수 없는
-      // 알림이 화면 절반을 덮는다. 원문은 아래 목록의 [실패 사유 보기] 가 맡는다.
-      final where = failed.isEmpty ? null : failed.first.failedWhere;
-      final message = failed.isEmpty
-          ? '${results.length}건을 모두 보냈습니다.'
-          : '${results.length - failed.length}건 성공, '
-                '${failed.length}건 실패'
-                '${where == null ? '' : ' ($where)'} — 목록에서 사유를 볼 수 있습니다.';
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
   }
 }
 

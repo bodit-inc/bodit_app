@@ -49,6 +49,10 @@ class AppCard extends StatelessWidget {
     }
     return Card(
       color: color,
+      // 행이 카드 바깥(둥근 모서리)으로 색을 흘리지 않게 자른다.
+      // 미는 삭제 배경(빨강)과 강조된 행이 첫·마지막 행에서 모서리를
+      // 네모로 덮어버렸다 — 카드가 깨져 보인다.
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: rows,

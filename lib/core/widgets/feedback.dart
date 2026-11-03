@@ -78,6 +78,68 @@ class NoticeBanner extends StatelessWidget {
   }
 }
 
+/// 오래 걸리는 일이 **화면 밖에서** 돌고 있다고 알리는 띠.
+///
+/// ## 왜 상단에 고정하나
+///
+/// 목록 안에 두면 스크롤에 밀려 사라진다. 그러면 사용자는 전송이 아직 도는지,
+/// 끝났는지 모르는 채로 남고 다시 [전송 시도] 를 누른다.
+/// 그래서 스크롤 밖 맨 위에 둔다 — 화면 폭을 꽉 채워 앱바에 붙어 보이게 한다.
+///
+/// ## 왜 누를 수 있나
+///
+/// "진행 중" 만 말하고 끝내면 사용자가 할 수 있는 일이 없다. 어디까지 갔는지
+/// 보러 갈 길을 열어둔다 — [onTap] 이 없으면 화살표도 안 그린다.
+///
+/// 색은 추천 칩과 같은 파랑이다. 노랑(`NoticeBanner`)은 "확인이 필요하다",
+/// 빨강은 실패다 — 진행 중은 둘 다 아니다.
+class ProgressBanner extends StatelessWidget {
+  const ProgressBanner({required this.text, super.key, this.onTap});
+
+  final String text;
+
+  /// 누르면 갈 곳. null 이면 읽기만 하는 띠다.
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Gap.lg, vertical: Gap.md),
+      child: Row(
+        children: [
+          const SizedBox(
+            height: 16,
+            width: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.suggestFg,
+            ),
+          ),
+          const SizedBox(width: Gap.md),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: AppColors.suggestFg),
+            ),
+          ),
+          if (onTap != null)
+            const Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: AppColors.suggestFg,
+            ),
+        ],
+      ),
+    );
+
+    return Material(
+      color: AppColors.suggestBg,
+      child: onTap == null ? row : InkWell(onTap: onTap, child: row),
+    );
+  }
+}
+
 /// 실패를 알리되 원문은 접어둔다. 누르면 펼쳐진다.
 ///
 /// ## 이 앱의 에러 표시 규칙

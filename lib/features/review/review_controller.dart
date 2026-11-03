@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:bodit_app/core/log.dart';
+import 'package:bodit_app/data/background_send.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
 import 'package:bodit_app/data/providers.dart';
 import 'package:bodit_app/data/remote/card_repository.dart';
@@ -53,7 +54,8 @@ class ReviewState {
   /// 몇 장이 남았는지 모르는 채로 한참 기다리게 된다.
   final int readCount;
 
-  /// 제출 후 전송 시도 중.
+  /// 제출을 눌러 **큐에 적는 중.** 로컬 쓰기라 금방 풀린다 —
+  /// 전송은 백그라운드로 넘어가므로 여기서 기다리지 않는다.
   final bool isSubmitting;
 
   /// 전송 대기 중인 건을 고치는 중이면 그 큐 행의 id.
@@ -642,7 +644,7 @@ class ReviewController extends Notifier<ReviewState> {
     });
   }
 
-  /// 저장하고 **바로 전송을 시도한다.** 실패한 건만 전송 대기에 남는다.
+  /// 큐에 넣고 **전송은 백그라운드로 넘긴다.** 화면은 바로 돌아간다.
   ///
   /// ## 순서가 중요하다: 큐에 먼저 넣고, 그다음 보낸다
   ///
@@ -651,6 +653,16 @@ class ReviewController extends Notifier<ReviewState> {
   ///
   /// 먼저 큐에 넣으면 최악의 경우에도 "전송 대기" 로 남는다. 다시 켜서
   /// [전송 시도] 를 누르면 된다. 큐 쓰기는 로컬이라 거의 실패하지 않는다.
+  ///
+  /// ## 전송을 기다리지 않는다
+  ///
+  /// 예전엔 세 목적지로 다 보낸 뒤에야 이 함수가 끝났다 — 사진이 크면 수십
+  /// 초고, 그동안 검토 화면은 잠겨 있었다. 다음 영수증을 찍을 수도 없었다.
+  ///
+  /// 지금은 큐에 넣는 것까지만 기다리고 전송은 `backgroundSendProvider` 에
+  /// 넘긴다. 그래서 돌려주는 것도 "몇 건을 등록했다" 까지다 — 전송 결과는
+  /// 이 시점에 **아직 없다.** 진행은 상단 띠가, 결과는 앱 전체가 보는
+  /// 스낵바가 말한다.
   ///
   /// ## 재전송은 여전히 수동이다 (ADR 12a)
   ///
@@ -663,6 +675,44 @@ class ReviewController extends Notifier<ReviewState> {
 
     final db = ref.read(queueDbProvider);
     final ids = <int>[];
+
+    // 큐에 넣는 동안 화면을 잠근다. 로컬 쓰기라 금방 풀리지만, 이게 없으면
+    // 빠르게 두 번 누른 사용자가 같은 증빙을 두 건 등록한다.
+    state = state.copyWith(isSubmitting: true);
+
+    try {
+      await _enqueueAll(db: db, email: email, into: ids);
+    } on Object {
+      // **던지더라도 화면 잠금은 반드시 푼다.**
+      //
+      // 제출이 시작되면 화면이 잠긴다(`AbsorbPointer`). 여기서 예외가 나면
+      // `isSubmitting` 이 true 인 채로 남아 **화면이 영영 잠긴다** —
+      // 제출 버튼도 스피너로 바뀐 채 돌아오지 않는다.
+      //
+      // 화면은 예외를 받아 사유를 보여주므로, 여기서는 잠금만 풀고 다시 던진다.
+      state = state.copyWith(isSubmitting: false);
+      rethrow;
+    }
+
+    // ── 2. 방금 넣은 것만 전송줄에 올린다 ─────────────────────────
+    //    startPending() 이 아니라 id 를 짚어 올린다 — 예전에 실패해 쌓여
+    //    있던 건까지 같이 나가면 사용자가 방금 낸 것의 결과를 알 수 없다.
+    //
+    //    **기다리지 않는다.** 여기서 await 하면 화면이 다시 수십 초 잠긴다.
+    ref.read(backgroundSendProvider.notifier).start(ids);
+
+    // 화면을 비운다 — 같은 증빙으로 다시 제출할 수 없게. 잠금도 같이 풀린다.
+    state = const ReviewState();
+    return SubmitSummary(total: ids.length);
+  }
+
+  /// 제출할 건들을 큐에 적는다. 넣은 id 를 [into] 에 모은다.
+  Future<void> _enqueueAll({
+    required QueueDb db,
+    required String email,
+    required List<int> into,
+  }) async {
+    final ids = into;
 
     // ── 편집이면 새로 넣지 않고 그 행을 고친다 ────────────────────
     //    새로 넣으면 같은 증빙이 큐에 두 건이 된다.
@@ -704,62 +754,19 @@ class ReviewController extends Notifier<ReviewState> {
       );
       ids.add(id);
     }
-
-    // ── 2. 방금 넣은 것만 바로 보낸다 ──────────────────────────────
-    //    sendPending() 이 아니라 id 를 짚어 보낸다 — 예전에 실패해 쌓여 있던
-    //    건까지 같이 나가면 사용자가 방금 낸 것의 결과를 알 수 없다.
-    state = state.copyWith(isSubmitting: true);
-    final sender = ref.read(submissionSenderProvider);
-    var sent = 0;
-    String? firstError;
-
-    try {
-      for (final id in ids) {
-        final row = await db.byId(id);
-        if (row == null) continue;
-        final outcome = await sender.sendOne(row);
-        if (outcome.allDone) {
-          sent++;
-        } else {
-          firstError ??= outcome.error;
-        }
-      }
-    } on Object {
-      // **던지더라도 화면 잠금은 반드시 푼다.**
-      //
-      // 제출이 시작되면 화면이 잠긴다(`AbsorbPointer`) — 전송 중에 값을
-      // 고치면 큐에 들어간 내용과 화면이 어긋나기 때문이다. 그런데 여기서
-      // 예외가 나면 `isSubmitting` 이 true 인 채로 남아 **화면이 영영
-      // 잠긴다.** 제출 버튼도 스피너로 바뀐 채 돌아오지 않는다.
-      //
-      // 화면은 예외를 받아 사유를 보여주므로, 여기서는 잠금만 풀고 다시 던진다.
-      state = state.copyWith(isSubmitting: false);
-      rethrow;
-    }
-
-    state = const ReviewState();
-    return SubmitSummary(total: ids.length, sent: sent, firstError: firstError);
   }
 }
 
-/// 제출 결과. 화면이 이걸로 문구를 만든다.
+/// 등록 결과. 화면이 이걸로 문구를 만든다.
+///
+/// **전송 결과가 아니다.** 전송은 백그라운드로 넘어가므로 제출을 누른 시점에
+/// 아는 것은 "몇 건이 큐에 들어갔나" 뿐이다. 전송 결과는 `SendReport` 가
+/// 들고 오고 앱 전체가 보는 스낵바가 말한다.
 class SubmitSummary {
-  const SubmitSummary({
-    required this.total,
-    required this.sent,
-    this.firstError,
-  });
+  const SubmitSummary({required this.total});
 
+  /// 큐에 들어간 건수. 이것만큼은 확실하다 — 로컬 쓰기다.
   final int total;
-
-  /// 세 목적지 전부 성공한 건수.
-  final int sent;
-
-  /// 실패가 있었다면 첫 사유. 조용히 넘기지 않는다.
-  final String? firstError;
-
-  int get failed => total - sent;
-  bool get allSent => failed == 0;
 }
 
 final reviewControllerProvider =

@@ -1,1 +1,5 @@
 #include "Generated.xcconfig"
+
+// 운영 값을 기본값으로 깐다. flavor 를 주지 않는 기존 빌드 경로가
+// 지금까지와 똑같이 동작해야 한다.
+#include "Prod.xcconfig"

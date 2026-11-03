@@ -1,0 +1,13 @@
+// 운영 환경의 네이티브 값.
+//
+// 여기 값은 **지금 App Store Connect·Firebase 에 등록된 앱 그대로**다.
+// 바꾸면 기존 앱의 이름·로그인이 바뀐다 — 손대지 않는다.
+//
+// Debug.xcconfig·Release.xcconfig 가 이 파일을 include 하므로, flavor 를 주지
+// 않고 빌드하던 기존 경로(Runner 스킴)도 그대로 운영 값으로 빌드된다.
+
+APP_DISPLAY_NAME = Bodit App
+
+// 구글 로그인이 앱으로 돌아오는 통로(Info.plist 의 CFBundleURLSchemes).
+// iOS 클라이언트 ID 를 거꾸로 적은 것이다.
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.768953981137-9b2dmd95dbg8bru00qf06d3th7k38ui9

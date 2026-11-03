@@ -22,6 +22,13 @@ abstract final class Routes {
   static const home = '/';
   static const review = '/review';
   static const submissions = '/submissions';
+
+  /// 그 건이 보이도록 **스크롤해서** 목록을 연다.
+  ///
+  /// 전송 진행 띠(`SendingBanner`)가 쓴다 — 누른 사람은 "방금 제출한 그것이
+  /// 어디까지 갔나" 를 보려는 것이고, 목록 맨 위로 떨어뜨리면 수십 건 중
+  /// 어느 것이 그건지 다시 찾아야 한다.
+  static String submissionsFocus(int id) => '$submissions?focus=$id';
 }
 
 GoRouter buildRouter({
@@ -50,7 +57,11 @@ GoRouter buildRouter({
       GoRoute(path: Routes.review, builder: (_, _) => const ReviewScreen()),
       GoRoute(
         path: Routes.submissions,
-        builder: (_, _) => const SubmissionsScreen(),
+        // `?focus=<큐 행 id>` — 그 건으로 스크롤해서 연다.
+        // 값이 없거나 숫자가 아니면 그냥 목록이다(맨 위부터).
+        builder: (_, state) => SubmissionsScreen(
+          focusId: int.tryParse(state.uri.queryParameters['focus'] ?? ''),
+        ),
       ),
     ],
   );

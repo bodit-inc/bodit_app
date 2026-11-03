@@ -1,0 +1,4 @@
+// 개발 환경 × Profile. 순서가 중요하다 — 나중에 include 한 쪽이 이긴다.
+// Release.xcconfig 가 Prod.xcconfig 를 끌고 오므로, Dev.xcconfig 가 그 위를 덮는다.
+#include "Release.xcconfig"
+#include "Dev.xcconfig"
