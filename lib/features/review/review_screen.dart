@@ -102,9 +102,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               child: ListView(
                 padding: screenPadding,
                 children: [
-                  // 무엇을 올리는지 보고 확인해야 한다 — 값만 보고는 OCR 이 엉뚱한
-                  // 영수증을 읽었는지 알 수 없다. 다건일 때는 특히 그렇다.
-                  _EvidencePreview(draft.evidencePath),
+                  // 미리보기는 맨 아래 **저장될 파일** 그룹에 있다. 다만 이
+                  // 경고는 위에 남긴다 — 다시 찍어야 하는 사진은 스크롤 끝까지
+                  // 내려가서 알게 되면 이미 늦다.
+                  //
                   // 흔들리거나 잘린 사진은 값이 틀린 채로 그럴듯하게 들어온다.
                   // 읽어본 쪽(모델)이 못 읽겠다고 하면 **다시 찍는 게 가장 싸다** —
                   // 여기서 안 잡으면 회계 담당자가 시트에서 발견한다.
@@ -553,13 +554,18 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                     ),
                   ],
 
-                  const SectionHeader('저장될 파일명'),
+                  const SectionHeader('저장될 파일'),
                   AppCard(
                     children: [
                       // 파일명 네 번째 칸이 이 값이다. 예전엔 '영수증' 고정이라
                       // 매출전표를 올려도 파일명에 '영수증' 이 박혔다.
+                      //
+                      // **라벨은 `분류` 지만 분류코드와 다른 것이다.** 이건
+                      // 증빙의 종류(영수증·매출전표·이체확인증)고, 위 `분류`
+                      // 섹션의 값은 예산 분류다 — 코드에서는 `evidenceType`
+                      // 으로 구분된다.
                       LabeledRow(
-                        label: '증빙자료명',
+                        label: '분류',
                         value: draft.evidenceType,
                         onTap: () => _pickEvidenceType(context, ref),
                       ),
@@ -577,6 +583,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                               ),
                             ),
                       ),
+                      // **올라갈 파일 그 자체를 마지막에 둔다.** 위 두 줄은
+                      // "어떤 이름으로 올라가는가" 고, 이 사진이 "무엇이
+                      // 올라가는가" 다 — 값만 보고는 OCR 이 엉뚱한 영수증을
+                      // 읽었는지 알 수 없고, 다건일 때는 특히 그렇다.
+                      // 탭하면 전체 화면으로 크게 본다.
+                      _EvidencePreview(draft.evidencePath),
                     ],
                   ),
                   const NoteText('위 항목을 고치면 파일명도 따라 바뀝니다. 직접 고칠 수도 있습니다.'),
@@ -966,7 +978,7 @@ class _EvidenceTypePickerSheet extends ConsumerWidget {
       expand: false,
       initialChildSize: 0.6,
       builder: (_, controller) => PickerSheet(
-        title: '증빙자료명',
+        title: '분류',
         searchHint: '이름으로 검색 (예: 전표, 계산서)',
         selectedLabel: current,
         // 가나다로 세우지 않는다 — 흔한 것부터가 찾기 빠르다.
@@ -1059,26 +1071,26 @@ class _EvidencePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // **카드 한 줄로 쓰인다**(저장될 파일 그룹의 마지막 줄). 그래서 자기
+    // 카드를 두르지 않는다 — 카드 안에 카드를 넣으면 테두리가 두 겹이 된다.
+    // 모서리도 `AppCard` 가 자르므로 여기서 둥글릴 필요가 없다.
+
     // PDF 는 Image.file 로 못 그린다. 파일이 있다는 것만 알려준다.
     if (_isPdf) {
-      return AppCard(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(Gap.lg),
-            child: Row(
-              children: [
-                const Icon(Icons.picture_as_pdf_outlined, size: 28),
-                const SizedBox(width: Gap.md),
-                Expanded(
-                  child: Text(
-                    'PDF 증빙 · 미리보기 없음',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-              ],
+      return Padding(
+        padding: const EdgeInsets.all(Gap.lg),
+        child: Row(
+          children: [
+            const Icon(Icons.picture_as_pdf_outlined, size: 28),
+            const SizedBox(width: Gap.md),
+            Expanded(
+              child: Text(
+                'PDF 증빙 · 미리보기 없음',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
@@ -1091,44 +1103,41 @@ class _EvidencePreview extends StatelessWidget {
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(builder: (_) => _FullScreenEvidence(file)),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(Radii.card),
-        child: Stack(
-          alignment: Alignment.bottomRight,
-          children: [
-            // 세로로 긴 영수증이 화면을 다 먹지 않게 높이를 묶는다.
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 220),
-              child: SizedBox(
-                width: double.infinity,
-                child: Image.file(file, fit: BoxFit.cover),
-              ),
+      child: Stack(
+        alignment: Alignment.bottomRight,
+        children: [
+          // 세로로 긴 영수증이 화면을 다 먹지 않게 높이를 묶는다.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 220),
+            child: SizedBox(
+              width: double.infinity,
+              child: Image.file(file, fit: BoxFit.cover),
             ),
-            Container(
-              margin: const EdgeInsets.all(Gap.sm),
-              padding: const EdgeInsets.symmetric(
-                horizontal: Gap.sm,
-                vertical: 3,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(Radii.pill),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.zoom_in, size: 14, color: Colors.white),
-                  const SizedBox(width: 4),
-                  Text(
-                    '크게 보기',
-                    style: Theme.of(context).textTheme.labelSmall
-                        ?.copyWith(color: Colors.white),
-                  ),
-                ],
-              ),
+          ),
+          Container(
+            margin: const EdgeInsets.all(Gap.sm),
+            padding: const EdgeInsets.symmetric(
+              horizontal: Gap.sm,
+              vertical: 3,
             ),
-          ],
-        ),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(Radii.pill),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.zoom_in, size: 14, color: Colors.white),
+                const SizedBox(width: 4),
+                Text(
+                  '크게 보기',
+                  style: Theme.of(context).textTheme.labelSmall
+                      ?.copyWith(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
