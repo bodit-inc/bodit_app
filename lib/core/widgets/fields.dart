@@ -35,9 +35,22 @@ class SearchField extends StatelessWidget {
         prefixIcon: const Icon(Icons.search, size: 20),
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(vertical: Gap.md),
-        // 테두리를 두르지 않고 **흰 바탕**으로 띄운다. 이 필드가 올라가는
-        // 자리가 둘인데(바텀시트·제출 목록) 둘 다 바탕이 옅은 회색이라,
-        // 외곽선 box 는 그 위에서 한 겹 더 두꺼워 보였다.
+        // **흰 바탕 + 옅은 테두리**, 그리고 포커스가 가도 테두리 색이 안 바뀐다.
+        //
+        // 이 필드가 올라가는 자리가 둘인데(분류 바텀시트·제출 목록) 둘 다
+        // 바탕이 옅은 회색이라, 기본 외곽선은 그 위에서 한 겹 더 두꺼워
+        // 보였다. 포커스 색(파란 테두리)도 뺐다 — 바텀시트에서는 열리는
+        // 순간 자동으로 포커스가 와서(`autofocus`) 늘 켜져 있는 것과 같고,
+        // 그러면 강조가 아니라 그냥 파란 테두리다.
+        border: const OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.neutralBg),
+        ),
+        enabledBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.neutralBg),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.neutralBg),
+        ),
         filled: true,
         fillColor: Colors.white,
       ),
