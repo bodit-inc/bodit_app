@@ -13,29 +13,49 @@ import 'package:flutter/material.dart';
 /// 목록을 좁히는 검색 입력.
 ///
 /// 분류 44개처럼 스크롤로 찾기 번거로운 목록 위에 둔다.
+///
+/// **자동으로 포커스를 가져가지 않는다.** 바텀시트가 올라오자마자 키보드가
+/// 따라 올라오면 고르러 온 목록이 절반쯤 가린다. 대부분은 눈으로 훑어
+/// 고르고(비목 33개·증빙자료명 6개), 검색은 그게 안 될 때 쓰는 수단이다.
+/// 필요한 사람은 칸을 누르면 된다 — 한 번 더 누르는 대가가, 매번 키보드를
+/// 내리는 대가보다 싸다.
 class SearchField extends StatelessWidget {
   const SearchField({
     required this.hintText,
     required this.onChanged,
-    this.autofocus = true,
     super.key,
   });
 
   final String hintText;
   final ValueChanged<String> onChanged;
-  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
-      autofocus: autofocus,
       onChanged: onChanged,
       decoration: InputDecoration(
         hintText: hintText,
         prefixIcon: const Icon(Icons.search, size: 20),
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(vertical: Gap.md),
-        border: const OutlineInputBorder(),
+        // **흰 바탕 + 옅은 테두리**, 그리고 포커스가 가도 테두리 색이 안 바뀐다.
+        //
+        // 이 필드가 올라가는 자리가 둘인데(분류 바텀시트·제출 목록) 둘 다
+        // 바탕이 옅은 회색이라, 기본 외곽선은 그 위에서 한 겹 더 두꺼워
+        // 보였다. 포커스 색(파란 테두리)도 같은 색으로 맞췄다 — 눌렀는지는
+        // 커서와 키보드가 이미 말해주고, 칸 하나뿐인 자리에서 테두리까지
+        // 바뀌면 그건 강조가 아니라 깜빡임이다.
+        border: const OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.neutralBg),
+        ),
+        enabledBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.neutralBg),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.neutralBg),
+        ),
+        filled: true,
+        fillColor: Colors.white,
       ),
     );
   }
@@ -149,6 +169,9 @@ class _InlineEditTextState extends State<InlineEditText> {
                       contentPadding: EdgeInsets.zero,
                       border: UnderlineInputBorder(),
                     ),
+                    // 빈 곳을 탭하면 `완료` 를 누른 것과 같다 —
+                    // 포커스가 빠지면 저장한다(`_onFocusChange`).
+                    onTapOutside: (_) => _focus.unfocus(),
                   )
                 : Text(widget.value, style: style),
           ),

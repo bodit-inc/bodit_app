@@ -139,6 +139,22 @@ class CardDirectory {
     return true;
   }
 
+  /// 두 자리 묶음이 **서로 어긋나지 않는가.** 둘 다 아는 자리인데 값이 다를
+  /// 때만 false 다 — 한쪽이 가려진 자리면 어긋났다고 말할 근거가 없다.
+  ///
+  /// 매입내역 과거 행과 대조할 때 쓴다. 그쪽 카드번호 칸에는 앱이 적은
+  /// `766*` 같은 패턴이 섞여 있어서, [_matches] 처럼 한쪽만 패턴이라고
+  /// 보면 `7662` 로 조회할 때 과거의 `766*` 행을 놓친다.
+  static bool compatible(List<String?> a, List<String?> b) {
+    if (a.length != 4 || b.length != 4) return false;
+    for (var i = 0; i < 4; i++) {
+      final x = a[i];
+      final y = b[i];
+      if (x != null && y != null && x != y) return false;
+    }
+    return true;
+  }
+
   int get cardCount => _byLast4.values.fold(0, (a, v) => a + v.length);
 
   /// 마스킹된 카드번호에서 뒤 4자리를 뽑는다. **뒤 4자리가 온전할 때만** 쓴다.

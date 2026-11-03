@@ -65,3 +65,38 @@ Future<void> showDetailDialog(
     ),
   );
 }
+
+/// 쓰던 내용을 버리고 화면을 벗어날지 확인받는다.
+///
+/// [confirmDestructive] 와 모양은 같지만 **제목이 없다.** 지우는 대상을
+/// 지목할 것이 없어서다 — 사라지는 것은 "지금 화면에 있는 전부" 고,
+/// 그 말이 곧 본문이다. 제목에 한 번 더 적으면 같은 말이 두 줄이 된다.
+///
+/// 머무는 쪽이 왼쪽이고, 창 밖을 눌러도 머문다 —
+/// 실수로 버리는 쪽보다 실수로 취소하는 쪽이 낫다.
+///
+/// 벗어나겠다고 하면 true.
+Future<bool> confirmLeave(
+  BuildContext context, {
+  String message = '화면을 벗어나면 현재 내용이 모두 사라집니다.',
+  String stayLabel = '계속 작성하기',
+  String leaveLabel = '뒤로가기',
+}) async {
+  final leave = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: Text(stayLabel),
+        ),
+        DangerTextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          label: leaveLabel,
+        ),
+      ],
+    ),
+  );
+  return leave ?? false;
+}

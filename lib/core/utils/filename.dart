@@ -62,6 +62,21 @@ String formatDateForFilename(DateTime d) {
   return '$yy$mm$dd';
 }
 
+/// 증빙을 담을 Drive 폴더 이름. `YYMM` 이다. 2026-08-05 → `2608`
+///
+/// **파일명 접두([formatDateForFilename])와 다르다.** 파일은 일자까지
+/// (`260805_영풍문고_…`) 적고 폴더는 월까지만 묶는다 — 하루에 한두 건인
+/// 날이 많아 일자 폴더로 가르면 폴더만 늘고 뒤져야 할 곳이 많아진다.
+/// 일자는 파일 이름이 이미 들고 있으니 폴더까지 그걸 반복할 이유가 없다.
+///
+/// 앞 두 자리를 파일명과 같은 `YY` 로 맞춘다 — 폴더 `2608` 안에 `260805_…`
+/// 이 있으면 접두가 폴더 이름으로 시작해 한눈에 같은 달로 읽힌다.
+String formatMonthForFolder(DateTime d) {
+  final yy = (d.year % 100).toString().padLeft(2, '0');
+  final mm = d.month.toString().padLeft(2, '0');
+  return '$yy$mm';
+}
+
 /// 증빙 파일명을 만든다. 확장자는 붙이지 않는다 — 업로드 시점에 원본 것을 쓴다.
 ///
 /// `amount` 는 **이체확인증에 찍힌 실제 입금액**이다(ADR Decision 13).

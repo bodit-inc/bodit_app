@@ -40,15 +40,30 @@ abstract final class AppColors {
   static const neutralBg = Color(0xFFEFEFF2);
   static const neutralFg = Color(0xFF6A6A6E);
 
-  /// 상태: 실패
+  /// 상태: 실패 — 그리고 `NoticeBanner`(확인 필요).
+  ///
+  /// 배너는 "읽고 지나가도 되는 안내" 가 아니다. 띠가 뜨는 건은 대개 사용자가
+  /// 손을 봐야 하는 건이고, 시트는 append-only 라 틀린 채 제출되면 앱으로
+  /// 되돌릴 방법이 없다. 그래서 **배너만** 실패와 같은 강도로 올렸다.
+  ///
+  /// 칸에 붙는 인라인 경고는 노랑(아래 caution)으로 남긴다 — 전부 빨강이면
+  /// 강도 차이가 다시 안 보이고, 그러면 진짜 실패가 묻힌다.
   static const danger = Color(0xFFE5484D);
   static const dangerBg = Color(0xFFFDE7E8);
+  static const dangerBorder = Color(0xFFF9C9CB);
   static const dangerFg = Color(0xFFC0272D);
 
-  /// 안내 배너 (부가세 확인 등)
-  static const noticeBg = Color(0xFFFFF4D6);
-  static const noticeBorder = Color(0xFFF3D48A);
-  static const noticeFg = Color(0xFF6B4A00);
+  /// 주의 — "확인은 필요하지만 실패는 아니다".
+  ///
+  /// 칸 옆·칸 아래에 **인라인으로** 붙는 것들이 쓴다: 중간 확신도 아이콘
+  /// (`LabeledRow`) · 안 고른 추천 칩(`SuggestChip`) · 빈 항목 띠.
+  ///
+  /// **`NoticeBanner` 는 이 색이 아니다** — 위 danger 를 쓴다. 그래서 이름도
+  /// `notice*` 가 아니다. 배너가 안 쓰는 색에 배너 이름을 붙여두면 다음에
+  /// 읽는 사람이 반대로 읽는다.
+  static const cautionBg = Color(0xFFFFF4D6);
+  static const cautionBorder = Color(0xFFF3D48A);
+  static const cautionFg = Color(0xFF6B4A00);
 
   /// 추천 칩 — "과거 이력으로 제안했다" 를 뜻한다
   static const suggestBg = Color(0xFFE7F0FF);

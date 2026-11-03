@@ -8,6 +8,7 @@
 library;
 
 import 'package:bodit_app/core/utils/filename.dart';
+import 'package:bodit_app/models/category_tally.dart';
 import 'package:bodit_app/models/certainty.dart';
 import 'package:bodit_app/models/class_choice.dart';
 import 'package:bodit_app/models/evidence_type.dart';
@@ -97,6 +98,15 @@ abstract class EntryDraft with _$EntryDraft {
     /// 내역은 건마다 달라서("8월 도서" → "9월 도서") 지난 값을 넣으면
     /// 9월에 8월 것이 조용히 들어간다. 고르는 건 사용자가 한다.
     @Default(<String>[]) List<String> descriptionSuggestions,
+
+    /// 같은 업체를 과거에 어떤 비목으로 처리했는지, 건수 많은 것부터.
+    ///
+    /// 1등은 [expenseCategory] 에 이미 채워져 있다. 이 목록이 **둘 이상이면
+    /// 이력이 갈렸다는 뜻**이고, 그때는 나머지도 보여준다 — 1등만 보여주면
+    /// 사용자는 다른 선택이 있었다는 사실조차 모른 채 추천을 제출한다.
+    /// 분류 후보([classSuggestions])와 성격이 다르다: 그쪽은 뒤 4자리가
+    /// 겹쳐서 **정하지 못한** 것이고, 이쪽은 정했지만 **갈린** 것이다.
+    @Default(<CategoryTally>[]) List<CategoryTally> categorySuggestions,
 
     /// OCR 이 읽은 **원래 값**. 사용자가 고친 뒤에도 남는다.
     ///
@@ -244,8 +254,21 @@ abstract class EntryDraft with _$EntryDraft {
   bool get categoryDiffersFromSuggestion {
     final s = suggestedCategory;
     final v = expenseCategory;
-    return s != null && v != null && s != v;
+    if (s == null || v == null || s == v) return false;
+    // **후보 칩에서 다른 과거 비목을 고른 것은 "벗어난" 것이 아니다.**
+    // 그 값도 이 업체의 이력이고, 애초에 고르라고 띄운 칩이다.
+    // 그때까지 "과거 이력은 …였습니다" 를 띄우면, 화면이 방금 권한 것을
+    // 고른 사용자를 되돌리라고 찌르는 셈이다.
+    return !categorySuggestions.any((t) => t.category == v);
   }
+
+  /// 지금 값을 뺀 비목 후보들. 화면이 "이 업체의 다른 비목" 으로 띄운다.
+  ///
+  /// 지금 값은 이미 값 칩에 있으므로 여기서 뺀다 — 같은 값이 두 번 뜨면
+  /// 어느 쪽을 눌러야 하는지 헷갈린다. 빼고 나서 비면 보여줄 다른 선택이
+  /// 없다는 뜻이고, 그러면 화면도 줄을 띄우지 않는다.
+  List<CategoryTally> get otherCategorySuggestions =>
+      categorySuggestions.where((t) => t.category != expenseCategory).toList();
 
   /// 분류를 **카드가 정한 것과 다르게** 고쳤는가.
   ///

@@ -104,7 +104,13 @@ class _PickerSheetState extends State<PickerSheet> {
                                     ?.copyWith(fontFamily: 'monospace'),
                               ),
                             ),
-                      title: Text(item.label),
+                      // 왼쪽 코드 칸과 **같은 슬롯**으로 맞춘다. ListTile 의
+                      // 기본 제목은 bodyLarge(18px)인데 코드는 labelMedium(16px)
+                      // 이라, 한 줄에 나란히 있는 두 글자 크기가 달랐다.
+                      title: Text(
+                        item.label,
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
                       trailing: isSelected
                           ? const Icon(Icons.check, size: 18)
                           : null,

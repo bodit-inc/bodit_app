@@ -206,9 +206,6 @@ class _SubmissionsScreenState extends ConsumerState<SubmissionsScreen> {
               padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, 0),
               child: SearchField(
                 hintText: '업체명·내역·금액으로 검색',
-                // 목록을 보러 들어온 화면이다. 열자마자 키보드가 올라오면
-                // 정작 보려던 목록이 가려진다.
-                autofocus: false,
                 onChanged: (v) => setState(() => _query = v),
               ),
             ),
@@ -240,27 +237,18 @@ class _SubmissionsScreenState extends ConsumerState<SubmissionsScreen> {
                                 ),
                                 sliver: SliverToBoxAdapter(
                                   child: AppCard(
-                                    children: [for (final s in g.rows) _row(s)],
+                                    children: [
+                                      // 구분선은 카드가 아니라 **여기서** 넣는다
+                                      // (`RowDivider` 참조).
+                                      for (final (i, s) in g.rows.indexed) ...[
+                                        if (i > 0) const RowDivider(),
+                                        _row(s),
+                                      ],
+                                    ],
                                   ),
                                 ),
                               ),
                             ],
-                            const SliverPadding(
-                              padding: EdgeInsets.fromLTRB(
-                                Gap.lg,
-                                0,
-                                Gap.lg,
-                                Gap.xxl,
-                              ),
-                              sliver: SliverToBoxAdapter(
-                                child: NoteText(
-                                  '목적지가 3곳이라 하나만 실패할 수 있습니다. '
-                                  '실패한 곳만 다시 보내므로 시트에 같은 행이 두 번 들어가지 않습니다.\n'
-                                  '행을 왼쪽으로 밀면 목록에서 지울 수 있습니다 — '
-                                  '이미 올라간 파일과 시트 행은 지워지지 않습니다.',
-                                ),
-                              ),
-                            ),
                           ],
                         ),
                         if (list.length >= _jumpButtonsFrom) ...[

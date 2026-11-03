@@ -47,14 +47,27 @@ class SuggestChip extends StatelessWidget {
     required this.onTap,
     super.key,
     this.selected = false,
+    this.initialState = false,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final bool initialState;
 
   @override
   Widget build(BuildContext context) {
+    final bg = initialState
+        ? AppColors.neutralBg
+        : selected
+        ? AppColors.suggestBg
+        : AppColors.cautionBg;
+    final fg = initialState
+        ? AppColors.neutralFg
+        : selected
+        ? AppColors.suggestFg
+        : AppColors.cautionFg;
+
     return InkWell(
       borderRadius: BorderRadius.circular(Radii.pill),
       onTap: onTap,
@@ -64,7 +77,7 @@ class SuggestChip extends StatelessWidget {
           vertical: Gap.sm,
         ),
         decoration: BoxDecoration(
-          color: selected ? AppColors.suggestBg : AppColors.neutralBg,
+          color: bg,
           borderRadius: BorderRadius.circular(Radii.pill),
         ),
         child: Row(
@@ -73,7 +86,7 @@ class SuggestChip extends StatelessWidget {
             Text(
               label,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: selected ? AppColors.suggestFg : AppColors.neutralFg,
+                color: fg,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
               ),
             ),

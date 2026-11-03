@@ -18,6 +18,16 @@ import 'package:bodit_app/core/utils/korean_amount.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+/// 통화 버튼과 `Clear` 의 모양. **둘이 같은 기둥에 서므로 같은 버튼이어야 한다** —
+/// 색과 테두리는 `AppTheme` 의 `outlinedButtonTheme` 에서 오고, 여기서는
+/// 기둥에 맞는 높이와 좌우 여백만 덮는다(테마 기본은 52로 키패드 키용이다).
+///
+/// 한 곳에서 만들어 둘이 같이 쓴다. 따로 적어두면 한쪽만 바뀐다.
+final ButtonStyle _stackedButtonStyle = OutlinedButton.styleFrom(
+  minimumSize: const Size(0, 40),
+  padding: const EdgeInsets.symmetric(horizontal: Gap.md),
+);
+
 /// 키패드가 돌려주는 것. 금액과 **어느 통화인지**를 같이 준다.
 class AmountResult {
   const AmountResult(this.minor, this.currencyCode);
@@ -99,17 +109,47 @@ class _AmountKeypadSheetState extends State<_AmountKeypadSheet> {
             const SizedBox(height: Gap.md),
 
             // 입력값. 길게 눌러도 지워지지만, 그건 아무도 모르는 동작이라
-            // 키패드에 `C` 를 따로 뒀다 — 길게 누르기는 아는 사람용 단축이다.
+            // `Clear` 를 따로 뒀다 — 길게 누르기는 아는 사람용 단축이다.
             GestureDetector(
               onLongPress: _clear,
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
+                // 베이스라인 정렬을 걷어냈다. 왼쪽이 버튼 두 개짜리 기둥이라
+                // 맞출 베이스라인이 없다 — Row 의 기본값(가운데)이 맞다.
                 children: [
-                  // 통화 선택. 해외 증빙이 있어서 원화 고정으로 둘 수 없다.
-                  _CurrencyButton(
-                    currency: _currency,
-                    onChanged: (c) => setState(() => _currency = c),
+                  // 통화 선택과 `Clear` 를 한 기둥에 쌓는다. **폭을 고정하는 이유**는
+                  // Row 안의 Column 은 cross axis 가 무한이라 `stretch` 가 설 수
+                  // 없기 때문이다 — 둘의 폭이 어긋나면 기둥이 틀어져 보인다.
+                  SizedBox(
+                    width: 84,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // 통화 선택. 해외 증빙이 있어서 원화 고정으로 둘 수 없다.
+                        _CurrencyButton(
+                          currency: _currency,
+                          onChanged: (c) => setState(() => _currency = c),
+                        ),
+                        const SizedBox(height: Gap.xs),
+                        // 비우기(`Clear`). **키패드에서 올라왔다** — 그래야 키패드
+                        // 마지막 줄도 세 칸이 되고 모든 키가 같은 폭이 된다.
+                        //
+                        // 키패드 키(`_Key`)가 아니라 **통화 버튼과 같은
+                        // OutlinedButton** 이다. 같은 기둥에 선 두 버튼이
+                        // 색·테두리·모서리가 다르면 하나가 잘못 놓인 것처럼
+                        // 보인다 — 모양을 흉내내지 않고 같은 것을 쓴다.
+                        OutlinedButton(
+                          onPressed: _clear,
+                          style: _stackedButtonStyle,
+                          child: Text(
+                            // 글자로 적는다. `C` 는 계산기를 아는 사람에게만
+                            // 읽히고, 한 글자라 잘못 눌러도 뭘 눌렀는지 모른다.
+                            'Clear',
+                            style: Theme.of(context).textTheme.labelMedium,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   Expanded(
                     child: Text(
@@ -148,7 +188,7 @@ class _AmountKeypadSheetState extends State<_AmountKeypadSheet> {
             ],
 
             const SizedBox(height: Gap.lg),
-            _Keypad(onDigits: _push, onBackspace: _backspace, onClear: _clear),
+            _Keypad(onDigits: _push, onBackspace: _backspace),
             const SizedBox(height: Gap.md),
             FilledButton(
               onPressed: () =>
@@ -163,28 +203,23 @@ class _AmountKeypadSheetState extends State<_AmountKeypadSheet> {
 }
 
 class _Keypad extends StatelessWidget {
-  const _Keypad({
-    required this.onDigits,
-    required this.onBackspace,
-    required this.onClear,
-  });
+  const _Keypad({required this.onDigits, required this.onBackspace});
 
   final void Function(String) onDigits;
   final VoidCallback onBackspace;
-  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
     // 계산기 배열. 마지막 줄의 `00` 은 금액 입력에서 가장 자주 쓰는 키다.
     //
-    // 마지막 줄만 네 칸이다. `C` 를 넣으려고 `00` 을 빼면 원화 금액을 칠 때마다
-    // 0 을 두 번씩 누르게 된다 — 가장 자주 쓰는 키를 가장 드물게 쓰는 키와
-    // 바꾸는 셈이라, 그 줄만 좁히는 쪽을 택했다.
+    // **네 줄 모두 세 칸이다.** 전에는 마지막 줄만 `C`·`00`·`0`·`⌫` 네 칸이라
+    // 그 줄의 키만 좁았다 — 가장 자주 누르는 `00`·`0` 이 가장 작은 키였다.
+    // 비우기를 금액 표시 쪽(통화 버튼 아래)으로 올려서 칸 수를 맞췄다.
     const rows = <List<String>>[
       ['7', '8', '9'],
       ['4', '5', '6'],
       ['1', '2', '3'],
-      ['C', '00', '0', '⌫'],
+      ['00', '0', '⌫'],
     ];
 
     return Column(
@@ -202,7 +237,6 @@ class _Keypad extends StatelessWidget {
                         label: key,
                         onTap: switch (key) {
                           '⌫' => onBackspace,
-                          'C' => onClear,
                           _ => () => onDigits(key),
                         },
                       ),
@@ -222,9 +256,10 @@ class _Key extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  /// 숫자가 아닌 키. 바탕을 눌러 숫자 키와 구분한다 — 잘못 누르면
-  /// 입력이 날아가는 키라 눈에 띄어야 한다.
-  bool get _isFunction => label == '⌫' || label == 'C';
+  /// 숫자가 아닌 키. 지금은 지우기 하나다(비우기는 통화 버튼 아래로 올라갔다).
+  /// 바탕을 눌러 숫자 키와 구분한다 — 잘못 누르면 입력이 날아가는 키라
+  /// 눈에 띄어야 한다.
+  bool get _isFunction => label == '⌫';
 
   @override
   Widget build(BuildContext context) {
@@ -243,7 +278,7 @@ class _Key extends StatelessWidget {
           child: Center(
             child: Text(
               label,
-              // 숫자 키는 titleMedium, 지우기·비우기는 한 단계 작게.
+              // 숫자 키는 titleMedium, 지우기는 한 단계 작게.
               style: _isFunction
                   ? Theme.of(context).textTheme.titleSmall
                   : Theme.of(context).textTheme.titleMedium,
@@ -273,10 +308,7 @@ class _CurrencyButton extends StatelessWidget {
         );
         if (picked != null) onChanged(picked);
       },
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 40),
-        padding: const EdgeInsets.symmetric(horizontal: Gap.md),
-      ),
+      style: _stackedButtonStyle,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

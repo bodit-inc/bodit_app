@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bodit_app/core/app_info.dart';
 import 'package:bodit_app/core/config.dart';
 import 'package:bodit_app/core/flavor.dart';
 import 'package:bodit_app/core/links.dart';
@@ -33,15 +34,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final queue = ref.watch(pendingSubmissionsProvider);
+    final send = ref.watch(backgroundSendProvider);
+    // 지금 전송줄에 올라가 있는 건은 **이 목록에서 뺀다.**
+    //
+    // 이 자리는 "전송 대기 N건 · 제출할 때 보내지 못한 건" 이다. 보내는
+    // 중인 건이 거기 섞이면 N 이 아직 못 간 건수를 말하지 않고 아래 문구도
+    // 거짓이 된다 — 방금 제출해서 잘 가고 있는 건을 "보내지 못했다" 고
+    // 읽게 된다. 진행 중인 건은 위의 띠(`SendingBanner`)가 맡는다.
+    //
+    // 전송줄은 한 건씩 빠지므로(`_drain` 의 finally), 실패해서 줄에서
+    // 빠진 건은 사유를 달고 이 목록에 다시 나타난다.
+    final inFlight = send.inFlight.toSet();
     final pending =
         queue.value
             ?.where((s) => !s.slackDone || !s.sheetsDone || !s.driveDone)
+            .where((s) => !inFlight.contains(s.id))
             .toList() ??
         const [];
     // 전송이 백그라운드로 돌고 있는지. [전송 시도] 를 가리는 데 쓴다 —
     // 돌고 있는 중에 또 누르면 아무 일도 안 일어나는데, 사용자는 눌렀는지도
     // 모른다. 진행 상황은 아래 띠가 말한다.
-    final sending = ref.watch(backgroundSendProvider).isSending;
+    final sending = send.isSending;
 
     return Scaffold(
       appBar: AppBar(
@@ -106,7 +119,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     // `내 제출` 과 같은 위젯이다 — 목적지별 성패도, 전송 전 건
                     // 편집도 여기서 그대로 된다.
                     children: [
-                      for (final s in pending.take(3)) SubmissionRow(s),
+                      // 구분선은 카드가 아니라 **여기서** 넣는다.
+                      // 첫 줄을 뺀 각 줄 앞에 하나(`RowDivider` 참조).
+                      for (final (i, s) in pending.take(3).indexed) ...[
+                        if (i > 0) const RowDivider(),
+                        SubmissionRow(s),
+                      ],
                     ],
                   ),
                   const SizedBox(height: Gap.md),
@@ -136,12 +154,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       id: Config.spreadsheetId,
                       url: spreadsheetUrl,
                     ),
+                    const RowDivider(),
                     _ShortcutRow(
                       label: '드라이브',
                       value: '증빙 폴더',
                       id: Config.driveFolderId,
                       url: driveFolderUrl,
                     ),
+                    const RowDivider(),
                     _ShortcutRow(
                       label: 'Slack',
                       value: '#purchase',
@@ -150,7 +170,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ],
                 ),
-                const NoteText('조회는 앱에서 다시 만들지 않고 원본으로 연결합니다.'),
               ],
             ),
           ),
@@ -162,7 +181,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), label: '홈'),
-          NavigationDestination(icon: Icon(Icons.list_alt), label: '내 제출'),
+          NavigationDestination(icon: Icon(Icons.list_alt), label: '제출 목록'),
         ],
       ),
     );
@@ -196,7 +215,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-/// 앱바의 계정 메뉴 — 누가 로그인했는지 + 로그아웃.
+/// 앱바의 계정 메뉴 — 누가 로그인했는지 + 앱 버전 + 로그아웃.
 ///
 /// ## 로그아웃이 왜 필요한가
 ///
@@ -205,6 +224,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 /// 유일한 복구 경로**다. 버튼이 없으면 앱 데이터를 지우는 수밖에 없다.
 ///
 /// 등록자(`createdBy`)로 시트에 박히는 계정이라 누구로 로그인했는지도 보여준다.
+///
+/// 앱 버전도 여기 둔다 — 설정 화면이 따로 없고, "어느 버전에서 그랬어요?" 를
+/// 물을 자리가 있어야 한다. 원천은 `pubspec.yaml` 이다(`AppInfo` 참고).
 class _AccountMenu extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -219,20 +241,17 @@ class _AccountMenu extends ConsumerWidget {
         }
       },
       itemBuilder: (_) => [
-        if (email != null)
-          PopupMenuItem<String>(
-            enabled: false,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('등록자', style: Theme.of(context).textTheme.labelSmall),
-                const SizedBox(height: 2),
-                Text(email, style: Theme.of(context).textTheme.bodySmall),
-              ],
-            ),
-          ),
-        const PopupMenuDivider(),
+        // 읽기만 하는 줄들 — 계정, 그리고 앱 버전. 둘 다 눌러서 할 일이
+        // 없으니 `enabled: false` 고, 값이 없으면 **구분선까지 같이** 뺀다.
+        // 안 그러면 선이 둘 붙거나 메뉴 맨 위에 선만 뜬다.
+        if (email != null) ...[
+          _infoItem(context, '계정', email),
+          const PopupMenuDivider(),
+        ],
+        if (AppInfo.version.isNotEmpty) ...[
+          _infoItem(context, '앱 버전', AppInfo.version),
+          const PopupMenuDivider(),
+        ],
         const PopupMenuItem<String>(
           value: 'signOut',
           child: Row(
@@ -244,6 +263,29 @@ class _AccountMenu extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+
+  /// 계정 메뉴의 "라벨 + 값" 줄. 누를 수 없다.
+  ///
+  /// 계정과 앱 버전이 같은 모양이라 한 곳에서 만든다 — 라벨 슬롯이나 간격이
+  /// 두 줄에서 갈리면 메뉴가 어긋나 보인다.
+  PopupMenuItem<String> _infoItem(
+    BuildContext context,
+    String label,
+    String value,
+  ) {
+    return PopupMenuItem<String>(
+      enabled: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
+          const SizedBox(height: 2),
+          Text(value, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ),
     );
   }
 }

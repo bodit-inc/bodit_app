@@ -44,9 +44,7 @@ AppFlavor get flavor => switch (_raw) {
     '--dart-define=FLAVOR=dev 또는 prod 가 필요합니다.\n'
     '`make run-dev` / `make run-prod` 를 쓰면 플래그를 안 적어도 됩니다.',
   ),
-  _ => throw StateError(
-    'FLAVOR 값이 "$_raw" 입니다. dev 또는 prod 만 됩니다.',
-  ),
+  _ => throw StateError('FLAVOR 값이 "$_raw" 입니다. dev 또는 prod 만 됩니다.'),
 };
 
 /// 개발 환경인가. 화면에 표시를 띄울 때 쓴다.

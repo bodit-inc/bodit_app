@@ -201,6 +201,11 @@ class SubmissionRow extends ConsumerWidget {
           LabeledRow(
             label: _date,
             value: stripDatePrefix(row.filename),
+            // 파일명은 `업체명_내역_증빙자료명_총금액` 이라 내역이 길면 줄이
+            // 계속 늘어난다. 줄마다 높이가 달라지면 목록을 훑기 어렵고,
+            // 긴 한 건이 아래 건들을 화면 밖으로 밀어낸다.
+            // 두 줄까지만 보여주고 나머지는 끊는다 — 전체는 눌러서 본다.
+            maxLines: 2,
             trailing: StatusPill(label, tone: tone),
             // 오른쪽 알약이 이미 "완료" 라고 말한다. 여기서 또 쓰면 같은 줄에
             // 완료가 두 번 찍힌다 — 실제로 그렇게 보였다.
@@ -209,7 +214,7 @@ class SubmissionRow extends ConsumerWidget {
                 : editable
                 ? '눌러서 내용을 고칠 수 있습니다'
                 : _allDone
-                ? '${_time(row.createdAt)} · 눌러서 Slack 에서 보기'
+                ? '제출: ${_time(row.createdAt)}'
                 : null,
             // 고칠 수 있는 건은 고치는 쪽이 먼저다. 이미 나간 건은 고칠 수
             // 없으니(Drive 파일명과 시트 내용이 어긋난다) 원본으로 보낸다.
