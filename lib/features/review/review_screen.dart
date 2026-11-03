@@ -125,10 +125,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: Gap.md),
 
                   // 시안 ⑥ — 여러 건일 때 건별 목록
                   if (state.isMulti) ...[
+                    const SizedBox(height: Gap.md),
                     SectionHeader('읽은 증빙 ${state.drafts.length}건'),
                     AppCard(
                       children: [
@@ -251,6 +251,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         label: '내역',
                         value: draft.description,
                         placeholder: '직접 입력',
+                        warnPlaceholder: true,
                         onSubmit: (v) => ref
                             .read(reviewControllerProvider.notifier)
                             .update((d) => d.copyWith(description: v)),
@@ -280,10 +281,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             Gap.lg,
                             0,
                             Gap.lg,
-                            Gap.lg,
+                            Gap.sm,
                           ),
                           child: Text(
-                            '내역을 모르면 비워두세요.\n"$needsOpsReview" 으로 제출됩니다.',
+                            '내역을 모르면 비워두세요. "$needsOpsReview" 으로 제출됩니다.',
                             style: Theme.of(context).textTheme.labelSmall
                                 ?.copyWith(
                                   color: AppColors.noticeFg,
