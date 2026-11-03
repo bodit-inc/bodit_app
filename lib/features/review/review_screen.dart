@@ -132,7 +132,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                     SectionHeader('읽은 증빙 ${state.drafts.length}건'),
                     AppCard(
                       children: [
-                        for (var i = 0; i < state.drafts.length; i++)
+                        for (var i = 0; i < state.drafts.length; i++) ...[
+                          if (i > 0) const RowDivider(),
                           _DraftRow(
                             draft: state.drafts[i],
                             selected: i == state.selected,
@@ -140,6 +141,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                 .read(reviewControllerProvider.notifier)
                                 .select(i),
                           ),
+                        ],
                       ],
                     ),
                     const NoteText('한 건씩 눌러서 확인합니다. 전부 채우면 한 번에 제출됩니다.'),
@@ -161,7 +163,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       ),
                       // OCR 이 읽은 날짜와 다르게 골랐다. 어느 쪽이 맞는지는
                       // 사용자가 안다 — 막지 않고 알리고 되돌릴 길만 둔다.
-                      if (draft.belongDateOcrConflict != null)
+                      if (draft.belongDateOcrConflict != null) ...[
+                        const RowDivider(),
                         OcrConflictNote(
                           ocrValue: _fmtDate(draft.belongDateOcrConflict)!,
                           onRevert: () => ref
@@ -172,6 +175,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                 ),
                               ),
                         ),
+                      ],
+                      const RowDivider(),
                       LabeledRow(
                         label: '지출날짜',
                         value: _fmtDate(draft.spendDate ?? draft.belongDate),
@@ -179,6 +184,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         subtitle: '실제로 비용을 집행한 일자',
                         onTap: () {},
                       ),
+                      const RowDivider(),
                       InlineEditRow(
                         key: _fieldKeys['업체명'],
                         label: '업체명',
@@ -189,7 +195,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             .read(reviewControllerProvider.notifier)
                             .update((d) => d.copyWith(vendor: v)),
                       ),
-                      if (draft.vendorOcrConflict != null)
+                      if (draft.vendorOcrConflict != null) ...[
+                        const RowDivider(),
                         OcrConflictNote(
                           ocrValue: draft.vendorOcrConflict!,
                           onRevert: () => ref
@@ -199,6 +206,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                     d.copyWith(vendor: draft.vendorOcrConflict),
                               ),
                         ),
+                      ],
+                      const RowDivider(),
                       // 카드번호는 **분류를 정하는 입력**이다. 예전엔 OCR 이 읽은
                       // 값이 화면에 아예 안 나와서, 숫자 하나를 잘못 읽어도
                       // 사용자가 알 길이 없었다. 지금은 그게 분류까지 끌고 간다.
@@ -221,13 +230,16 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       ),
                       // 되돌리기도 `setCardLast4` 를 탄다. 숫자 하나가 바뀌면
                       // 분류가 통째로 달라지므로 값만 바꿔선 안 된다.
-                      if (draft.cardLast4OcrConflict != null)
+                      if (draft.cardLast4OcrConflict != null) ...[
+                        const RowDivider(),
                         OcrConflictNote(
                           ocrValue: draft.cardLast4OcrConflict!,
                           onRevert: () => ref
                               .read(reviewControllerProvider.notifier)
                               .setCardLast4(draft.cardLast4OcrConflict!),
                         ),
+                      ],
+                      const RowDivider(),
                       // 내역은 OCR 이 읽은 품목명이 그대로 들어가 있기 쉬운데,
                       // 회계가 원하는 건 "무슨 건인지" 다. **직접 써야 하는 칸**이라는
                       // 신호를 주려고 안내를 경고색으로 띄운다.
@@ -242,7 +254,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             .read(reviewControllerProvider.notifier)
                             .update((d) => d.copyWith(description: v)),
                       ),
-                      if (draft.descriptionOcrConflict != null)
+                      if (draft.descriptionOcrConflict != null) ...[
+                        const RowDivider(),
                         OcrConflictNote(
                           ocrValue: draft.descriptionOcrConflict!,
                           onRevert: () => ref
@@ -253,6 +266,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                 ),
                               ),
                         ),
+                      ],
                       // 비워두면 "$needsOpsReview" 으로 들어가고 회계 담당자가
                       // 다시 물어야 한다. **직접 써야 한다는 것을 빨간 글씨로
                       // 못박는다** — 예전엔 placeholder 를 경고색으로 띄우는
@@ -260,7 +274,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       //
                       // 채워지면 거둔다. 늘 빨간 글씨가 떠 있으면 아무도 안
                       // 본다 — 확신도 경고를 드물게 띄우는 것과 같은 이유다.
-                      if ((draft.description ?? '').trim().isEmpty)
+                      if ((draft.description ?? '').trim().isEmpty) ...[
+                        const RowDivider(),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(
                             Gap.lg,
@@ -277,10 +292,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                 ),
                           ),
                         ),
+                      ],
                       // 같은 업체로 과거에 쓴 내역. **자동으로 안 채운다** —
                       // 내역은 건마다 달라서("8월 도서" → "9월 도서") 지난 값을
                       // 넣으면 9월에 8월 것이 조용히 들어간다. 눌러서 고른다.
-                      if (draft.descriptionSuggestions.isNotEmpty)
+                      if (draft.descriptionSuggestions.isNotEmpty) ...[
+                        const RowDivider(),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(
                             Gap.lg,
@@ -317,11 +334,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             ],
                           ),
                         ),
+                      ],
                       // 모르면 지어내는 것보다 비워두는 게 낫다 — 그 사실을
                       // 알려야 사용자가 아무 말이나 채워 넣지 않는다.
                       //
                       // **카드 안**에 둔다. 밖에 있으면 어느 칸에 대한 말인지
                       // 안 보였다 — 내역 칸과 두 줄 떨어져 떠 있었다.
+                      const RowDivider(),
                       const NoteText(
                         '내역을 모르면 비워두세요. "$needsOpsReview" 으로 제출됩니다.',
                       ),
@@ -498,7 +517,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       // 되돌리기도 `setTotalAmount` 를 탄다. 총금액은 혼자
                       // 바뀌지 않는다 — 공급가액·부가세가 따라와야 하고,
                       // 그 규칙은 컨트롤러가 갖는다.
-                      if (draft.totalAmountOcrConflict != null)
+                      if (draft.totalAmountOcrConflict != null) ...[
+                        const RowDivider(),
                         OcrConflictNote(
                           ocrValue: _fmtAmount(
                             draft.totalAmountOcrConflict,
@@ -511,6 +531,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                 currencyCode: draft.currency,
                               ),
                         ),
+                      ],
+                      const RowDivider(),
                       LabeledRow(
                         label: '공급가액',
                         value: _fmtAmount(draft.supplyAmount, draft.currency),
@@ -520,6 +542,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                           draft.currency,
                         ),
                       ),
+                      const RowDivider(),
                       LabeledRow(
                         label: '부가세',
                         value: _fmtAmount(draft.vatAmount ?? 0, draft.currency),
@@ -569,6 +592,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         value: draft.evidenceType,
                         onTap: () => _pickEvidenceType(context, ref),
                       ),
+                      const RowDivider(),
                       InlineEditText(
                         value: draft.filename,
                         // 글자 하나를 세어 읽는 값이다.
@@ -588,6 +612,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       // 올라가는가" 다 — 값만 보고는 OCR 이 엉뚱한 영수증을
                       // 읽었는지 알 수 없고, 다건일 때는 특히 그렇다.
                       // 탭하면 전체 화면으로 크게 본다.
+                      const RowDivider(),
                       _EvidencePreview(draft.evidencePath),
                     ],
                   ),

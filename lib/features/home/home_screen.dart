@@ -106,7 +106,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     // `내 제출` 과 같은 위젯이다 — 목적지별 성패도, 전송 전 건
                     // 편집도 여기서 그대로 된다.
                     children: [
-                      for (final s in pending.take(3)) SubmissionRow(s),
+                      // 구분선은 카드가 아니라 **여기서** 넣는다.
+                      // 첫 줄을 뺀 각 줄 앞에 하나(`RowDivider` 참조).
+                      for (final (i, s) in pending.take(3).indexed) ...[
+                        if (i > 0) const RowDivider(),
+                        SubmissionRow(s),
+                      ],
                     ],
                   ),
                   const SizedBox(height: Gap.md),
@@ -136,12 +141,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       id: Config.spreadsheetId,
                       url: spreadsheetUrl,
                     ),
+                    const RowDivider(),
                     _ShortcutRow(
                       label: '드라이브',
                       value: '증빙 폴더',
                       id: Config.driveFolderId,
                       url: driveFolderUrl,
                     ),
+                    const RowDivider(),
                     _ShortcutRow(
                       label: 'Slack',
                       value: '#purchase',

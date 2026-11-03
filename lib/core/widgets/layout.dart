@@ -31,6 +31,11 @@ class SectionHeader extends StatelessWidget {
 }
 
 /// 흰 카드. 안에 [LabeledRow] 들을 넣는다. 시안의 `.card`
+///
+/// **줄 사이 구분선은 카드가 그리지 않는다.** 화면이 [RowDivider] 를 직접
+/// 넣는다 — 예전엔 카드가 자식 사이에 자동으로 끼웠는데, 그러면 어떤 줄
+/// 뒤에 선이 있는지가 화면 코드에 안 보였다. 조건부로 나오는 줄(되돌리기
+/// 안내·경고)이 섞이면 더 그렇다.
 class AppCard extends StatelessWidget {
   const AppCard({required this.children, super.key, this.color});
 
@@ -39,14 +44,6 @@ class AppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 마지막 행의 구분선은 그리지 않는다.
-    final rows = <Widget>[];
-    for (var i = 0; i < children.length; i++) {
-      rows.add(children[i]);
-      if (i != children.length - 1) {
-        rows.add(const Divider(height: 1, indent: Gap.lg, endIndent: Gap.lg));
-      }
-    }
     return Card(
       color: color,
       // 행이 카드 바깥(둥근 모서리)으로 색을 흘리지 않게 자른다.
@@ -55,10 +52,35 @@ class AppCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: rows,
+        children: children,
       ),
     );
   }
+}
+
+/// [AppCard] 안, 줄 사이의 구분선.
+///
+/// **넣는 규칙은 하나다 — 첫 줄을 뺀 각 줄 앞에 하나.** 조건부로 나오는 줄은
+/// 자기 구분선을 자기 조건 안에 들고 있는다:
+///
+/// ```dart
+/// LabeledRow(label: '소속날짜', ...),
+/// if (draft.belongDateOcrConflict != null) ...[
+///   const RowDivider(),
+///   OcrConflictNote(...),
+/// ],
+/// const RowDivider(),
+/// LabeledRow(label: '지출날짜', ...),
+/// ```
+///
+/// 그래야 그 줄이 안 나올 때 선도 같이 사라진다. 뒤에 붙이는 규칙으로 하면
+/// 마지막 줄이 조건부일 때 카드 밑에 선만 남는다.
+class RowDivider extends StatelessWidget {
+  const RowDivider({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const Divider(height: 1, indent: Gap.lg, endIndent: Gap.lg);
 }
 
 /// 홈의 큰 액션 버튼(촬영 / 파일 선택). 시안의 `.big`

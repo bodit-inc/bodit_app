@@ -240,7 +240,14 @@ class _SubmissionsScreenState extends ConsumerState<SubmissionsScreen> {
                                 ),
                                 sliver: SliverToBoxAdapter(
                                   child: AppCard(
-                                    children: [for (final s in g.rows) _row(s)],
+                                    children: [
+                                      // 구분선은 카드가 아니라 **여기서** 넣는다
+                                      // (`RowDivider` 참조).
+                                      for (final (i, s) in g.rows.indexed) ...[
+                                        if (i > 0) const RowDivider(),
+                                        _row(s),
+                                      ],
+                                    ],
                                   ),
                                 ),
                               ),
