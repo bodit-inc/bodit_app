@@ -339,6 +339,11 @@ class _InlineEditRowState extends State<InlineEditRow> {
           hintStyle: Theme.of(context).textTheme.bodySmall,
         ),
         onSubmitted: (_) => _focus.unfocus(),
+        // **빈 곳을 탭하면 끝난다.** 모바일에서 다른 데를 누르는 것은 곧
+        // "이 칸은 끝났다" 이고(위 '저장 시점' 참조), 그게 포커스를 놓는
+        // 유일한 길이면 사용자는 키보드를 내리려고 뒤로 가기를 누른다.
+        // 포커스가 빠지면 `_onFocusChange` 가 저장한다.
+        onTapOutside: (_) => _focus.unfocus(),
       ),
     );
   }

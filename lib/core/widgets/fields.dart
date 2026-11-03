@@ -149,6 +149,9 @@ class _InlineEditTextState extends State<InlineEditText> {
                       contentPadding: EdgeInsets.zero,
                       border: UnderlineInputBorder(),
                     ),
+                    // 빈 곳을 탭하면 `완료` 를 누른 것과 같다 —
+                    // 포커스가 빠지면 저장한다(`_onFocusChange`).
+                    onTapOutside: (_) => _focus.unfocus(),
                   )
                 : Text(widget.value, style: style),
           ),
