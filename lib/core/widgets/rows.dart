@@ -106,7 +106,12 @@ class LabeledRow extends StatelessWidget {
   ///     가 레이아웃에서 던진다(아래 '값 칸은 Flexible 이어야 한다' 주석)
   final bool valueOnOneLine;
 
+  /// 줄 맨 오른쪽에 붙는 요소(제출 목록의 상태 알약 등).
+  ///
+  /// **라벨 쪽이 길어도 이것은 밀려나지 않는다** — 자리를 못 받으면 화면
+  /// 밖으로 나가 통째로 안 보였다(아래 [_labelMaxFraction]).
   final Widget? trailing;
+
   final VoidCallback? onTap;
 
   @override
@@ -121,132 +126,153 @@ class LabeledRow extends StatelessWidget {
           horizontal: Gap.lg,
           vertical: Gap.md,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // 값을 한 줄로 지킬 때는 **이쪽이 줄어든다.** 그래서 `Flexible` 은
-            // 여기에 붙고, 설명은 `…` 으로 끊긴다([valueOnOneLine]).
-            _maybeFlexible(
-              flexible: valueOnOneLine,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: t.titleSmall?.copyWith(color: AppColors.neutralFg),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (subtitle != null)
-                    Text(
-                      subtitle!,
-                      style: t.bodySmall?.copyWith(color: AppColors.neutralFg),
-                      maxLines: valueOnOneLine ? 1 : null,
-                      overflow: valueOnOneLine
-                          ? TextOverflow.ellipsis
-                          : TextOverflow.clip,
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(width: Gap.sm),
-            // 값 쪽 묶음(값 + 확신도 아이콘 + 연필). [valueOnOneLine] 이면
-            // 이쪽도 `Flexible` 을 벗어난다 — 여기가 남아 있으면 안쪽 값 칸만
-            // 풀어줘도 이 줄이 폭을 반만 받아서 그 안에서 넘친다.
-            _maybeFlexible(
-              flexible: !valueOnOneLine,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // **값 칸은 Flexible 이어야 한다.** Row 는 flex 가 아닌
-                  // 자식에게 폭을 무한으로 준다. 그 자리에 `InlineEditRow` 의
-                  // TextField 가 들어오면 `InputDecorator` 가 레이아웃에서
-                  // 던지고(`cannot have an unbounded width`), 그 예외가
-                  // `EditableText._openInputConnection` 의 크기 계산까지
-                  // 끌고 가서 **키보드가 아예 안 올라온다** — 커서는 깜빡이는데
-                  // 입력이 안 되는 상태가 된다.
-                  //
-                  // loose 라서 보여주기만 할 때(`Text`)는 글자 폭만 차지하고,
-                  // 편집 중에는 남은 폭을 다 쓴다.
-                  // 값 칸을 **`Flexible` 에서 빼는 유일한 경우**가
-                  // [valueOnOneLine] 이다. 폭이 무한이 되므로 글자가 접히지
-                  // 않는다 — 그게 이 플래그가 하는 일이다.
-                  _maybeFlexible(
-                    flexible: !valueOnOneLine,
-                    child: Container(
-                      // 입력칸처럼 보이게 하는 밑줄. 값이 오른쪽 정렬이라 밑줄도
-                      // 글자 폭이 아니라 줄 전체에 깔린다 — 빈 칸도 누를 자리가 보인다.
-                      decoration: editable
-                          ? const BoxDecoration(
-                              border: Border(
-                                bottom: BorderSide(color: Color(0xFFD8D8DE)),
-                              ),
-                            )
-                          : null,
-                      padding: editable
-                          ? const EdgeInsets.only(bottom: 3)
-                          : EdgeInsets.zero,
-                      child:
-                          valueWidget ??
-                          Text(
-                            hasValue ? value! : (placeholder ?? ''),
-                            textAlign: TextAlign.right,
-                            maxLines: valueOnOneLine ? 1 : maxLines,
-                            // 폭이 무한이라 접힐 일이 없지만, 값에 줄바꿈이
-                            // 섞여 들어와도 한 줄을 지키게 같이 끈다.
-                            softWrap: valueOnOneLine ? false : null,
-                            overflow: maxLines == null && !valueOnOneLine
-                                ? null
-                                : TextOverflow.ellipsis,
-                            style: t.bodyMedium?.copyWith(
-                              fontWeight: hasValue
-                                  ? FontWeight.w500
-                                  : FontWeight.w400,
-                              color: hasValue
-                                  ? null
-                                  : (warnPlaceholder
-                                        ? AppColors.dangerFg
-                                        : Theme.of(context).disabledColor),
-                            ),
+        // 폭을 알아야 라벨 쪽에 상한을 걸 수 있다([_labelMaxFraction]).
+        child: LayoutBuilder(
+          builder: (context, box) => Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // 값을 한 줄로 지킬 때는 **이쪽이 줄어든다.** 그래서 `Flexible` 은
+              // 여기에 붙고, 설명은 `…` 으로 끊긴다([valueOnOneLine]).
+              _maybeFlexible(
+                flexible: valueOnOneLine,
+                // **라벨 쪽은 줄의 절반까지만 쓴다.**
+                //
+                // `Row` 는 flex 가 아닌 자식에게 폭을 **무한으로** 주므로
+                // ([valueOnOneLine] 이 아니면 라벨 쪽이 그렇다) 긴 설명이
+                // 접히지도 `…` 으로 끊기지도 않고 줄 전체를 먹었다. 그러면
+                // 값 쪽에 남는 폭이 0 이 되고, 그 안의 [trailing] 이 화면
+                // 밖으로 밀려 **상태 알약이 통째로 안 보였다**(제출 목록).
+                //
+                // 상한이지 반칼이 아니다 — 라벨 쪽이 짧으면 값은 예전처럼
+                // 남은 폭을 다 받는다. `Flexible` 둘로 가르면 짧은 라벨
+                // 옆에서도 값이 절반만 받아 멀쩡한 줄까지 좁아진다.
+                child: _capped(
+                  maxWidth: valueOnOneLine ? null : box.maxWidth,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: t.titleSmall?.copyWith(
+                          color: AppColors.neutralFg,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (subtitle != null)
+                        Text(
+                          subtitle!,
+                          style: t.bodySmall?.copyWith(
+                            color: AppColors.neutralFg,
                           ),
-                    ),
+                          maxLines: valueOnOneLine ? 1 : null,
+                          overflow: valueOnOneLine
+                              ? TextOverflow.ellipsis
+                              : TextOverflow.clip,
+                        ),
+                    ],
                   ),
-                  if (certainty.needsAttention) ...[
-                    const SizedBox(width: Gap.xs),
-                    Tooltip(
-                      message: certainty == Certainty.poor
-                          ? '거의 못 읽었습니다. 값이 맞는지 꼭 확인하세요.'
-                          : '읽긴 했는데 자신 없습니다. 확인해 주세요.',
-                      child: Icon(
-                        certainty == Certainty.poor
-                            ? Icons.error_outline
-                            : Icons.help_outline,
-                        size: 16,
-                        // 거의 못 읽은 것만 빨강이다. 둘을 같은 색으로 두면 정도가
-                        // 안 보이고, 빨강이 흔해지면 빨강이 무뎌진다.
-                        color: certainty == Certainty.poor
-                            ? AppColors.dangerFg
-                            : AppColors.cautionFg,
-                      ),
-                    ),
-                  ],
-                  if (trailing != null) ...[
-                    const SizedBox(width: Gap.sm),
-                    trailing!,
-                  ],
-                  if (onTap != null)
-                    Padding(
-                      padding: const EdgeInsets.only(left: Gap.xs),
-                      child: Icon(
-                        editable ? Icons.edit_outlined : Icons.chevron_right,
-                        size: editable ? 16 : 20,
-                        color: const Color(0xFFC2C2C7),
-                      ),
-                    ),
-                ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: Gap.sm),
+              // 값 쪽 묶음(값 + 확신도 아이콘 + 연필). [valueOnOneLine] 이면
+              // 이쪽도 `Flexible` 을 벗어난다 — 여기가 남아 있으면 안쪽 값 칸만
+              // 풀어줘도 이 줄이 폭을 반만 받아서 그 안에서 넘친다.
+              _maybeFlexible(
+                flexible: !valueOnOneLine,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // **값 칸은 Flexible 이어야 한다.** Row 는 flex 가 아닌
+                    // 자식에게 폭을 무한으로 준다. 그 자리에 `InlineEditRow` 의
+                    // TextField 가 들어오면 `InputDecorator` 가 레이아웃에서
+                    // 던지고(`cannot have an unbounded width`), 그 예외가
+                    // `EditableText._openInputConnection` 의 크기 계산까지
+                    // 끌고 가서 **키보드가 아예 안 올라온다** — 커서는 깜빡이는데
+                    // 입력이 안 되는 상태가 된다.
+                    //
+                    // loose 라서 보여주기만 할 때(`Text`)는 글자 폭만 차지하고,
+                    // 편집 중에는 남은 폭을 다 쓴다.
+                    // 값 칸을 **`Flexible` 에서 빼는 유일한 경우**가
+                    // [valueOnOneLine] 이다. 폭이 무한이 되므로 글자가 접히지
+                    // 않는다 — 그게 이 플래그가 하는 일이다.
+                    _maybeFlexible(
+                      flexible: !valueOnOneLine,
+                      child: Container(
+                        // 입력칸처럼 보이게 하는 밑줄. 값이 오른쪽 정렬이라 밑줄도
+                        // 글자 폭이 아니라 줄 전체에 깔린다 — 빈 칸도 누를 자리가 보인다.
+                        decoration: editable
+                            ? const BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(color: Color(0xFFD8D8DE)),
+                                ),
+                              )
+                            : null,
+                        padding: editable
+                            ? const EdgeInsets.only(bottom: 3)
+                            : EdgeInsets.zero,
+                        child:
+                            valueWidget ??
+                            Text(
+                              hasValue ? value! : (placeholder ?? ''),
+                              textAlign: TextAlign.right,
+                              maxLines: valueOnOneLine ? 1 : maxLines,
+                              // 폭이 무한이라 접힐 일이 없지만, 값에 줄바꿈이
+                              // 섞여 들어와도 한 줄을 지키게 같이 끈다.
+                              softWrap: valueOnOneLine ? false : null,
+                              overflow: maxLines == null && !valueOnOneLine
+                                  ? null
+                                  : TextOverflow.ellipsis,
+                              style: t.bodyMedium?.copyWith(
+                                fontWeight: hasValue
+                                    ? FontWeight.w500
+                                    : FontWeight.w400,
+                                color: hasValue
+                                    ? null
+                                    : (warnPlaceholder
+                                          ? AppColors.dangerFg
+                                          : Theme.of(context).disabledColor),
+                              ),
+                            ),
+                      ),
+                    ),
+                    if (certainty.needsAttention) ...[
+                      const SizedBox(width: Gap.xs),
+                      Tooltip(
+                        message: certainty == Certainty.poor
+                            ? '거의 못 읽었습니다. 값이 맞는지 꼭 확인하세요.'
+                            : '읽긴 했는데 자신 없습니다. 확인해 주세요.',
+                        child: Icon(
+                          certainty == Certainty.poor
+                              ? Icons.error_outline
+                              : Icons.help_outline,
+                          size: 16,
+                          // 거의 못 읽은 것만 빨강이다. 둘을 같은 색으로 두면 정도가
+                          // 안 보이고, 빨강이 흔해지면 빨강이 무뎌진다.
+                          color: certainty == Certainty.poor
+                              ? AppColors.dangerFg
+                              : AppColors.cautionFg,
+                        ),
+                      ),
+                    ],
+                    if (trailing != null) ...[
+                      const SizedBox(width: Gap.sm),
+                      trailing!,
+                    ],
+                    if (onTap != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: Gap.xs),
+                        child: Icon(
+                          editable ? Icons.edit_outlined : Icons.chevron_right,
+                          size: editable ? 16 : 20,
+                          color: const Color(0xFFC2C2C7),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -259,6 +285,25 @@ class LabeledRow extends StatelessWidget {
 /// 어긋나기 쉽다. 여기서는 감싸는 쪽만 가른다.
 Widget _maybeFlexible({required bool flexible, required Widget child}) =>
     flexible ? Flexible(child: child) : child;
+
+/// 라벨 쪽이 줄에서 차지할 수 있는 최대 비율.
+///
+/// 절반이면 값 쪽에도 절반이 남고, 그 안의 상태 알약·`›` 는 몇십 픽셀이면
+/// 된다 — 알약이 잘리는 일은 없다.
+const _labelMaxFraction = 0.5;
+
+/// [maxWidth] 의 [_labelMaxFraction] 만큼으로 폭을 묶는다.
+///
+/// [maxWidth] 가 null 이거나(이미 `Flexible` 로 묶인 경우) 무한이면
+/// (가로로 안 묶인 곳에 놓인 경우) 그냥 통과시킨다 — 무한에 비율을 곱하면
+/// 다시 무한이고, 그 자리에서 던지는 것보다 예전처럼 그리는 쪽이 낫다.
+Widget _capped({required double? maxWidth, required Widget child}) =>
+    maxWidth == null || !maxWidth.isFinite
+    ? child
+    : ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth * _labelMaxFraction),
+        child: child,
+      );
 
 /// 탭하면 **그 자리가 입력칸**이 되는 줄.
 ///
