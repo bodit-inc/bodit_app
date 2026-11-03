@@ -17,10 +17,7 @@ void main() {
         <Object?>['260805', 'folder-a', '2026-08-05T10:00:00'],
         <Object?>['260806', 'folder-b', '2026-08-06T09:00:00'],
       ]);
-      expect(map, <String, String>{
-        '260805': 'folder-a',
-        '260806': 'folder-b',
-      });
+      expect(map, <String, String>{'260805': 'folder-a', '260806': 'folder-b'});
     });
 
     test('같은 날짜가 두 줄이면 첫 줄을 쓴다 — 셋째 사람부터 한 폴더로 모인다', () {

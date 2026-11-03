@@ -42,8 +42,7 @@ const googleScopes = <String>[
 ];
 
 /// 비었거나 자리값이면 `null`. 설정이 '있는 척' 하는 상태를 없는 것으로 본다.
-String? _orNull(String v) =>
-    (v.isEmpty || v == Config.placeholder) ? null : v;
+String? _orNull(String v) => (v.isEmpty || v == Config.placeholder) ? null : v;
 
 class GoogleAuthService {
   GoogleSignInAccount? _account;

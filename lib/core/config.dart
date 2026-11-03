@@ -122,8 +122,10 @@ abstract final class Config {
       _pick(EnvDev.googleServerClientId, EnvProd.googleServerClientId);
 
   /// 환경에 맞는 쪽을 고른다. 분기를 한 군데로 모아 빠뜨릴 수 없게 한다.
-  static String _pick(String dev, String prod) =>
-      switch (flavor) { AppFlavor.dev => dev, AppFlavor.prod => prod };
+  static String _pick(String dev, String prod) => switch (flavor) {
+    AppFlavor.dev => dev,
+    AppFlavor.prod => prod,
+  };
 
   /// `.env.*.example` 의 자리값이 그대로 남아 있는지 본다.
   ///
