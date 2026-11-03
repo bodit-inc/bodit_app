@@ -209,7 +209,7 @@ class SubmissionRow extends ConsumerWidget {
                 : editable
                 ? '눌러서 내용을 고칠 수 있습니다'
                 : _allDone
-                ? '${_time(row.createdAt)} · 눌러서 Slack 에서 보기'
+                ? '제출: ${_time(row.createdAt)}'
                 : null,
             // 고칠 수 있는 건은 고치는 쪽이 먼저다. 이미 나간 건은 고칠 수
             // 없으니(Drive 파일명과 시트 내용이 어긋난다) 원본으로 보낸다.

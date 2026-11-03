@@ -939,19 +939,6 @@ class _ReadingView extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: Gap.sm),
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: Gap.xxl),
-              child: Text(
-                '비목과 분류는 영수증에 없습니다.\n'
-                '비목은 과거에 같은 업체를 어떻게 처리했는지 보고,\n'
-                '분류는 결제한 카드를 보고 채웁니다.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall
-                    ?.copyWith(color: AppColors.neutralFg),
-              ),
-            ),
-          ),
           if (problems.isNotEmpty) ...[
             const SizedBox(height: Gap.xxl),
             NoticeBanner(
