@@ -647,6 +647,9 @@ class ReviewController extends Notifier<ReviewState> {
             suggestionReason: '$vendor는 지난 ${s.reason}',
             // 내역은 채우지 않고 후보로만 넘긴다(위 주석 참조).
             descriptionSuggestions: s.recentDescriptions,
+            // 이력이 갈렸으면 나머지 비목도 넘긴다 — 화면이 둘 이상일 때만
+            // 칩으로 띄운다. 하나뿐이면 보여줄 다른 선택이 없다.
+            categorySuggestions: s.categoryTallies,
           );
         }
       } on Object {

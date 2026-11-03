@@ -352,7 +352,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                               Wrap(
                                 spacing: Gap.sm,
                                 runSpacing: Gap.sm,
-
                                 children: [
                                   for (final d in draft.descriptionSuggestions)
                                     SuggestChip(
@@ -417,6 +416,53 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             // 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
                             if (draft.suggestionReason != null)
                               SuggestReason(draft.suggestionReason!),
+
+                            // 이력이 갈린 업체의 **나머지 비목**.
+                            //
+                            // 지금 값은 위 칩에 있으므로 거기서 빼고 보여준다 —
+                            // 같은 값이 선택된 칩으로 두 번 뜨면 어느 쪽을
+                            // 눌러야 하는지 헷갈린다. 고르면 그 값이 위로
+                            // 올라가고 방금 것이 이 줄로 내려온다.
+                            //
+                            // **자동으로 합치지 않는다.** 1등만 채우고 나머지는
+                            // 눌러서 고른다 — 비목 추천은 과거의 경향일 뿐이고,
+                            // 문고에서 책도 사고 간식도 산다.
+                            if (draft.otherCategorySuggestions.isNotEmpty) ...[
+                              const SizedBox(height: Gap.sm),
+                              Text(
+                                '이 업체의 다른 비목',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(color: AppColors.neutralFg),
+                              ),
+                              const SizedBox(height: Gap.sm),
+                              Wrap(
+                                spacing: Gap.sm,
+                                runSpacing: Gap.sm,
+                                children: [
+                                  for (final t
+                                      in draft.otherCategorySuggestions)
+                                    SuggestChip(
+                                      t.label,
+                                      // **빨간 칩이 아니다.** 고르지 않은
+                                      // 추천 칩은 기본이 danger 색인데, 이건
+                                      // 틀린 값이 아니라 과거에 실제로 쓴
+                                      // 비목이다. 분류 후보의 빨강은 "아직
+                                      // 분류를 못 정했다" 는 뜻이지만 여기는
+                                      // 이미 1등으로 채워져 있다.
+                                      initialState: true,
+                                      onTap: () => ref
+                                          .read(
+                                            reviewControllerProvider.notifier,
+                                          )
+                                          .update(
+                                            (d) => d.copyWith(
+                                              expenseCategory: t.category,
+                                            ),
+                                          ),
+                                    ),
+                                ],
+                              ),
+                            ],
                             // 추천과 다르게 골랐다. **조용히 알려준다** —
                             // 비목 추천은 과거 이력이라 추측이고, 이번 건이
                             // 다를 수 있다. 벗어나는 것이 정상 동작이므로

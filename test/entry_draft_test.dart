@@ -1,3 +1,4 @@
+import 'package:bodit_app/models/category_tally.dart';
 import 'package:bodit_app/models/certainty.dart';
 import 'package:bodit_app/models/class_choice.dart';
 import 'package:bodit_app/models/entry_draft.dart';
@@ -242,6 +243,37 @@ void main() {
     });
   });
 
+  group('비목 후보 — 지금 값은 빼고 보여준다', () {
+    const tallies = [
+      CategoryTally(category: '도서인쇄비', count: 4),
+      CategoryTally(category: '복리후생비', count: 3),
+    ];
+
+    test('지금 값은 빠진다 — 같은 값이 칩으로 두 번 뜨면 헷갈린다', () {
+      final d = _full().copyWith(
+        expenseCategory: '도서인쇄비',
+        categorySuggestions: tallies,
+      );
+      expect(d.otherCategorySuggestions, [tallies[1]]);
+    });
+
+    test('다른 후보를 고르면 방금 것이 내려온다', () {
+      final d = _full().copyWith(
+        expenseCategory: '복리후생비',
+        categorySuggestions: tallies,
+      );
+      expect(d.otherCategorySuggestions, [tallies[0]]);
+    });
+
+    test('후보가 하나뿐이면 보여줄 다른 선택이 없다', () {
+      final d = _full().copyWith(
+        expenseCategory: '도서인쇄비',
+        categorySuggestions: const [CategoryTally(category: '도서인쇄비', count: 6)],
+      );
+      expect(d.otherCategorySuggestions, isEmpty);
+    });
+  });
+
   group('추천에서 벗어났는가', () {
     test('비목을 추천과 다르게 고치면 참이다', () {
       final d = _full().copyWith(
@@ -267,6 +299,34 @@ void main() {
             .categoryDiffersFromSuggestion,
         isFalse,
       );
+    });
+
+    test('후보 칩에서 다른 과거 비목을 고른 것은 벗어난 게 아니다', () {
+      // 이력이 갈린 업체다. 1등(도서인쇄비)이 채워져 있고 2등을 눌렀다 —
+      // 그 값도 이 업체의 이력이고, 애초에 고르라고 띄운 칩이다.
+      // 여기에 "과거 이력은 …였습니다" 를 띄우면 방금 권한 것을 고른
+      // 사용자를 되돌리라고 찌르는 셈이다.
+      final d = _full().copyWith(
+        suggestedCategory: '도서인쇄비',
+        expenseCategory: '복리후생비',
+        categorySuggestions: const [
+          CategoryTally(category: '도서인쇄비', count: 4),
+          CategoryTally(category: '복리후생비', count: 3),
+        ],
+      );
+      expect(d.categoryDiffersFromSuggestion, isFalse);
+    });
+
+    test('후보에 없는 비목으로 고치면 그때는 참이다', () {
+      final d = _full().copyWith(
+        suggestedCategory: '도서인쇄비',
+        expenseCategory: '지급수수료',
+        categorySuggestions: const [
+          CategoryTally(category: '도서인쇄비', count: 4),
+          CategoryTally(category: '복리후생비', count: 3),
+        ],
+      );
+      expect(d.categoryDiffersFromSuggestion, isTrue);
     });
 
     test('분류를 카드가 정한 것과 다르게 고치면 참이다', () {
