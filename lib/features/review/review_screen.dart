@@ -314,12 +314,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         ),
                       ],
                       // 비워두면 "$needsOpsReview" 으로 들어가고 회계 담당자가
-                      // 다시 물어야 한다. **직접 써야 한다는 것을 빨간 글씨로
-                      // 못박는다** — 예전엔 placeholder 를 경고색으로 띄우는
-                      // 정도였고, 그건 칸을 누르기 전까지 눈에 안 들어왔다.
+                      // 다시 물어야 한다. **직접 써야 한다는 것을 칸 아래
+                      // 경고색 한 줄로 못박는다** — 예전엔 placeholder 를
+                      // 경고색으로 띄우는 정도였고, 그건 칸을 누르기 전까지
+                      // 눈에 안 들어왔다.
                       //
-                      // 채워지면 거둔다. 늘 빨간 글씨가 떠 있으면 아무도 안
-                      // 본다 — 확신도 경고를 드물게 띄우는 것과 같은 이유다.
+                      // 채워지면 거둔다. 경고가 늘 떠 있으면 아무도 안 본다 —
+                      // 확신도 경고를 드물게 띄우는 것과 같은 이유다.
                       if ((draft.description ?? '').trim().isEmpty)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(
@@ -332,7 +333,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             '내역을 모르면 비워두세요. "$needsOpsReview" 으로 제출됩니다.',
                             style: Theme.of(context).textTheme.labelSmall
                                 ?.copyWith(
-                                  color: AppColors.noticeFg,
+                                  color: AppColors.cautionFg,
                                   fontWeight: FontWeight.w600,
                                 ),
                             textAlign: TextAlign.end,
@@ -389,7 +390,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       Padding(
                         padding: const EdgeInsets.all(Gap.lg),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Text(
                               '비목',
@@ -399,6 +400,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             ),
                             const SizedBox(height: Gap.sm),
                             Wrap(
+                              alignment: WrapAlignment.end,
                               spacing: Gap.sm,
                               runSpacing: Gap.sm,
                               children: [
@@ -442,11 +444,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                 '이 업체의 다른 비목',
                                 style: Theme.of(context).textTheme.labelSmall
                                     ?.copyWith(color: AppColors.neutralFg),
+                                textAlign: TextAlign.end,
                               ),
                               const SizedBox(height: Gap.sm),
                               Wrap(
                                 spacing: Gap.sm,
                                 runSpacing: Gap.sm,
+                                alignment: WrapAlignment.end,
                                 children: [
                                   for (final t
                                       in draft.otherCategorySuggestions)
@@ -486,6 +490,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                   '과거 이력은 "${draft.suggestedCategory}" 였습니다.',
                                   style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(color: AppColors.neutralFg),
+                                  textAlign: TextAlign.end,
                                 ),
                               ),
 
@@ -505,6 +510,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             Wrap(
                               spacing: Gap.sm,
                               runSpacing: Gap.sm,
+                              alignment: WrapAlignment.end,
                               children: [
                                 // 비목과 같다 — 값 칩이 곧 picker 입구다.
                                 if (draft.classCode != null)
@@ -533,6 +539,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                             if (draft.classSuggestions.isNotEmpty) ...[
                               const SizedBox(height: Gap.sm),
                               Wrap(
+                                alignment: WrapAlignment.end,
                                 spacing: Gap.sm,
                                 runSpacing: Gap.sm,
                                 children: [
@@ -1298,19 +1305,19 @@ class _MissingFieldsBar extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: Gap.lg, vertical: Gap.md),
       decoration: const BoxDecoration(
-        color: AppColors.noticeBg,
+        color: AppColors.cautionBg,
         // 앱바에 붙은 것처럼 보이게 아래쪽만 선을 둔다.
-        border: Border(bottom: BorderSide(color: AppColors.noticeBorder)),
+        border: Border(bottom: BorderSide(color: AppColors.cautionBorder)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, size: 17, color: AppColors.noticeFg),
+          const Icon(Icons.error_outline, size: 17, color: AppColors.cautionFg),
           const SizedBox(width: Gap.sm),
           Expanded(
             child: Text(
               '아직 비어 있는 항목: ${fields.join(', ')}',
               style: Theme.of(context).textTheme.labelSmall
-                  ?.copyWith(color: AppColors.noticeFg),
+                  ?.copyWith(color: AppColors.cautionFg),
             ),
           ),
         ],

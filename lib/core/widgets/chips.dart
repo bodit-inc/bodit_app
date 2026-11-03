@@ -61,12 +61,12 @@ class SuggestChip extends StatelessWidget {
         ? AppColors.neutralBg
         : selected
         ? AppColors.suggestBg
-        : AppColors.dangerBg;
+        : AppColors.cautionBg;
     final fg = initialState
         ? AppColors.neutralFg
         : selected
         ? AppColors.suggestFg
-        : AppColors.danger;
+        : AppColors.cautionFg;
 
     return InkWell(
       borderRadius: BorderRadius.circular(Radii.pill),

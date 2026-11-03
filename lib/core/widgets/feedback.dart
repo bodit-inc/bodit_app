@@ -2,7 +2,14 @@
 ///
 /// 강도 순서: `NoteText`(지나가는 말) < `SuggestReason`(근거) <
 /// `NoticeBanner`(확인 필요) < `ErrorDisclosure`(실패).
-/// 강도를 올릴수록 색이 진해진다 — 아무거나 빨갛게 하면 진짜 실패가 안 보인다.
+///
+/// **색이 이 순서를 다 가르지는 못한다.** `NoticeBanner` 부터 이미 빨강이라
+/// (왜인지는 `AppColors.danger` 주석) 뒤의 둘은 같은 색이고 **모양으로**
+/// 갈린다 — 배너는 띠 하나로 끝나고, 실패는 눌러서 펼치는 예외 원문을 달고
+/// 있다.
+///
+/// 노랑은 여기 없다. 칸에 붙는 인라인 경고가 쓰는 색이다
+/// (`AppColors.caution*`) — 배너로 올라올 말이 아니라는 뜻이다.
 library;
 
 import 'package:bodit_app/core/theme/tokens.dart';
@@ -42,12 +49,17 @@ class SuggestReason extends StatelessWidget {
         '✓ $text',
         style: Theme.of(context).textTheme.bodySmall
             ?.copyWith(color: AppColors.successFg),
+        textAlign: TextAlign.end,
       ),
     );
   }
 }
 
 /// 안내 배너 (부가세 확인, 오프라인 안내 등). 시안의 `.banner`
+///
+/// 색은 **빨강**(`AppColors.danger*`)이다. 이름이 `Notice` 라서 노랑을
+/// 기대하기 쉬운데 아니다 — 이유는 `AppColors.danger` 주석에 있다.
+/// 노랑이 맞는 자리는 배너가 아니라 칸에 붙는 인라인 경고다.
 class NoticeBanner extends StatelessWidget {
   const new({required this.child, super.key, this.dark = false});
 
@@ -62,15 +74,15 @@ class NoticeBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: Gap.md, vertical: Gap.md),
       decoration: BoxDecoration(
-        color: dark ? AppColors.offlineBg : AppColors.noticeBg,
-        border: dark ? null : Border.all(color: AppColors.noticeBorder),
+        color: dark ? AppColors.offlineBg : AppColors.dangerBg,
+        border: dark ? null : Border.all(color: AppColors.dangerBorder),
         borderRadius: BorderRadius.circular(Radii.card),
       ),
       child: DefaultTextStyle.merge(
         // 문단이라 body 계열이다. 줄간격만 얹는다.
         style: Theme.of(context).textTheme.bodySmall!.copyWith(
           height: 1.5,
-          color: dark ? Colors.white : AppColors.noticeFg,
+          color: dark ? Colors.white : AppColors.dangerFg,
         ),
         child: child,
       ),
@@ -91,8 +103,9 @@ class NoticeBanner extends StatelessWidget {
 /// "진행 중" 만 말하고 끝내면 사용자가 할 수 있는 일이 없다. 어디까지 갔는지
 /// 보러 갈 길을 열어둔다 — [onTap] 이 없으면 화살표도 안 그린다.
 ///
-/// 색은 추천 칩과 같은 파랑이다. 노랑(`NoticeBanner`)은 "확인이 필요하다",
-/// 빨강은 실패다 — 진행 중은 둘 다 아니다.
+/// 색은 추천 칩과 같은 파랑이다. 노랑은 "확인이 필요하다"(칸에 붙는 인라인
+/// 경고), 빨강은 "손을 봐야 한다"(`NoticeBanner`·`ErrorDisclosure`) 다 —
+/// 진행 중은 그 어느 쪽도 아니다.
 class ProgressBanner extends StatelessWidget {
   const ProgressBanner({required this.text, super.key, this.onTap});
 
@@ -261,10 +274,14 @@ class _ErrorDisclosureState extends State<ErrorDisclosure> {
 /// 그래서 **값을 되돌리지 않고** "이렇게 읽었다" 만 말하고, 되돌릴 길을
 /// 칩으로 열어둔다. 사용자가 둘 중 하나를 고른다.
 ///
-/// ## 왜 danger 가 아닌가
+/// ## 색이 둘로 갈려 있다
 ///
-/// 사용자가 **의도적으로** 고친 것일 수 있다. 빨갛게 띄우면 정당한 수정마다
-/// 오류처럼 보이고, 빨강이 흔해지면 진짜 실패가 안 보인다.
+/// 안내 문구는 빨강(`dangerFg`)이다 — "다시 확인해주세요" 는 읽고 지나가면
+/// 안 되는 말이고, 지나간 채 제출되면 시트가 append-only 라 못 고친다.
+///
+/// 되돌리기 칩은 **안 고른 추천 칩과 같은 노랑**이다. 사용자가 의도적으로
+/// 고친 것일 수 있어서 — OCR 이 상호를 잘못 읽는 일은 흔하다 — 되돌리는
+/// 쪽이 정답이라고 칩까지 빨갛게 못박지 않는다.
 class OcrConflictNote extends StatelessWidget {
   const OcrConflictNote({
     required this.ocrValue,

@@ -183,7 +183,7 @@ class LabeledRow extends StatelessWidget {
                         // 안 보이고, 빨강이 흔해지면 빨강이 무뎌진다.
                         color: certainty == Certainty.poor
                             ? AppColors.dangerFg
-                            : AppColors.noticeFg,
+                            : AppColors.cautionFg,
                       ),
                     ),
                   ],
