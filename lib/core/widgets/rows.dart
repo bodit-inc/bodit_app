@@ -75,77 +75,6 @@ class LabeledRow extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final hasValue = (value ?? '').isNotEmpty;
 
-    final row = Row(
-      children: [
-        SizedBox(
-          width: 84,
-          child: Text(
-            label,
-            style: t.bodySmall?.copyWith(color: AppColors.neutralFg),
-          ),
-        ),
-        Expanded(
-          child: Container(
-            // 입력칸처럼 보이게 하는 밑줄. 값이 오른쪽 정렬이라 밑줄도
-            // 글자 폭이 아니라 줄 전체에 깔린다 — 빈 칸도 누를 자리가 보인다.
-            decoration: editable
-                ? const BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: Color(0xFFD8D8DE)),
-                    ),
-                  )
-                : null,
-            padding: editable
-                ? const EdgeInsets.only(bottom: 3)
-                : EdgeInsets.zero,
-            child:
-                valueWidget ??
-                Text(
-                  hasValue ? value! : (placeholder ?? ''),
-                  textAlign: TextAlign.right,
-                  style: t.bodyMedium?.copyWith(
-                    fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
-                    color: hasValue
-                        ? null
-                        : (warnPlaceholder
-                              ? AppColors.dangerFg
-                              : Theme.of(context).disabledColor),
-                  ),
-                ),
-          ),
-        ),
-        if (certainty.needsAttention) ...[
-          const SizedBox(width: Gap.xs),
-          Tooltip(
-            message: certainty == Certainty.poor
-                ? '거의 못 읽었습니다. 값이 맞는지 꼭 확인하세요.'
-                : '읽긴 했는데 자신 없습니다. 확인해 주세요.',
-            child: Icon(
-              certainty == Certainty.poor
-                  ? Icons.error_outline
-                  : Icons.help_outline,
-              size: 16,
-              // 거의 못 읽은 것만 빨강이다. 둘을 같은 색으로 두면 정도가
-              // 안 보이고, 빨강이 흔해지면 빨강이 무뎌진다.
-              color: certainty == Certainty.poor
-                  ? AppColors.dangerFg
-                  : AppColors.noticeFg,
-            ),
-          ),
-        ],
-        if (trailing != null) ...[const SizedBox(width: Gap.sm), trailing!],
-        if (onTap != null)
-          Padding(
-            padding: const EdgeInsets.only(left: Gap.xs),
-            child: Icon(
-              editable ? Icons.edit_outlined : Icons.chevron_right,
-              size: editable ? 16 : 20,
-              color: const Color(0xFFC2C2C7),
-            ),
-          ),
-      ],
-    );
-
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -153,19 +82,106 @@ class LabeledRow extends StatelessWidget {
           horizontal: Gap.lg,
           vertical: Gap.md,
         ),
-        child: subtitle == null
-            ? row
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  row,
-                  const SizedBox(height: 3),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: t.titleSmall?.copyWith(color: AppColors.neutralFg),
+                ),
+                if (subtitle != null)
                   Text(
                     subtitle!,
                     style: t.bodySmall?.copyWith(color: AppColors.neutralFg),
                   ),
+              ],
+            ),
+            Flexible(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // **값 칸은 Flexible 이어야 한다.** Row 는 flex 가 아닌
+                  // 자식에게 폭을 무한으로 준다. 그 자리에 `InlineEditRow` 의
+                  // TextField 가 들어오면 `InputDecorator` 가 레이아웃에서
+                  // 던지고(`cannot have an unbounded width`), 그 예외가
+                  // `EditableText._openInputConnection` 의 크기 계산까지
+                  // 끌고 가서 **키보드가 아예 안 올라온다** — 커서는 깜빡이는데
+                  // 입력이 안 되는 상태가 된다.
+                  //
+                  // loose 라서 보여주기만 할 때(`Text`)는 글자 폭만 차지하고,
+                  // 편집 중에는 남은 폭을 다 쓴다.
+                  Flexible(
+                    child: Container(
+                      // 입력칸처럼 보이게 하는 밑줄. 값이 오른쪽 정렬이라 밑줄도
+                      // 글자 폭이 아니라 줄 전체에 깔린다 — 빈 칸도 누를 자리가 보인다.
+                      decoration: editable
+                          ? const BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(color: Color(0xFFD8D8DE)),
+                              ),
+                            )
+                          : null,
+                      padding: editable
+                          ? const EdgeInsets.only(bottom: 3)
+                          : EdgeInsets.zero,
+                      child:
+                          valueWidget ??
+                          Text(
+                            hasValue ? value! : (placeholder ?? ''),
+                            textAlign: TextAlign.right,
+                            style: t.bodyMedium?.copyWith(
+                              fontWeight: hasValue
+                                  ? FontWeight.w500
+                                  : FontWeight.w400,
+                              color: hasValue
+                                  ? null
+                                  : (warnPlaceholder
+                                        ? AppColors.dangerFg
+                                        : Theme.of(context).disabledColor),
+                            ),
+                          ),
+                    ),
+                  ),
+                  if (certainty.needsAttention) ...[
+                    const SizedBox(width: Gap.xs),
+                    Tooltip(
+                      message: certainty == Certainty.poor
+                          ? '거의 못 읽었습니다. 값이 맞는지 꼭 확인하세요.'
+                          : '읽긴 했는데 자신 없습니다. 확인해 주세요.',
+                      child: Icon(
+                        certainty == Certainty.poor
+                            ? Icons.error_outline
+                            : Icons.help_outline,
+                        size: 16,
+                        // 거의 못 읽은 것만 빨강이다. 둘을 같은 색으로 두면 정도가
+                        // 안 보이고, 빨강이 흔해지면 빨강이 무뎌진다.
+                        color: certainty == Certainty.poor
+                            ? AppColors.dangerFg
+                            : AppColors.noticeFg,
+                      ),
+                    ),
+                  ],
+                  if (trailing != null) ...[
+                    const SizedBox(width: Gap.sm),
+                    trailing!,
+                  ],
+                  if (onTap != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: Gap.xs),
+                      child: Icon(
+                        editable ? Icons.edit_outlined : Icons.chevron_right,
+                        size: editable ? 16 : 20,
+                        color: const Color(0xFFC2C2C7),
+                      ),
+                    ),
                 ],
               ),
+            ),
+          ],
+        ),
       ),
     );
   }
