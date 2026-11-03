@@ -238,12 +238,17 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 
                       const RowDivider(),
                       // 내역은 OCR 이 읽은 품목명이 그대로 들어가 있기 쉬운데,
-                      // 회계가 원하는 건 "무슨 건인지" 다. **직접 써야 하는 칸**이라는
-                      // 신호를 주려고 안내를 경고색으로 띄운다.
+                      // 회계가 원하는 건 "무슨 건인지" 다 — **어차피 사람이 다시
+                      // 쓰는 칸**이라, 칸 아래 안내가 그 말을 한다.
+                      //
+                      // **그래서 확신도 아이콘을 띄우지 않는다.** 품목명을 자신
+                      // 있게 읽어도 그게 내역으로 맞는 것은 아니고, 못 읽어도
+                      // 사용자가 할 일은 똑같다 — 어느 쪽이든 직접 쓴다.
+                      // 거의 모든 건에 빨간 느낌표가 붙으면 정작 값이 틀린 다른
+                      // 칸의 경고까지 같이 무뎌진다(경고는 드물게).
                       InlineEditRow(
                         key: _fieldKeys['내역'],
                         label: '내역',
-                        certainty: draft.certaintyOf('description'),
                         value: draft.description,
                         placeholder: '직접 입력',
                         onSubmit: (v) => ref
