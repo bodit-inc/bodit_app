@@ -593,10 +593,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         onTap: () => _pickEvidenceType(context, ref),
                       ),
                       const RowDivider(),
-                      InlineEditText(
+                      // 위 칸들(업체명·카드번호·내역)과 **같은 줄 모양**이다.
+                      // 전에는 `수정` 버튼이 붙은 전용 위젯이었는데, 같은
+                      // 카드에서 고치는 방법이 두 가지로 보였다 — 어떤 값은
+                      // 줄을 누르고 어떤 값은 버튼을 눌러야 했다.
+                      InlineEditRow(
+                        label: '파일명',
                         value: draft.filename,
-                        // 글자 하나를 세어 읽는 값이다.
-                        monospace: true,
                         // **사용자가 직접 친 값에도 치환 규칙을 적용한다** —
                         // `/` 하나로 Drive 동기화가 깨진다.
                         onSubmit: (v) => ref
@@ -616,8 +619,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       _EvidencePreview(draft.evidencePath),
                     ],
                   ),
-                  const NoteText('위 항목을 고치면 파일명도 따라 바뀝니다. 직접 고칠 수도 있습니다.'),
-
                   // OCR 이 실패해도 폼은 그대로 쓴다(직접 채우면 된다). 다만 왜 비었는지는
                   // 알려줘야 한다 — 지금까지 이 값이 화면에 안 나와서 조용히 삼켜졌다.
                   if (state.error != null) ...[
