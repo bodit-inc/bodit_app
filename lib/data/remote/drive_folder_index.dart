@@ -38,6 +38,22 @@
 /// 남은 폴더 하나는 사람이 드라이브에서 합치면 된다.
 /// 막으려면 잠금이 필요하고, 잠금을 두려면 백엔드가 필요하다(ADR Decision 1).
 ///
+/// ## 기록을 못 남긴 폴더 — 내가 만든 것은 찾아낸다
+///
+/// 위 "동시 제출" 은 **두 사람**이 겹친 경우다. 운영에서는 혼자서도 둘이
+/// 생겼다: 2611 폴더가 Drive 에 있는데 앱이 2611 을 또 만들었다.
+/// 폴더는 만들었지만 **시트 기록이 없는 상태**였기 때문이다 — 폴더를 만든
+/// 응답을 받다가 연결이 끊겼거나(`Connection reset`), 기록 자체가 실패하면
+/// 그렇게 된다.
+///
+/// 그래서 만들기 직전에 **내가 만든 폴더만** 한 번 조회한다
+/// (`_findMyFolder`). `drive.file` 로 남의 폴더는 못 찾지만 내가 만든 것은
+/// 찾을 수 있다 — 고아 폴더는 정확히 내가 만든 것이다. 시트 기록은 여전히
+/// **사람들 사이**를 맞추는 장치고, 이 조회는 **내 뒷정리**다.
+///
+/// 기록에 실패했으면 그 사실도 들고 나간다(`takeRecordWarning`) —
+/// 로그만 남기면 아무도 모르고, 그 달 증빙이 내내 두 폴더로 갈린다.
+///
 /// ## 실패하면 숨기지 않는다
 ///
 /// 폴더를 못 정하면 예외를 던진다. 루트 폴더로 **조용히** 떨어지지 않는다 —
@@ -48,6 +64,7 @@ library;
 
 import 'package:bodit_app/core/log.dart';
 import 'package:bodit_app/core/utils/filename.dart';
+import 'package:bodit_app/core/utils/retry.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
@@ -78,6 +95,25 @@ class DriveFolderIndex {
   /// 폴더가 월 단위가 되면서 이 캐시가 거의 항상 맞는다.
   final Map<String, String> _cache = <String, String>{};
 
+  /// 폴더는 정했지만 **그 ID 를 시트에 적지 못한** 마지막 사유.
+  ///
+  /// 적지 못하면 다음 사람(또는 다음 실행)이 같은 달 폴더를 하나 더 만든다 —
+  /// 그 달 증빙이 두 폴더로 갈린다. 로그에만 남기면 아무도 모르고, 그렇다고
+  /// 던지면 이미 잘 만들어진 폴더에 **올릴 수 있는 증빙을 버리는 것**이라
+  /// 더 나쁘다. 그래서 올리기는 하고 사유를 여기 남긴다 —
+  /// [takeRecordWarning] 으로 꺼내 제출 목록에 적는다.
+  String? _recordWarning;
+
+  /// 쌓인 기록 실패 사유를 꺼내고 비운다. 없으면 null.
+  ///
+  /// 꺼내면서 비우는 이유: 다음 건에 지난 경고가 다시 붙으면 사용자는 같은
+  /// 문제가 또 났다고 읽는다.
+  String? takeRecordWarning() {
+    final w = _recordWarning;
+    _recordWarning = null;
+    return w;
+  }
+
   /// [belongDate] 가 속한 **달**의 폴더 ID 를 돌려준다. 없으면 만들고 시트에
   /// 적는다.
   ///
@@ -93,25 +129,103 @@ class DriveFolderIndex {
     final cached = _cache[name];
     if (cached != null) return cached;
 
-    final recorded = (await _readIndex(client))[name];
+    // 읽기는 몇 번 보내도 안전하다 — 끊긴 것 때문에 폴더를 새로 만드는 쪽이
+    // 훨씬 비싸다(그 달 증빙이 갈린다).
+    final recorded = (await retryTransient(
+      () => _readIndex(client),
+      what: '월 폴더 기록 읽기($name)',
+    ))[name];
     if (recorded != null) {
       _cache[name] = recorded;
       return recorded;
     }
 
-    final created = await _createFolder(client, name);
-    log.d('월 폴더를 만들었다: $name ($created)');
+    // 기록이 없다. 그래도 **내가 전에 만들어둔 폴더**는 있을 수 있다
+    // (아래 "기록을 못 남긴 폴더" 참고). 그래서 바로 만들지 않고 먼저 찾는다.
+    //
+    // 찾기와 만들기를 **한 덩어리로** 감싸는 이유: 만들기가 응답을 받다가
+    // 끊기면 서버에는 폴더가 생겨 있다. 다시 시도할 때 찾기가 먼저 돌아야
+    // 그 폴더를 집어낸다 — 안 그러면 재시도가 바로 두 번째 폴더를 만든다.
+    final folderId = await retryTransient(
+      () async =>
+          await _findMyFolder(client, name) ?? await _createFolder(client, name),
+      what: '월 폴더($name)',
+    );
 
     // 기록에 실패해도 폴더는 이미 있다. 올리는 것까지 막지 않는다 —
-    // 다음 사람이 폴더를 하나 더 만들 뿐이고, 그건 사람이 합칠 수 있다.
+    // 증빙을 버리는 쪽이 폴더가 갈리는 쪽보다 나쁘다. 대신 조용히 넘기지
+    // 않는다: 사유를 들고 있다가 제출 목록에 적는다(`takeRecordWarning`).
     try {
-      await _record(client, name: name, folderId: created);
+      // 같은 연월·같은 ID 를 두 줄 적는 것은 **해롭지 않다** — 읽을 때
+      // 첫 줄만 쓰고 두 줄이 같은 폴더를 가리킨다. 매입내역 append 와 달라서
+      // 여기는 다시 보내도 된다.
+      await retryTransient(
+        () => _record(client, name: name, folderId: folderId),
+        what: '월 폴더 기록($name)',
+      );
     } on Object catch (e) {
-      log.w('폴더 ID 를 시트에 적지 못했다 ($name=$created): $e');
+      log.w('폴더 ID 를 시트에 적지 못했다 ($name=$folderId): $e');
+      _recordWarning =
+          '월 폴더($name) 를 시트에 기록하지 못했습니다 — '
+          '다음 제출이 같은 달 폴더를 하나 더 만들 수 있습니다.\n$e';
     }
 
-    _cache[name] = created;
-    return created;
+    _cache[name] = folderId;
+    return folderId;
+  }
+
+  /// **이 앱이 이 계정으로 만든** 월 폴더를 찾는다. 없으면 null.
+  ///
+  /// ## 조회를 포기했다더니 왜 조회하는가
+  ///
+  /// 위에서 "폴더를 조회하지 않는다" 고 한 것은 **남이 만든 폴더**를 찾을 수
+  /// 없기 때문이다. `drive.file` scope 의 `files.list` 는 그 계정에서 이 앱이
+  /// 만든 것만 돌려준다 — 그래서 남의 `2608` 은 안 잡히고, 그것만 믿으면
+  /// 사용자마다 폴더가 하나씩 생긴다. 시트 기록이 그 문제를 푼다.
+  ///
+  /// 그런데 운영에서 **다른** 경우가 나왔다: 내가 2611 을 만들었는데 시트에
+  /// 기록이 없어서, 같은 기기·같은 계정이 2611 을 또 만들었다. 기록이 없는
+  /// 길은 둘이다 —
+  ///
+  /// 1. 폴더를 만든 응답을 받다가 연결이 끊겼다(그날의 `Connection reset`).
+  ///    예외가 올라가면서 기록 단계까지 가지 못한다
+  /// 2. 기록 자체가 실패했다([_recordWarning])
+  ///
+  /// 이 조회는 **정확히 그 고아 폴더만** 집어낸다. 내가 만든 것은 scope 안에
+  /// 있으니까. 남의 폴더는 여전히 안 보이므로 시트 기록의 역할은 그대로다 —
+  /// 이건 그걸 대신하는 게 아니라 **내 뒷정리**다.
+  ///
+  /// 못 찾으면(또는 조회가 실패하면) null 을 돌려주고 만들기로 간다 —
+  /// 예전 동작이다. 뒷정리용 조회가 새로운 실패 지점이 되면 안 된다.
+  Future<String?> _findMyFolder(gapis.AuthClient client, String name) async {
+    final api = drive.DriveApi(client);
+    try {
+      final res = await api.files.list(
+        // 이름이 같고, 루트 폴더 안이고, 폴더이고, 휴지통에 없는 것.
+        // 이름에 작은따옴표가 들어갈 일은 없다(`YYMM`)지만 규칙은 지킨다.
+        q:
+            "name = '${name.replaceAll("'", r"\'")}' and "
+            "'$rootFolderId' in parents and "
+            "mimeType = '$_folderMime' and trashed = false",
+        // 공유 드라이브에 있을 수 있다. 둘 다 켜야 걸린다.
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        // 둘 이상 나오면 **먼저 만든 것**을 쓴다. 시트를 읽을 때 첫 줄을 쓰는
+        // 것과 같은 규칙이라야 사람마다 다른 폴더로 갈리지 않는다.
+        orderBy: 'createdTime',
+        pageSize: 2,
+        $fields: 'files(id,name)',
+      );
+      final found = res.files;
+      if (found == null || found.isEmpty) return null;
+      final id = found.first.id;
+      if (id == null) return null;
+      log.d('기록에 없지만 내가 만든 월 폴더를 찾았다: $name ($id)');
+      return id;
+    } on Object catch (e) {
+      log.w('내가 만든 월 폴더를 조회하지 못했다 ($name): $e');
+      return null;
+    }
   }
 
   /// `_드라이브폴더` 탭을 읽어 연월 → 폴더 ID 로 만든다.

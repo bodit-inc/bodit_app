@@ -19,10 +19,30 @@
 /// 폴더를 못 정하면 올리지 않고 던진다. 루트로 조용히 떨어지면 사용자는
 /// 폴더가 생긴 줄 알고, 나중에 회계가 루트에 섞인 파일을 발견한다.
 /// Drive 하나가 실패해도 시트 행과 Slack 글은 나간다(ADR Decision 4).
+///
+/// ## 업로드는 쪼개서 보내고, 끊기면 다시 보낸다
+///
+/// 기본 업로드 옵션은 `uploadType=multipart` 다 — 사진 **전체를 한 번의 POST**
+/// 로 밀어 넣는다. 게다가 multipart 는 미디어를 base64 로 감싸므로 실제 전송량이
+/// 원본의 4/3 배다. 원본은 줄이지 않으니(회계가 보관하는 원본이다) 5MB 사진이면
+/// 한 번에 ~6.7MB 가 나간다. 운영에서 이게 `Connection reset by peer` 로
+/// 끊겼다.
+///
+/// 그래서 두 가지를 바꿨다:
+///
+/// 1. **resumable** 로 올린다 — 1MB 청크로 쪼개지고, 청크가 5xx 로 실패하면
+///    라이브러리가 백오프하며 다시 보낸다
+/// 2. 그래도 소켓이 끊기면 라이브러리는 그냥 던지므로(상태코드만 본다)
+///    [retryTransient] 로 한 번 더 감싼다
+///
+/// 대가는 **같은 증빙이 두 개 올라갈 수 있다는 것**이다 — 서버가 다 받고
+/// 응답을 주다가 끊기면 다시 보낸 쪽이 두 번째 파일이 된다. 사람이 Drive 에서
+/// 보고 지울 수 있고, 증빙이 아예 없는 쪽이 훨씬 나쁘다.
 library;
 
 import 'dart:io';
 
+import 'package:bodit_app/core/utils/retry.dart';
 import 'package:bodit_app/data/remote/drive_folder_index.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
@@ -60,14 +80,21 @@ class DriveRepository {
     final mime = lookupMimeType(source.path) ?? 'application/octet-stream';
     final length = await source.length();
 
-    final created = await api.files.create(
-      drive.File()
-        ..name = '$filename.$ext'
-        ..parents = <String>[parentId],
-      uploadMedia: drive.Media(source.openRead(), length, contentType: mime),
-      // 공유 드라이브에 쓰려면 반드시 켜야 한다. 안 켜면 404 가 난다.
-      supportsAllDrives: true,
-      $fields: 'id,webViewLink',
+    final created = await retryTransient(
+      () => api.files.create(
+        drive.File()
+          ..name = '$filename.$ext'
+          ..parents = <String>[parentId],
+        // `Media` 를 **이 클로저 안에서** 만든다. `openRead()` 는 한 번만 들을
+        // 수 있는 스트림이라 바깥에서 만들어 두면 두 번째 시도가 빈 몸통을
+        // 보낸다(`retryTransient` 주석).
+        uploadMedia: drive.Media(source.openRead(), length, contentType: mime),
+        uploadOptions: drive.ResumableUploadOptions(),
+        // 공유 드라이브에 쓰려면 반드시 켜야 한다. 안 켜면 404 가 난다.
+        supportsAllDrives: true,
+        $fields: 'id,webViewLink',
+      ),
+      what: '증빙 업로드($filename)',
     );
 
     final link = created.webViewLink;

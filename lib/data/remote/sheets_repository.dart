@@ -3,9 +3,14 @@
 /// 컬럼 계약의 단일 원천은 위키다:
 ///   ~/llm-wiki-template/wiki/projects/bodit-app/sheet-schema.md
 ///
-/// **append 만 한다.** 기존 행을 고치거나 지우지 않는다(ADR Decision 2).
+/// **원칙은 append 다.** 기존 행을 고치거나 지우지 않는다(ADR Decision 2).
 /// 그래서 행을 지목할 일이 없고 UUID 키 컬럼도 없다.
-/// 예외는 읽기다 — 비목·분류코드 추천을 위해 과거 행을 **읽는** 것은 한다.
+/// 읽기는 한다 — 비목·분류코드 추천을 위해 과거 행을 **읽는** 것은 예외가 아니다.
+///
+/// 쓰기 쪽 예외가 **하나** 있다: [SheetsRepository.fillEvidenceLink].
+/// Drive 가 나중에 성공했을 때 그 행의 **증빙링크 칸만** 채운다. 키 컬럼이
+/// 없으므로 append 가 돌려준 자리를 들고 있다가, 쓰기 전에 그 행이 여전히
+/// 우리 행인지 확인한다. 왜 열었고 무엇을 확인하는지는 그 함수 주석에 있다.
 library;
 
 import 'package:bodit_app/data/remote/card_repository.dart';
@@ -229,18 +234,28 @@ class SheetsRepository {
   /// 매입내역 탭. 추천 조회에만 쓴다 — append 는 `SheetRow.sheetName` 이 정한다.
   final String dataSheetName;
 
-  /// 한 행을 그 항목이 속한 탭 맨 아래에 붙인다.
+  /// 증빙링크 컬럼. `toSheetRow()` 의 **18번째**다.
+  ///
+  /// 컬럼을 늘리면 여기도 같이 움직여야 한다 —
+  /// `test/sheet_evidence_link_test.dart` 가 18개라는 것을 박아둔다.
+  static const evidenceColumn = 'R';
+
+  /// 한 행을 그 항목이 속한 탭 맨 아래에 붙이고, **들어간 자리**를 돌려준다
+  /// (`'매입내역'!A123:R123`). 자리를 못 받으면 null.
   ///
   /// `SheetRow` 를 받으므로 2차 사업비·3차 월결산이 와도 이 함수 하나면 된다.
   ///
   /// `values.append` 는 서버가 마지막 행을 찾아 붙이므로,
   /// 읽고→계산하고→쓰는 방식과 달리 동시 제출에서 서로 덮어쓰지 않는다.
-  Future<void> appendRow({
+  ///
+  /// 자리를 돌려주는 이유는 하나뿐이다 — Drive 가 나중에 성공했을 때
+  /// 증빙링크를 채우러 그 행으로 돌아가야 한다([fillEvidenceLink]).
+  Future<String?> appendRow({
     required gapis.AuthClient client,
     required SheetRow row,
   }) async {
     final api = sheets.SheetsApi(client);
-    await api.spreadsheets.values.append(
+    final res = await api.spreadsheets.values.append(
       sheets.ValueRange(values: <List<Object>>[row.toSheetRow()]),
       spreadsheetId,
       row.sheetName,
@@ -248,7 +263,130 @@ class SheetsRepository {
       // RAW 로 하면 전부 문자열이 돼서 회계 담당자의 수식·필터가 깨진다.
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
+      $fields: 'updates/updatedRange',
     );
+    return res.updates?.updatedRange;
+  }
+
+  /// 이미 들어간 행의 **증빙링크 칸만** 나중에 채운다.
+  ///
+  /// ## 이게 append-only 의 유일한 예외다
+  ///
+  /// Drive 가 실패하고 시트 행이 먼저 들어가면 증빙링크가 빈 칸으로 나간다.
+  /// 지금까지는 그걸 감수했다(ADR Decision 4) — 앱은 행을 고치지 않으므로
+  /// 사용자가 Drive 링크를 손으로 붙여야 했다. 실제로 운영에서 한 건 생겼고,
+  /// 재시도로 Drive 는 성공했는데 그 칸은 영원히 비어 있었다.
+  ///
+  /// 그래서 **그 칸 하나만** 쓰는 길을 열었다. 다른 칸은 건드리지 않는다:
+  /// 금액·비목·분류는 회계가 보는 값이고, 수식 컬럼(해당년도·해당월·분류명)은
+  /// ARRAYFORMULA 가 채운다.
+  ///
+  /// ## 행을 어떻게 다시 찾는가 — 그리고 왜 확인하는가
+  ///
+  /// 키 컬럼이 없다(ADR Decision 14). 대신 `values.append` 가 돌려준
+  /// **들어간 자리**를 큐에 적어둔다. 그런데 그 자리는 영원하지 않다 —
+  /// 회계 담당자가 위쪽 행을 지우거나 끼워 넣으면 번호가 밀린다.
+  /// 밀린 줄 모르고 쓰면 **남의 행에 내 증빙링크를 적는다.**
+  ///
+  /// 그래서 쓰기 전에 그 행을 읽어 **업체명·내역이 그대로인지, 증빙링크 칸이
+  /// 아직 비어 있는지** 확인한다. 어긋나면 아무것도 쓰지 않고 false 를
+  /// 돌려준다 — 그때는 예전처럼 사람이 붙이면 된다. 최악의 경우가 "지금까지의
+  /// 동작" 이 되도록 맞춘 것이다.
+  ///
+  /// (행을 확실히 따라가려면 `developerMetadata` 로 행에 표를 달고 그걸로
+  /// 찾는 방법이 있다. 행이 밀려도 따라붙는다. 지금 필요한 것보다 큰 장치라
+  /// 안 썼다 — 확인이 실패하는 일이 잦으면 그때 가면 된다.)
+  ///
+  /// 돌려주는 값: 채웠으면 true, **우리 행이 아니라고 판단해 쓰지 않았으면**
+  /// false. 네트워크·권한 실패는 던진다 — 조용히 넘기지 않는다.
+  Future<bool> fillEvidenceLink({
+    required gapis.AuthClient client,
+    required String appendedRange,
+    required String url,
+    required String expectVendor,
+    required String expectDescription,
+  }) async {
+    final at = parseAppendedRow(appendedRange);
+    if (at == null) return false;
+
+    final api = sheets.SheetsApi(client);
+    final res = await api.spreadsheets.values.get(
+      spreadsheetId,
+      '${at.sheet}!A${at.row}:$evidenceColumn${at.row}',
+    );
+    final values = res.values ?? <List<Object?>>[];
+    final row = values.isEmpty ? <Object?>[] : values.first;
+
+    // **이미 이 링크가 들어 있으면 끝난 것이다.** 쓰고 나서 응답을 받다가
+    // 끊긴 뒤 다시 들어오면 이 길로 온다 — 그걸 "못 채웠다" 로 보고하면
+    // 사용자가 다 된 일을 손으로 또 한다.
+    if (evidenceCellOf(row) == url.trim()) return true;
+
+    if (!isSameRow(row, vendor: expectVendor, description: expectDescription)) {
+      return false;
+    }
+
+    await api.spreadsheets.values.update(
+      sheets.ValueRange(values: <List<Object>>[<Object>[url]]),
+      spreadsheetId,
+      '${at.sheet}!$evidenceColumn${at.row}',
+      // 링크는 USER_ENTERED 로 넣는다 — append 때와 같아야 한다.
+      // RAW 로 넣으면 같은 칸이 건마다 다른 타입이 된다.
+      valueInputOption: 'USER_ENTERED',
+    );
+    return true;
+  }
+
+  /// `values.append` 가 돌려준 범위에서 **탭 이름과 행 번호**를 꺼낸다.
+  ///
+  /// 받는 모양: `'매입내역'!A123:R123` — 탭 이름에 한글이 있으면 따옴표가
+  /// 붙어 온다. 따옴표는 **그대로 들고 다닌다**(다시 범위를 만들 때 필요하다).
+  ///
+  /// 한 행을 붙였으므로 시작과 끝 행이 같아야 한다. 다르면 우리가 아는 모양이
+  /// 아니므로 null — 모르는 범위에 쓰지 않는다.
+  ///
+  /// 네트워크를 타지 않게 따로 뺐다. 여기가 틀리면 **남의 행에 쓴다.**
+  @visibleForTesting
+  static ({String sheet, int row})? parseAppendedRow(String range) {
+    final m = RegExp(r'^(.+)!([A-Z]+)(\d+):([A-Z]+)(\d+)$').firstMatch(range);
+    if (m == null) return null;
+    final from = int.tryParse(m.group(3)!);
+    final to = int.tryParse(m.group(5)!);
+    if (from == null || from != to) return null;
+    return (sheet: m.group(1)!, row: from);
+  }
+
+  /// 그 행이 **여전히 우리 행**인가.
+  ///
+  /// 업체명(G)·내역(F)이 그대로이고 증빙링크(R)가 아직 비어 있어야 한다.
+  /// 금액·날짜로도 볼 수 있지만 USER_ENTERED 로 들어간 숫자·날짜는 읽을 때
+  /// 서식을 타서(`19,000`·`2026. 8. 5`) 글자 비교가 미끄러진다.
+  /// 업체명·내역은 그냥 글자다.
+  ///
+  /// 업체명이 비어 있으면 **비교할 것이 없다는 뜻이므로 거부한다** —
+  /// 그 조건으로는 빈 행 아무 곳에나 맞는다.
+  /// 그 행의 증빙링크 칸(R) 값. 짧은 행이면 빈 글자.
+  ///
+  /// 시트는 **끝의 빈 칸을 빼고** 돌려준다 — 링크가 비어 있으면 행 길이가
+  /// 18 보다 짧게 온다. 그래서 길이를 먼저 본다.
+  @visibleForTesting
+  static String evidenceCellOf(List<Object?> row) =>
+      row.length > 17 ? '${row[17] ?? ''}'.trim() : '';
+
+  @visibleForTesting
+  static bool isSameRow(
+    List<Object?> row, {
+    required String vendor,
+    required String description,
+  }) {
+    String cell(int i) => i < row.length ? '${row[i] ?? ''}'.trim() : '';
+
+    if (vendor.trim().isEmpty) return false;
+    // 이미 누군가 채웠으면(사람이 붙였거나 다른 재시도가 썼다) 덮지 않는다.
+    if (evidenceCellOf(row).isNotEmpty) return false;
+    if (cell(6) != vendor.trim()) return false;
+    if (cell(5) != description.trim()) return false;
+    return true;
   }
 
   /// 매입내역 과거 행에서 **카드 → 분류** 색인을 만든다.
