@@ -6,6 +6,7 @@
 library;
 
 import 'package:bodit_app/data/remote/card_repository.dart';
+import 'package:bodit_app/data/remote/sheets_repository.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
 import 'package:bodit_app/models/entry_draft.dart';
 import 'package:bodit_app/models/ocr_original.dart';
@@ -19,6 +20,15 @@ List<Object?> row(
   String name = '',
   String scope = '사업비',
 }) => <Object?>['1', '신한', number, code, name, scope, active];
+
+/// 매입내역 한 행. 색인이 읽는 범위와 같은 모양이다 —
+/// `H 분류코드 · I 분류명 · J 카드번호`. **I열은 색인이 쓰지 않는다**(일부러
+/// 틀린 이름을 넣어서, 그걸 읽으면 테스트가 깨지게 둔다).
+List<Object?> past(Object code, String card) => <Object?>[
+  code,
+  '읽지 않는 이름',
+  card,
+];
 
 /// 실제 시트에서 그대로 가져온 표기.
 const _masked = '5531-46**-****-3927';
@@ -573,6 +583,262 @@ void main() {
       );
       // picker 에서 직접 고른 상태를 흉내낸다 — classCode 만 바뀐다.
       expect(d.copyWith(classCode: 3).classDiffersFromCard, isTrue);
+    });
+  });
+
+  group('자리가 서로 어긋나지 않는가', () {
+    List<String?> slots(String raw) => CardDirectory.slotsOf(raw)!;
+
+    test('둘 다 아는 자리인데 값이 다를 때만 어긋난다', () {
+      expect(CardDirectory.compatible(slots('7662'), slots('7663')), isFalse);
+      expect(CardDirectory.compatible(slots('7662'), slots('7662')), isTrue);
+    });
+
+    test('한쪽이 가려진 자리면 어긋났다고 말할 근거가 없다', () {
+      // 양방향이다. 매입내역에는 앱이 적은 `766*` 가 섞여 있어서, 조회값이
+      // 패턴일 때와 과거 행이 패턴일 때가 둘 다 생긴다.
+      expect(CardDirectory.compatible(slots('766*'), slots('7662')), isTrue);
+      expect(CardDirectory.compatible(slots('7662'), slots('766*')), isTrue);
+      expect(CardDirectory.compatible(slots('*66*'), slots('7663')), isTrue);
+    });
+
+    test('네 자리가 아니면 비교하지 않는다', () {
+      expect(
+        CardDirectory.compatible(<String?>['7', '6'], slots('7662')),
+        isFalse,
+      );
+    });
+  });
+
+  group('매입내역으로 만든 카드 이력', () {
+    test('행에서 분류코드와 카드 자리를 뽑는다', () {
+      final h = CardClassHistory.fromRows(<List<Object?>>[
+        past(44, '7662'),
+        past('24', '3356'),
+      ]);
+      expect(h.rowCount, 2);
+      expect(h.countsFor(CardDirectory.slotsOf('7662')!), <int, int>{44: 1});
+      expect(h.countsFor(CardDirectory.slotsOf('3356')!), <int, int>{24: 1});
+    });
+
+    test('숫자가 하나도 없는 행은 버린다 — 모든 조회에 걸린다', () {
+      // `****` 를 남겨두면 아무 카드로 조회해도 그 행의 분류가 끌려온다.
+      final h = CardClassHistory.fromRows(<List<Object?>>[
+        past(44, '****'),
+        past(24, '카드없음'),
+        past(3, ''),
+      ]);
+      expect(h.rowCount, 0);
+      expect(h.countsFor(CardDirectory.slotsOf('7662')!), isEmpty);
+    });
+
+    test('분류코드가 숫자가 아니면 버린다 — 그 행으로는 분류를 못 정한다', () {
+      final h = CardClassHistory.fromRows(<List<Object?>>[
+        past('', '7662'),
+        past('비목', '7662'),
+      ]);
+      expect(h.rowCount, 0);
+    });
+
+    test('컬럼이 모자란 행에서 터지지 않는다', () {
+      final h = CardClassHistory.fromRows(const <List<Object?>>[
+        <Object?>[44],
+        <Object?>[44, '이름'],
+        <Object?>[],
+      ]);
+      expect(h.rowCount, 0);
+    });
+
+    test('자리 호환으로 센다 — 완전일치만 보면 과거 패턴 행을 놓친다', () {
+      final h = CardClassHistory.fromRows(<List<Object?>>[
+        past(44, '766*'),
+        past(44, '7662'),
+      ]);
+      // 조회값이 숫자 네 자리든 패턴이든 두 행이 다 걸린다.
+      expect(h.countsFor(CardDirectory.slotsOf('7662')!), <int, int>{44: 2});
+      expect(h.countsFor(CardDirectory.slotsOf('766*')!), <int, int>{44: 2});
+      // 아는 자리가 어긋나면 안 걸린다.
+      expect(h.countsFor(CardDirectory.slotsOf('7663')!), <int, int>{44: 1});
+    });
+
+    test('건수 많은 것부터, 같으면 코드 오름차순이다', () {
+      // 문구가 호출마다 뒤바뀌면 사용자가 다른 결과로 읽는다.
+      final h = CardClassHistory.fromRows(<List<Object?>>[
+        past(44, '7662'),
+        past(24, '7662'),
+        past(24, '7662'),
+        past(3, '7662'),
+      ]);
+      expect(h.countsFor(CardDirectory.slotsOf('7662')!).keys.toList(), <int>[
+        24,
+        3,
+        44,
+      ]);
+    });
+
+    test('빈 색인은 아무것도 돌려주지 않는다', () {
+      expect(
+        CardClassHistory.empty.countsFor(CardDirectory.slotsOf('7662')!),
+        isEmpty,
+      );
+    });
+  });
+
+  group('카드보유내역에 없으면 매입내역을 본다', () {
+    const master = {3: '법인(신용)', 24: 'CTS(체크)', 44: '글로벌팁스(카드)'};
+
+    /// 그 카드가 **없는** 카드보유내역. 폴백이 돌아야 하는 상황이다.
+    final cards = CardDirectory.fromRows(<List<Object?>>[
+      row('9410-19**-****-3356', 24),
+    ]);
+
+    EntryDraft draftWith(String? last4) =>
+        EntryDraft(evidencePath: '/tmp/x.jpg', cardLast4: last4);
+
+    test('과거가 한 분류로 모이면 채우고 추정이라고 적는다', () {
+      final history = CardClassHistory.fromRows(<List<Object?>>[
+        past(44, '7662'),
+        past(44, '7662'),
+        past(44, '7662'),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('7662'),
+        cards,
+        master,
+        history: history,
+      );
+      expect(d.classCode, 44);
+      expect(d.className, '글로벌팁스(카드)');
+      // 확정 매칭과 같은 모양으로 보이면 사용자가 검토 없이 지나간다.
+      expect(d.classReason, contains('추정'));
+      expect(d.classReason, contains('3건'));
+      expect(d.cardNotice, isNull);
+    });
+
+    test('추정은 cardClass 에 넣지 않는다 — 고쳐도 경고가 붙으면 안 된다', () {
+      // `cardClass` 는 "카드가 정한 사실" 칸이다. 추정에 그 경고를 붙이면
+      // 맞는 선택에도 "카드가 정한 분류는 …" 이 뜬다.
+      final history = CardClassHistory.fromRows(<List<Object?>>[
+        past(44, '7662'),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('7662'),
+        cards,
+        master,
+        history: history,
+      );
+      expect(d.cardClass, isNull);
+      expect(d.copyWith(classCode: 3).classDiffersFromCard, isFalse);
+    });
+
+    test('뒤 4자리를 좁혀 적지 않는다 — 실제 번호를 아는 사람이 없다', () {
+      // 카드보유내역에 없는 카드라 `766*` 가 어느 번호인지 알 길이 없다.
+      final history = CardClassHistory.fromRows(<List<Object?>>[
+        past(44, '7662'),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('766*'),
+        cards,
+        master,
+        history: history,
+      );
+      expect(d.classCode, 44);
+      expect(d.cardLast4, '766*');
+      expect(d.classReason, contains('766*'));
+    });
+
+    test('과거가 갈리면 자동으로 안 고르고 후보를 준다', () {
+      // 추정끼리 다투는 것이라 카드가 겹쳤을 때보다 근거가 더 약하다.
+      final history = CardClassHistory.fromRows(<List<Object?>>[
+        past(44, '7662'),
+        past(24, '7662'),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('7662'),
+        cards,
+        master,
+        history: history,
+      );
+      expect(d.classCode, isNull);
+      expect(d.classSuggestions.length, 2);
+      expect(d.cardNotice, contains('갈립니다'));
+      expect(d.cardNotice, contains('2건'));
+    });
+
+    test('이력에도 없으면 두 곳 다 봤다고 말한다', () {
+      final history = CardClassHistory.fromRows(<List<Object?>>[
+        past(44, '9999'),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('7662'),
+        cards,
+        master,
+        history: history,
+      );
+      expect(d.classCode, isNull);
+      expect(d.cardNotice, contains('찾지 못했습니다'));
+      expect(d.cardNotice, contains('매입내역 과거 건에도 없습니다'));
+    });
+
+    test('이력을 못 읽었으면 봤다고 하지 않는다', () {
+      // 이력을 못 읽은 것과 봤는데 없는 것은 사용자가 할 일이 다르다.
+      final d = ReviewController.applyCardClass(
+        draftWith('7662'),
+        cards,
+        master,
+      );
+      expect(d.cardNotice, contains('찾지 못했습니다'));
+      expect(d.cardNotice, isNot(contains('매입내역')));
+    });
+
+    test('미사용 카드로 걸리면 이력을 보지 않는다', () {
+      // 그쪽은 카드보유내역에 분류코드가 이미 적혀 있다. 과거 이력으로 덮으면
+      // "지금 안 쓰는 카드다" 를 아무도 모르고 시트가 낡은 채로 남는다.
+      final withInactive = CardDirectory.fromRows(<List<Object?>>[
+        row('5525-76**-****-7662', 44, active: 'X'),
+      ]);
+      final history = CardClassHistory.fromRows(<List<Object?>>[
+        past(24, '7662'),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('7662'),
+        withInactive,
+        master,
+        history: history,
+      );
+      expect(d.classCode, isNull);
+      expect(d.cardNotice, contains('사용하지 않는'));
+    });
+
+    test('분류명을 못 푸는 코드만 걸리면 폴백이 없던 것처럼 된다', () {
+      // 이름 없이 코드만 넣으면 회계 담당자가 보는 분류명 칸이 빈다.
+      final history = CardClassHistory.fromRows(<List<Object?>>[
+        past(99, '7662'),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('7662'),
+        cards,
+        master,
+        history: history,
+      );
+      expect(d.classCode, isNull);
+      expect(d.cardNotice, contains('찾지 못했습니다'));
+    });
+
+    test('카드보유내역에서 찾았으면 이력을 보지 않는다', () {
+      // 1차 출처가 답을 줬으면 추정이 끼어들 자리가 없다.
+      final history = CardClassHistory.fromRows(<List<Object?>>[
+        past(44, '3356'),
+      ]);
+      final d = ReviewController.applyCardClass(
+        draftWith('3356'),
+        cards,
+        master,
+        history: history,
+      );
+      expect(d.classCode, 24);
+      expect(d.classReason, '카드 3356 · CTS(체크)');
+      expect(d.cardClass?.code, 24);
     });
   });
 }

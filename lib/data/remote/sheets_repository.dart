@@ -8,7 +8,9 @@
 /// 예외는 읽기다 — 비목·분류코드 추천을 위해 과거 행을 **읽는** 것은 한다.
 library;
 
+import 'package:bodit_app/data/remote/card_repository.dart';
 import 'package:bodit_app/models/sheet_row.dart';
+import 'package:flutter/foundation.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
 
@@ -42,6 +44,83 @@ class VendorSuggestion {
   String get reason => '$matchCount건 모두 $expenseCategory였습니다';
 }
 
+/// 매입내역 한 행에서 뽑은 것 — 카드번호 자리들과 그때 쓴 분류코드.
+@immutable
+class _CardClassRow {
+  const _CardClassRow(this.slots, this.code);
+
+  final List<String?> slots;
+  final int code;
+}
+
+/// 매입내역 과거 행으로 만든 **카드 → 분류** 색인.
+///
+/// 분류의 1차 출처는 카드보유내역이다(`CardDirectory`). 이건 **그 시트에 그
+/// 카드가 아직 없을 때의 두 번째 근거**다 — 운영팀이 카드를 늦게 적는 일이
+/// 있고, 그 사이에 올라온 영수증은 분류를 통째로 못 정한다. 그런데 같은 카드로
+/// 전에 제출한 건이 있으면 **어느 분류였는지는 매입내역에 이미 적혀 있다.**
+///
+/// 업체 이력 추천(`suggestForVendor`)과는 다르다. 그쪽은 "같은 업체면 같은
+/// 비목" 이라는 경향이고, 이쪽은 **같은 카드**다 — 분류를 정하는 것은 어차피
+/// 카드이므로 근거의 종류가 같고, 다만 출처가 마스터가 아니라 과거 기록이다.
+/// 그래서 결과는 **추정**으로 표시한다(`applyCardClass`).
+///
+/// 매입내역에는 **뒤 4자리밖에 없다.** 그래서 앞자리로 좁히는 일은 여기서도
+/// 못 한다. 대신 자리 호환 매칭으로 가려진 자리를 넘어간다 — 그 칸에는 앱이
+/// 적은 `766*` 같은 패턴이 섞여 있다.
+@immutable
+class CardClassHistory {
+  const CardClassHistory(this._rows);
+
+  /// 시트 행들로 색인을 만든다. **순수 함수다** — 네트워크 없이 테스트한다.
+  ///
+  /// 행 모양은 `cardClassHistory` 가 읽는 범위와 같다: `H 분류코드 · I 분류명
+  /// · J 카드번호`. **I열은 쓰지 않는다** — 분류명의 출처는 `_분류마스터`
+  /// 하나다(두 시트가 어긋난 적이 있다. `card_repository.dart` 주석 참조).
+  factory CardClassHistory.fromRows(List<List<Object?>> rows) {
+    final out = <_CardClassRow>[];
+    for (final row in rows) {
+      if (row.length < 3) continue;
+      final code = int.tryParse('${row[0] ?? ''}'.trim());
+      if (code == null) continue;
+
+      final slots = CardDirectory.slotsOf('${row[2] ?? ''}');
+      // 숫자가 하나도 없는 행(`****`·`카드없음`·빈칸)은 버린다 —
+      // 호환 매칭에서 **모든 조회에 걸려서** 아무 분류나 끌어온다.
+      if (slots == null || !CardDirectory.hasAnyDigit(slots)) continue;
+
+      out.add(_CardClassRow(slots, code));
+    }
+    return CardClassHistory(out);
+  }
+
+  final List<_CardClassRow> _rows;
+
+  static const empty = CardClassHistory(<_CardClassRow>[]);
+
+  /// 그 자리들과 어긋나지 않는 과거 행을 세어 **분류코드 → 건수**로 돌려준다.
+  ///
+  /// 건수가 많은 것부터, 같으면 코드 오름차순이다 — 화면 문구가 호출마다
+  /// 뒤바뀌면 사용자가 다른 결과로 읽는다.
+  Map<int, int> countsFor(List<String?> slots) {
+    final counts = <int, int>{};
+    for (final r in _rows) {
+      if (!CardDirectory.compatible(r.slots, slots)) continue;
+      counts[r.code] = (counts[r.code] ?? 0) + 1;
+    }
+    final sorted = counts.entries.toList()
+      ..sort(
+        (a, b) => a.value != b.value
+            ? b.value.compareTo(a.value)
+            : a.key.compareTo(b.key),
+      );
+    return Map<int, int>.fromEntries(sorted);
+  }
+
+  /// 색인에 들어온 과거 행 수. 진단용이다.
+  int get rowCount => _rows.length;
+}
+
 class SheetsRepository {
   const SheetsRepository({
     required this.spreadsheetId,
@@ -73,6 +152,25 @@ class SheetsRepository {
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
     );
+  }
+
+  /// 매입내역 과거 행에서 **카드 → 분류** 색인을 만든다.
+  ///
+  /// 카드보유내역에 없는 카드의 분류를 추정하는 데 쓴다([CardClassHistory]).
+  /// 업체 이력과 **같은 구간**(최근 [maxRows] 행)을 본다 — 시트 전체를 매번
+  /// 읽을 이유가 없고, 카드가 바뀌면 최근 행이 먼저 말해준다.
+  Future<CardClassHistory> cardClassHistory({
+    required gapis.AuthClient client,
+    int maxRows = 2000,
+  }) async {
+    final api = sheets.SheetsApi(client);
+    // H:J = 분류코드 · 분류명 · 카드번호. 가운데 I열은 **읽고도 버린다** —
+    // 가운데를 건너뛰는 범위 표기가 없어서 같이 들어올 뿐이다.
+    final res = await api.spreadsheets.values.get(
+      spreadsheetId,
+      "'$dataSheetName'!H2:J${maxRows + 1}",
+    );
+    return CardClassHistory.fromRows(res.values ?? <List<Object?>>[]);
   }
 
   /// 업체명으로 과거 처리를 찾아 비목·분류코드를 제안한다.

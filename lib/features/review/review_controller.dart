@@ -13,6 +13,7 @@ import 'package:bodit_app/data/background_send.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
 import 'package:bodit_app/data/providers.dart';
 import 'package:bodit_app/data/remote/card_repository.dart';
+import 'package:bodit_app/data/remote/sheets_repository.dart';
 import 'package:bodit_app/features/auth/auth_controller.dart';
 import 'package:bodit_app/features/capture/capture_service.dart';
 import 'package:bodit_app/models/class_choice.dart';
@@ -115,6 +116,13 @@ class ReviewController extends Notifier<ReviewState> {
   /// (`card_repository.dart` 주석 참조).
   Map<int, String>? _classNames;
 
+  /// 카드 → 분류, **매입내역 과거 행에서 만든 것.** 카드보유내역에 그 카드가
+  /// 아직 없을 때만 보는 두 번째 근거다([applyCardClass]).
+  ///
+  /// 카드와 같이 읽어둔다. 이게 필요해지는 시점은 "카드를 못 찾았다" 를 안
+  /// 다음인데, 그때 읽기 시작하면 사용자는 폼을 보면서 한 번 더 기다린다.
+  CardClassHistory? _cardHistory;
+
   /// 카드·분류 마스터를 읽어둔다. **실패해도 던지지 않는다** —
   /// 분류 자동완성이 안 될 뿐 폼은 그대로 쓸 수 있다. 다만 왜 비었는지는
   /// `cardNotice` 로 화면에 남는다.
@@ -123,25 +131,41 @@ class ReviewController extends Notifier<ReviewState> {
   Future<void>? _cardDataLoad;
 
   Future<void> _loadCardData(gapis.AuthClient client) {
-    if (_cards != null && _classNames != null) return Future<void>.value();
+    if (_cards != null && _classNames != null && _cardHistory != null) {
+      return Future<void>.value();
+    }
     return _cardDataLoad ??= _loadCardDataOnce(client).whenComplete(() {
       _cardDataLoad = null;
     });
   }
 
   Future<void> _loadCardDataOnce(gapis.AuthClient client) async {
-    if (_cards != null && _classNames != null) return;
+    // 셋을 **동시에** 읽는다. 서로 순서가 있을 이유가 없고, 사용자가 카드번호를
+    // 고치다 이 경로로 들어오면 읽는 시간이 그대로 기다리는 시간이 된다.
+    await Future.wait(<Future<void>>[
+      _loadOrWarn('카드보유내역', () async {
+        _cards ??= await ref.read(cardRepositoryProvider).load(client);
+      }),
+      _loadOrWarn('분류 마스터', () async {
+        _classNames ??= await ref
+            .read(masterDataRepositoryProvider)
+            .classNames(client);
+      }),
+      _loadOrWarn('매입내역 카드 이력', () async {
+        _cardHistory ??= await ref
+            .read(sheetsRepositoryProvider)
+            .cardClassHistory(client: client);
+      }),
+    ]);
+  }
+
+  /// 하나가 실패해도 나머지는 살린다. **던지지 않는다** — 분류 자동완성이
+  /// 덜 되는 것과 폼을 못 쓰는 것은 다르다. 왜 비었는지는 `cardNotice` 가 말한다.
+  Future<void> _loadOrWarn(String what, Future<void> Function() body) async {
     try {
-      _cards ??= await ref.read(cardRepositoryProvider).load(client);
+      await body();
     } on Object catch (e) {
-      log.w('카드보유내역을 읽지 못했다 (분류 자동완성을 건너뛴다): $e');
-    }
-    try {
-      _classNames ??= await ref
-          .read(masterDataRepositoryProvider)
-          .classNames(client);
-    } on Object catch (e) {
-      log.w('분류 마스터를 읽지 못했다 (분류 자동완성을 건너뛴다): $e');
+      log.w('$what 을 읽지 못했다 (분류 자동완성을 건너뛴다): $e');
     }
   }
 
@@ -153,7 +177,7 @@ class ReviewController extends Notifier<ReviewState> {
   /// 고르면 되는지가 다 다르다.
   /// 인스턴스가 들고 있는 카드·마스터로 판단한다. 실제 로직은 [applyCardClass].
   EntryDraft _applyCardClass(EntryDraft draft) =>
-      applyCardClass(draft, _cards, _classNames);
+      applyCardClass(draft, _cards, _classNames, history: _cardHistory);
 
   /// [_applyCardClass] 의 알맹이. **상태에 기대지 않는 순수 함수다** —
   /// 경우가 다섯 가지(정상·못 찾음·미사용·겹침·마스터 누락)라 전부 테스트한다.
@@ -161,8 +185,9 @@ class ReviewController extends Notifier<ReviewState> {
   static EntryDraft applyCardClass(
     EntryDraft draft,
     CardDirectory? cards,
-    Map<int, String>? classNames,
-  ) {
+    Map<int, String>? classNames, {
+    CardClassHistory? history,
+  }) {
     // 지난 판단의 흔적을 먼저 지운다. 카드번호를 고쳤는데 예전 근거가 남아
     // 있으면 사용자는 새 번호가 반영된 줄 안다.
     //
@@ -222,9 +247,32 @@ class ReviewController extends Notifier<ReviewState> {
     final hits = cards.findByPattern(slots);
     final active = hits.where((c) => c.active).toList();
     if (active.isEmpty) {
+      // 카드보유내역에 **아예 없는** 카드다. 운영팀이 아직 안 적었거나,
+      // OCR·사용자가 번호를 틀렸거나 둘 중 하나다. 포기하기 전에 **매입내역
+      // 과거 행**을 한 번 더 본다 — 같은 카드로 전에 제출한 건이 있으면
+      // 어느 분류였는지는 거기 이미 적혀 있다.
+      //
+      // 미사용(`X`) 로 걸린 경우는 폴백하지 않는다. 그쪽은 카드보유내역에
+      // 분류코드가 적혀 있고, "지금 안 쓰는 카드다" 는 사용자가 확인해야 하는
+      // 신호다 — 과거 이력으로 덮으면 시트가 낡은 것을 아무도 모른다.
+      if (hits.isEmpty) {
+        final guessed = _fromHistory(
+          d,
+          slots: slots,
+          shown: shown,
+          exact: exact,
+          subject: subject,
+          history: history,
+          classNames: classNames,
+        );
+        if (guessed != null) return guessed;
+      }
       return d.copyWith(
         cardNotice: hits.isEmpty
-            ? '$subject 를 카드보유내역에서 찾지 못했습니다. '
+            ? '$subject 를 카드보유내역에서 찾지 못했습니다'
+                  // 이력까지 봤는지 **정확히** 말한다. 이력을 못 읽은 것과
+                  // 봤는데 없는 것은 사용자가 할 일이 다르다.
+                  '${history == null ? '' : ' — 매입내역 과거 건에도 없습니다'}. '
                   '번호가 맞는지 확인하고 분류를 직접 골라주세요.'
             : '$subject 는 지금 사용하지 않는 카드로 등록돼 있습니다. '
                   '분류를 직접 골라주세요.',
@@ -300,6 +348,77 @@ class ReviewController extends Notifier<ReviewState> {
           : '$shown 에 해당되는 카드 "${_cardList(active)}" 가 있습니다. '
                 '분류에서 직접 선택해주세요.',
     );
+  }
+
+  /// 매입내역 과거 행으로 분류를 **추정**한다. 근거가 없으면 null —
+  /// 그러면 호출부가 원래의 "찾지 못했습니다" 로 돌아간다.
+  ///
+  /// **카드보유내역과 다른 종류의 근거라는 것을 숨기지 않는다:**
+  ///
+  ///   - `classReason` 에 "매입내역 N건으로 추정" 이라고 적는다. 확정 매칭과
+  ///     같은 모양으로 보이면 사용자가 검토 없이 지나간다
+  ///   - **`cardClass` 에는 넣지 않는다.** 그 칸은 "카드가 정한 사실" 이고,
+  ///     사용자가 다른 분류로 고쳤을 때 "카드가 정한 분류는 …" 경고를 띄우는
+  ///     근거다. 추정에 그 경고를 붙이면 맞는 선택에도 경고가 뜬다
+  ///   - 뒤 4자리를 **좁혀 적지 않는다.** 카드보유내역에 없는 카드라 실제
+  ///     번호를 아는 사람이 아무도 없다 (`766*` 는 `766*` 로 남는다)
+  static EntryDraft? _fromHistory(
+    EntryDraft draft, {
+    required List<String?> slots,
+    required String shown,
+    required bool exact,
+    required String subject,
+    required CardClassHistory? history,
+    required Map<int, String> classNames,
+  }) {
+    if (history == null) return null;
+
+    final counts = history.countsFor(slots);
+    if (counts.isEmpty) return null;
+
+    // 분류명을 못 푸는 코드는 **조용히 버린다.** 여기서 마스터를 짚어주지
+    // 않는 이유: 과거 행의 코드가 낡은 것일 수도 있어서, 카드보유내역처럼
+    // "마스터를 고쳐라" 라고 단정할 근거가 없다. 전부 버려지면 null 이 되고
+    // 호출부가 "찾지 못했습니다" 로 돌아간다.
+    final choices = <ClassChoice>[];
+    var matched = 0;
+    for (final e in counts.entries) {
+      final name = classNames[e.key];
+      if (name == null || name.isEmpty) continue;
+      choices.add(ClassChoice(code: e.key, name: name));
+      matched += e.value;
+    }
+    if (choices.isEmpty) return null;
+
+    // 과거가 갈린다. **자동으로 안 고른다** — 추정끼리 다투는 것이라
+    // 카드가 겹쳤을 때보다 근거가 더 약하다.
+    if (choices.length > 1) {
+      return draft.copyWith(
+        classSuggestions: choices,
+        cardNotice:
+            '$subject 는 카드보유내역에 없습니다. '
+            '매입내역 과거 $matched건은 ${_classList(choices)} 로 갈립니다 — '
+            '분류를 직접 골라주세요.',
+      );
+    }
+
+    final only = choices.single;
+    return draft.copyWith(
+      classCode: only.code,
+      className: only.name,
+      classReason:
+          '${exact ? '카드 $shown' : shown} · ${only.name} '
+          '(카드보유내역에 없어 매입내역 $matched건으로 추정)',
+    );
+  }
+
+  /// 갈린 분류를 나열한다. **셋까지만** — 배너가 화면을 덮으면 아무도 읽지 않는다.
+  static String _classList(List<ClassChoice> choices) {
+    const limit = 3;
+    final head = choices.take(limit).map((c) => c.name).join(', ');
+    return choices.length <= limit
+        ? head
+        : '$head 외 ${choices.length - limit}개';
   }
 
   /// 문구에 쓸 카드 이름. 은행이 비어 있으면 번호만.
