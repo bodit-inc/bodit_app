@@ -390,199 +390,236 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       Padding(
                         padding: const EdgeInsets.all(Gap.lg),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text(
-                              '비목',
-                              key: _fieldKeys['비목'],
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(color: AppColors.neutralFg),
-                            ),
-                            const SizedBox(height: Gap.sm),
-                            Wrap(
-                              alignment: WrapAlignment.end,
-                              spacing: Gap.sm,
-                              runSpacing: Gap.sm,
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // **`바꾸기` 칩을 따로 두지 않는다.** 값 칩을
-                                // 누르는 것이 곧 바꾸는 동작이라, 둘을 나란히
-                                // 두면 누를 것이 둘인 것처럼 보였다.
-                                //
-                                // 비어 있을 때의 `선택하기` 는 남긴다 —
-                                // 전체 목록으로 가는 **유일한 입구**다.
-                                if (draft.expenseCategory != null)
-                                  SuggestChip(
-                                    draft.expenseCategory!,
-                                    selected: true,
-                                    onTap: () => _pickCategory(context, ref),
-                                  )
-                                else
-                                  SuggestChip(
-                                    '선택하기',
-                                    initialState: true,
-                                    onTap: () => _pickCategory(context, ref),
+                                Text(
+                                  '비목',
+                                  key: _fieldKeys['비목'],
+                                  style: Theme.of(context).textTheme.titleSmall
+                                      ?.copyWith(color: AppColors.neutralFg),
+                                ),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Wrap(
+                                        spacing: Gap.sm,
+                                        runSpacing: Gap.sm,
+                                        children: [
+                                          // **`바꾸기` 칩을 따로 두지 않는다.** 값 칩을
+                                          // 누르는 것이 곧 바꾸는 동작이라, 둘을 나란히
+                                          // 두면 누를 것이 둘인 것처럼 보였다.
+                                          //
+                                          // 비어 있을 때의 `선택하기` 는 남긴다 —
+                                          // 전체 목록으로 가는 **유일한 입구**다.
+                                          if (draft.expenseCategory != null)
+                                            SuggestChip(
+                                              draft.expenseCategory!,
+                                              selected: true,
+                                              onTap: () =>
+                                                  _pickCategory(context, ref),
+                                            )
+                                          else
+                                            SuggestChip(
+                                              '선택하기',
+                                              initialState: true,
+                                              onTap: () =>
+                                                  _pickCategory(context, ref),
+                                            ),
+                                        ],
+                                      ),
+                                      // 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
+                                      if (draft.suggestionReason != null)
+                                        SuggestReason(draft.suggestionReason!),
+
+                                      // 이력이 갈린 업체의 **나머지 비목**.
+                                      //
+                                      // 지금 값은 위 칩에 있으므로 거기서 빼고 보여준다 —
+                                      // 같은 값이 선택된 칩으로 두 번 뜨면 어느 쪽을
+                                      // 눌러야 하는지 헷갈린다. 고르면 그 값이 위로
+                                      // 올라가고 방금 것이 이 줄로 내려온다.
+                                      //
+                                      // **자동으로 합치지 않는다.** 1등만 채우고 나머지는
+                                      // 눌러서 고른다 — 비목 추천은 과거의 경향일 뿐이고,
+                                      // 문고에서 책도 사고 간식도 산다.
+                                      if (draft
+                                          .otherCategorySuggestions
+                                          .isNotEmpty) ...[
+                                        const SizedBox(height: Gap.sm),
+                                        Text(
+                                          '이 업체의 다른 비목',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelSmall
+                                              ?.copyWith(
+                                                color: AppColors.neutralFg,
+                                              ),
+                                        ),
+                                        const SizedBox(height: Gap.sm),
+                                        Wrap(
+                                          spacing: Gap.sm,
+                                          runSpacing: Gap.sm,
+                                          children: [
+                                            for (final t
+                                                in draft
+                                                    .otherCategorySuggestions)
+                                              SuggestChip(
+                                                t.label,
+                                                // **빨간 칩이 아니다.** 고르지 않은
+                                                // 추천 칩은 기본이 danger 색인데, 이건
+                                                // 틀린 값이 아니라 과거에 실제로 쓴
+                                                // 비목이다. 분류 후보의 빨강은 "아직
+                                                // 분류를 못 정했다" 는 뜻이지만 여기는
+                                                // 이미 1등으로 채워져 있다.
+                                                initialState: true,
+                                                onTap: () => ref
+                                                    .read(
+                                                      reviewControllerProvider
+                                                          .notifier,
+                                                    )
+                                                    .update(
+                                                      (d) => d.copyWith(
+                                                        expenseCategory:
+                                                            t.category,
+                                                      ),
+                                                    ),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
+                                      // 추천과 다르게 골랐다. **조용히 알려준다** —
+                                      // 비목 추천은 과거 이력이라 추측이고, 이번 건이
+                                      // 다를 수 있다. 벗어나는 것이 정상 동작이므로
+                                      // 경고를 띄우면 정당한 수정마다 빨간 줄이 붙는다.
+                                      if (draft.categoryDiffersFromSuggestion)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: Gap.xs,
+                                            left: 2,
+                                          ),
+                                          child: Text(
+                                            '과거 이력은 "${draft.suggestedCategory}" 였습니다.',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  color: AppColors.neutralFg,
+                                                ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
+                                ),
                               ],
                             ),
-                            // 근거 없이 채워두면 사용자가 못 믿고 전부 다시 확인한다.
-                            if (draft.suggestionReason != null)
-                              SuggestReason(draft.suggestionReason!),
-
-                            // 이력이 갈린 업체의 **나머지 비목**.
-                            //
-                            // 지금 값은 위 칩에 있으므로 거기서 빼고 보여준다 —
-                            // 같은 값이 선택된 칩으로 두 번 뜨면 어느 쪽을
-                            // 눌러야 하는지 헷갈린다. 고르면 그 값이 위로
-                            // 올라가고 방금 것이 이 줄로 내려온다.
-                            //
-                            // **자동으로 합치지 않는다.** 1등만 채우고 나머지는
-                            // 눌러서 고른다 — 비목 추천은 과거의 경향일 뿐이고,
-                            // 문고에서 책도 사고 간식도 산다.
-                            if (draft.otherCategorySuggestions.isNotEmpty) ...[
-                              const SizedBox(height: Gap.sm),
-                              Text(
-                                '이 업체의 다른 비목',
-                                style: Theme.of(context).textTheme.labelSmall
-                                    ?.copyWith(color: AppColors.neutralFg),
-                                textAlign: TextAlign.end,
-                              ),
-                              const SizedBox(height: Gap.sm),
-                              Wrap(
-                                spacing: Gap.sm,
-                                runSpacing: Gap.sm,
-                                alignment: WrapAlignment.end,
-                                children: [
-                                  for (final t
-                                      in draft.otherCategorySuggestions)
-                                    SuggestChip(
-                                      t.label,
-                                      // **빨간 칩이 아니다.** 고르지 않은
-                                      // 추천 칩은 기본이 danger 색인데, 이건
-                                      // 틀린 값이 아니라 과거에 실제로 쓴
-                                      // 비목이다. 분류 후보의 빨강은 "아직
-                                      // 분류를 못 정했다" 는 뜻이지만 여기는
-                                      // 이미 1등으로 채워져 있다.
-                                      initialState: true,
-                                      onTap: () => ref
-                                          .read(
-                                            reviewControllerProvider.notifier,
-                                          )
-                                          .update(
-                                            (d) => d.copyWith(
-                                              expenseCategory: t.category,
-                                            ),
-                                          ),
-                                    ),
-                                ],
-                              ),
-                            ],
-                            // 추천과 다르게 골랐다. **조용히 알려준다** —
-                            // 비목 추천은 과거 이력이라 추측이고, 이번 건이
-                            // 다를 수 있다. 벗어나는 것이 정상 동작이므로
-                            // 경고를 띄우면 정당한 수정마다 빨간 줄이 붙는다.
-                            if (draft.categoryDiffersFromSuggestion)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  top: Gap.xs,
-                                  left: 2,
-                                ),
-                                child: Text(
-                                  '과거 이력은 "${draft.suggestedCategory}" 였습니다.',
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(color: AppColors.neutralFg),
-                                  textAlign: TextAlign.end,
-                                ),
-                              ),
-
                             const SizedBox(height: Gap.lg),
                             const RowDivider(indent: false),
                             const SizedBox(height: Gap.lg),
-                            Text(
-                              '분류',
-                              key: _fieldKeys['분류코드'],
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(color: AppColors.neutralFg),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '분류',
+                                  key: _fieldKeys['분류코드'],
+                                  style: Theme.of(context).textTheme.titleSmall
+                                      ?.copyWith(color: AppColors.neutralFg),
+                                ),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Wrap(
+                                        spacing: Gap.sm,
+                                        runSpacing: Gap.sm,
+                                        children: [
+                                          // 비목과 같다 — 값 칩이 곧 picker 입구다.
+                                          if (draft.classCode != null)
+                                            SuggestChip(
+                                              '${draft.classCode} ${draft.className ?? ''}'
+                                                  .trim(),
+                                              selected: true,
+                                              onTap: () =>
+                                                  _pickClass(context, ref),
+                                            )
+                                          else
+                                            SuggestChip(
+                                              '선택하기',
+                                              initialState: true,
+                                              onTap: () =>
+                                                  _pickClass(context, ref),
+                                            ),
+                                        ],
+                                      ),
+                                      // 카드로 정해진 분류의 근거. 비목과 줄을 따로 쓴다 —
+                                      // 비목은 과거 이력(추측), 분류는 카드(사실)라 출처가
+                                      // 다르다. 한 줄에 합치면 그 차이가 안 보인다.
+                                      if (draft.classReason != null)
+                                        SuggestReason(draft.classReason!),
+
+                                      // 뒤 4자리가 겹쳤을 때의 후보. **자동으로 안 고른다** —
+                                      // 조용히 첫 번째를 쓰면 절반이 틀린 예산에 잡힌다.
+                                      if (draft
+                                          .classSuggestions
+                                          .isNotEmpty) ...[
+                                        const SizedBox(height: Gap.sm),
+                                        Wrap(
+                                          spacing: Gap.sm,
+                                          runSpacing: Gap.sm,
+                                          children: [
+                                            for (final c
+                                                in draft.classSuggestions)
+                                              SuggestChip(
+                                                c.label,
+                                                selected:
+                                                    c.code == draft.classCode,
+                                                onTap: () => ref
+                                                    .read(
+                                                      reviewControllerProvider
+                                                          .notifier,
+                                                    )
+                                                    .chooseClass(c),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
+
+                                      // 카드가 정한 분류와 다르게 골랐다. **분명하게
+                                      // 말한다** — 분류는 추측이 아니라 긁은 카드가 이미
+                                      // 정해놓은 사실이다. 벗어나면 그 카드의 예산이 아닌
+                                      // 곳에 잡히고, 시트는 append-only 라 앱으로
+                                      // 되돌릴 수 없다.
+                                      //
+                                      // 비목과 세기를 다르게 둔 이유가 이것이다. 비목은
+                                      // 추측에서 벗어나는 것이고 이쪽은 사실에서
+                                      // 벗어나는 것이다.
+                                      if (draft.classDiffersFromCard) ...[
+                                        const SizedBox(height: Gap.md),
+                                        NoticeBanner(
+                                          child: Text(
+                                            '카드번호에 해당되는 분류는 '
+                                            '${draft.cardClass?.label ?? ''} 입니다.',
+                                          ),
+                                        ),
+                                      ],
+
+                                      // 카드로 분류를 못 정했으면 **왜** 못 정했는지 말한다.
+                                      // 조용히 비워두면 사용자는 46개 목록에서 직접 찾는다.
+                                      if (draft.cardNotice != null) ...[
+                                        const SizedBox(height: Gap.md),
+                                        NoticeBanner(
+                                          child: Text(draft.cardNotice!),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: Gap.sm),
                             // 분류코드와 분류명은 따로 받지 않는다 — 마스터에서 하나를
                             // 고르면 둘 다 정해진다. 코드를 손으로 치게 하면 마스터에
                             // 없는 번호가 들어가고, 그러면 시트의 분류명이 빈다.
-                            Wrap(
-                              spacing: Gap.sm,
-                              runSpacing: Gap.sm,
-                              alignment: WrapAlignment.end,
-                              children: [
-                                // 비목과 같다 — 값 칩이 곧 picker 입구다.
-                                if (draft.classCode != null)
-                                  SuggestChip(
-                                    '${draft.classCode} ${draft.className ?? ''}'
-                                        .trim(),
-                                    selected: true,
-                                    onTap: () => _pickClass(context, ref),
-                                  )
-                                else
-                                  SuggestChip(
-                                    '선택하기',
-                                    initialState: true,
-                                    onTap: () => _pickClass(context, ref),
-                                  ),
-                              ],
-                            ),
-                            // 카드로 정해진 분류의 근거. 비목과 줄을 따로 쓴다 —
-                            // 비목은 과거 이력(추측), 분류는 카드(사실)라 출처가
-                            // 다르다. 한 줄에 합치면 그 차이가 안 보인다.
-                            if (draft.classReason != null)
-                              SuggestReason(draft.classReason!),
-
-                            // 뒤 4자리가 겹쳤을 때의 후보. **자동으로 안 고른다** —
-                            // 조용히 첫 번째를 쓰면 절반이 틀린 예산에 잡힌다.
-                            if (draft.classSuggestions.isNotEmpty) ...[
-                              const SizedBox(height: Gap.sm),
-                              Wrap(
-                                alignment: WrapAlignment.end,
-                                spacing: Gap.sm,
-                                runSpacing: Gap.sm,
-                                children: [
-                                  for (final c in draft.classSuggestions)
-                                    SuggestChip(
-                                      c.label,
-                                      selected: c.code == draft.classCode,
-                                      onTap: () => ref
-                                          .read(
-                                            reviewControllerProvider.notifier,
-                                          )
-                                          .chooseClass(c),
-                                    ),
-                                ],
-                              ),
-                            ],
-
-                            // 카드가 정한 분류와 다르게 골랐다. **분명하게
-                            // 말한다** — 분류는 추측이 아니라 긁은 카드가 이미
-                            // 정해놓은 사실이다. 벗어나면 그 카드의 예산이 아닌
-                            // 곳에 잡히고, 시트는 append-only 라 앱으로
-                            // 되돌릴 수 없다.
-                            //
-                            // 비목과 세기를 다르게 둔 이유가 이것이다. 비목은
-                            // 추측에서 벗어나는 것이고 이쪽은 사실에서
-                            // 벗어나는 것이다.
-                            if (draft.classDiffersFromCard) ...[
-                              const SizedBox(height: Gap.md),
-                              NoticeBanner(
-                                child: Text(
-                                  '카드가 정한 분류는 '
-                                  '${draft.cardClass?.label ?? ''} 입니다. '
-                                  '다른 분류로 제출됩니다.',
-                                ),
-                              ),
-                            ],
-
-                            // 카드로 분류를 못 정했으면 **왜** 못 정했는지 말한다.
-                            // 조용히 비워두면 사용자는 46개 목록에서 직접 찾는다.
-                            if (draft.cardNotice != null) ...[
-                              const SizedBox(height: Gap.md),
-                              NoticeBanner(child: Text(draft.cardNotice!)),
-                            ],
                           ],
                         ),
                       ),

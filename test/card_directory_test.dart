@@ -761,7 +761,7 @@ void main() {
       );
       expect(d.classCode, isNull);
       expect(d.classSuggestions.length, 2);
-      expect(d.cardNotice, contains('갈립니다'));
+      expect(d.cardNotice, contains('선택해주십시오'));
       expect(d.cardNotice, contains('2건'));
     });
 

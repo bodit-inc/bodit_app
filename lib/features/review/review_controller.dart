@@ -397,8 +397,8 @@ class ReviewController extends Notifier<ReviewState> {
         classSuggestions: choices,
         cardNotice:
             '$subject 는 카드보유내역에 없습니다. '
-            '매입내역 과거 $matched건은 ${_classList(choices)} 로 갈립니다 — '
-            '분류를 직접 골라주세요.',
+            '매입내역 과거 $matched건은 ${_classList(choices)} 입니다 — '
+            '분류를 선택해주십시오.',
       );
     }
 
