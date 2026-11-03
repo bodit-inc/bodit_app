@@ -221,7 +221,7 @@ ErrorDisclosure('비목을 불러오지 못했습니다.', detail: '$e')
 | `chips.dart` | `StatusPill` · `SuggestChip` |
 | `fields.dart` | `SearchField` · `InlineEditText`(파일명처럼 줄 전체를 쓰는 값) |
 | `buttons.dart` | `RetryButton` · `DangerTextButton` · `InlineButton` |
-| `dialogs.dart` | `confirmDestructive` · `showDetailDialog` |
+| `dialogs.dart` | `confirmDestructive` · `confirmLeave` · `showDetailDialog` |
 | `feedback.dart` | `NoteText` · `SuggestReason` · `NoticeBanner` · `ErrorDisclosure` |
 | `amount_keypad.dart` | 금액 입력(통화 선택 포함) |
 

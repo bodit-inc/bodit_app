@@ -47,6 +47,42 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(reviewControllerProvider);
 
+    // 뒤로가기를 가로챈다 — 이 화면의 값은 **어디에도 저장돼 있지 않다.**
+    // 나가면 OCR 이 읽은 값과 손으로 고친 값이 같이 사라지고, 되살릴 길은
+    // 다시 찍는 것뿐이다. 제출이 끝나고 코드가 직접 닫는 길
+    // (`_submit` 의 `navigator.pop()`)은 막히지 않는다 —
+    // PopScope 는 `Navigator.pop` 을 가로채지 않고 사용자의 뒤로가기만 본다.
+    //
+    // 읽을 건이 하나도 없으면 잃을 것도 없어서 그냥 나간다. 없는 내용을
+    // 지키라고 물으면 사용자는 확인창을 한 번 더 눌러서 치워야 한다.
+    final hasContent = state.isReading || state.drafts.isNotEmpty;
+
+    return PopScope(
+      // false 면 **아이폰의 스와이프 뒤로가기도 같이 막힌다** —
+      // `ModalRoute.popGestureEnabled` 가 `doNotPop` 인 라우트에서는 제스처를
+      // 아예 켜지 않는다. 스와이프에는 확인창을 걸 자리가 없어서(화면이 반쯤
+      // 끌려 나간 상태에서 물을 수 없다) 막는 쪽을 고른다. 앱바의 뒤로가기와
+      // 안드로이드 시스템 뒤로가기는 `Navigator.maybePop` 을 타므로
+      // 아래 콜백으로 들어온다.
+      canPop: !hasContent,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        unawaited(_confirmLeave());
+      },
+      child: _form(context, state),
+    );
+  }
+
+  /// 벗어날지 묻고, 벗어나겠다면 화면을 닫는다.
+  Future<void> _confirmLeave() async {
+    // 확인창을 기다리는 동안 이 화면이 사라질 수 있다. navigator 를 먼저 잡는다.
+    final navigator = Navigator.of(context);
+    if (!await confirmLeave(context)) return;
+    if (!mounted) return;
+    navigator.pop();
+  }
+
+  Widget _form(BuildContext context, ReviewState state) {
     // 시안 ④ — OCR 진행 중
     if (state.isReading) return const _ReadingView();
 
