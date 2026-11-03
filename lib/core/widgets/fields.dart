@@ -35,7 +35,11 @@ class SearchField extends StatelessWidget {
         prefixIcon: const Icon(Icons.search, size: 20),
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(vertical: Gap.md),
-        border: const OutlineInputBorder(),
+        // 테두리를 두르지 않고 **흰 바탕**으로 띄운다. 이 필드가 올라가는
+        // 자리가 둘인데(바텀시트·제출 목록) 둘 다 바탕이 옅은 회색이라,
+        // 외곽선 box 는 그 위에서 한 겹 더 두꺼워 보였다.
+        filled: true,
+        fillColor: Colors.white,
       ),
     );
   }
