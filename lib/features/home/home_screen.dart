@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bodit_app/core/app_info.dart';
 import 'package:bodit_app/core/config.dart';
 import 'package:bodit_app/core/flavor.dart';
 import 'package:bodit_app/core/links.dart';
@@ -214,7 +215,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-/// 앱바의 계정 메뉴 — 누가 로그인했는지 + 로그아웃.
+/// 앱바의 계정 메뉴 — 누가 로그인했는지 + 앱 버전 + 로그아웃.
 ///
 /// ## 로그아웃이 왜 필요한가
 ///
@@ -223,6 +224,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 /// 유일한 복구 경로**다. 버튼이 없으면 앱 데이터를 지우는 수밖에 없다.
 ///
 /// 등록자(`createdBy`)로 시트에 박히는 계정이라 누구로 로그인했는지도 보여준다.
+///
+/// 앱 버전도 여기 둔다 — 설정 화면이 따로 없고, "어느 버전에서 그랬어요?" 를
+/// 물을 자리가 있어야 한다. 원천은 `pubspec.yaml` 이다(`AppInfo` 참고).
 class _AccountMenu extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -237,20 +241,17 @@ class _AccountMenu extends ConsumerWidget {
         }
       },
       itemBuilder: (_) => [
-        if (email != null)
-          PopupMenuItem<String>(
-            enabled: false,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('계정', style: Theme.of(context).textTheme.labelSmall),
-                const SizedBox(height: 2),
-                Text(email, style: Theme.of(context).textTheme.bodySmall),
-              ],
-            ),
-          ),
-        const PopupMenuDivider(),
+        // 읽기만 하는 줄들 — 계정, 그리고 앱 버전. 둘 다 눌러서 할 일이
+        // 없으니 `enabled: false` 고, 값이 없으면 **구분선까지 같이** 뺀다.
+        // 안 그러면 선이 둘 붙거나 메뉴 맨 위에 선만 뜬다.
+        if (email != null) ...[
+          _infoItem(context, '계정', email),
+          const PopupMenuDivider(),
+        ],
+        if (AppInfo.version.isNotEmpty) ...[
+          _infoItem(context, '앱 버전', AppInfo.version),
+          const PopupMenuDivider(),
+        ],
         const PopupMenuItem<String>(
           value: 'signOut',
           child: Row(
@@ -262,6 +263,29 @@ class _AccountMenu extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+
+  /// 계정 메뉴의 "라벨 + 값" 줄. 누를 수 없다.
+  ///
+  /// 계정과 앱 버전이 같은 모양이라 한 곳에서 만든다 — 라벨 슬롯이나 간격이
+  /// 두 줄에서 갈리면 메뉴가 어긋나 보인다.
+  PopupMenuItem<String> _infoItem(
+    BuildContext context,
+    String label,
+    String value,
+  ) {
+    return PopupMenuItem<String>(
+      enabled: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
+          const SizedBox(height: 2),
+          Text(value, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ),
     );
   }
 }
