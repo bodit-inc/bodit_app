@@ -46,6 +46,31 @@ class Submissions extends Table {
   /// Drive 가 실패하면 링크가 빈 채로 시트 행이 들어간다([Submissions.driveError]).
   TextColumn get driveUrl => text().nullable()();
 
+  /// 매입내역 행이 **시트의 어디에 들어갔는지**(`'매입내역'!A123:R123`).
+  ///
+  /// 시트는 append-only 이고 키 컬럼도 없다(ADR Decision 2·14) — 그래서
+  /// 들어간 행을 다시 지목할 방법이 없었다. 그런데 **Drive 가 나중에 성공하면
+  /// 그 행의 증빙링크 칸을 채워야 한다.** 그 한 가지 때문에 자리를 적어둔다.
+  ///
+  /// 자리는 영원하지 않다 — 회계 담당자가 위쪽 행을 지우면 번호가 밀린다.
+  /// 그래서 쓰기 전에 그 행이 여전히 우리 행인지 확인한다
+  /// (`SheetsRepository.fillEvidenceLink`).
+  ///
+  /// **없을 수 있다.** 이 컬럼이 생기기 전에 시트에 들어간 건은 null 이다.
+  /// 그 건은 사람이 링크를 붙여야 한다 — 알려주는 건 [followUpNote] 가 한다.
+  TextColumn get sheetsRange => text().nullable()();
+
+  /// **전송은 됐지만 사람이 손 볼 일이 남았다**는 한 줄.
+  ///
+  /// 실패 사유([driveError] 등)와 다르다. 실패는 다시 보내면 되는 것이고,
+  /// 이건 세 곳 다 성공했는데도 남는 일이다. 두 가지가 들어온다:
+  ///
+  /// - 증빙링크를 시트 행에 채우지 못했다 → 사람이 붙여야 한다
+  /// - 월 폴더 ID 를 시트에 기록하지 못했다 → 다음 제출이 폴더를 또 만든다
+  ///
+  /// 이게 없으면 둘 다 로그로만 흘러가서 **아무도 모른다.**
+  TextColumn get followUpNote => text().nullable()();
+
   /// Slack 에 올라간 파일(과 그 파일이 붙은 메시지)로 가는 링크.
   ///
   /// **없을 수 있다.** 이 컬럼이 생기기 전에 올라간 건이 있고, 링크를 받는
@@ -81,7 +106,7 @@ class QueueDb extends _$QueueDb {
     : super(executor ?? driftDatabase(name: 'bodit_queue'));
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   /// v1 → v2: `entryKind` 추가.
   ///
@@ -99,6 +124,14 @@ class QueueDb extends _$QueueDb {
   /// **백필하지 않는다.** 기존 행의 `lastError` 가 어느 목적지의 것이었는지는
   /// 글자만 보고는 알 수 없다. 전부 null 로 두면 화면은 그 행을 "아직 안 나간
   /// 목적지는 대기" 로 보여주고, 다시 [전송 시도] 를 누르면 제자리를 찾는다.
+  ///
+  /// v4 → v5: `sheetsRange`·`followUpNote` 추가.
+  ///
+  /// **백필할 수 없다.** 이미 시트에 들어간 행이 몇 번째 줄인지는 지금 와서
+  /// 알 수 없다 — 키 컬럼이 없어서 찾을 방법도 없다. 그래서 기존 행은 null 로
+  /// 남고, 그 건의 Drive 가 나중에 성공하면 링크를 못 채운다. 대신 그때
+  /// `followUpNote` 에 "직접 붙여주세요" 를 적는다 — 예전과 같은 결과지만
+  /// 적어도 말은 해준다.
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
@@ -109,6 +142,10 @@ class QueueDb extends _$QueueDb {
         await m.addColumn(submissions, submissions.driveError);
         await m.addColumn(submissions, submissions.sheetsError);
         await m.addColumn(submissions, submissions.slackError);
+      }
+      if (from < 5) {
+        await m.addColumn(submissions, submissions.sheetsRange);
+        await m.addColumn(submissions, submissions.followUpNote);
       }
     },
   );

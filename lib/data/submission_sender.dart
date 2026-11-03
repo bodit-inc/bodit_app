@@ -15,14 +15,25 @@
 /// ### 대가: 증빙링크가 빈 시트 행이 생길 수 있다
 ///
 /// 시트의 `증빙링크` 는 Drive URL 이다. Drive 가 실패한 채로 시트 행이
-/// 들어가면 그 칸은 비어서 나간다. **시트는 append 만 한다**(ADR Decision 2·14)
-/// — 나중에 Drive 재시도가 성공해도 그 행을 찾아가 채울 수 없다. 행에 키
-/// 컬럼이 없으니 지목할 방법도 없다.
+/// 들어가면 그 칸은 비어서 나간다. 그래도 이쪽을 골랐다: 회계가 보는 매입내역
+/// 행이 아예 안 들어가는 쪽이 더 나쁘다. 링크가 빈 행은 채울 수 있지만,
+/// 없는 행은 아무도 모른다.
 ///
-/// 그래도 이쪽을 골랐다: 회계가 보는 매입내역 행이 아예 안 들어가는 쪽이 더
-/// 나쁘다. 링크가 빈 행은 사람이 Drive 에서 파일을 찾아 붙이면 되지만,
-/// 없는 행은 아무도 모른다. 링크를 꼭 붙여야 하면 Drive 권한을 고친 뒤
-/// 그 건을 **전송 전에** 다시 만드는 게 맞다.
+/// ### 나중에 Drive 가 성공하면 그 칸을 채운다
+///
+/// 전에는 못 채웠다 — 시트는 append 만 하고(ADR Decision 2) 키 컬럼도 없어서
+/// (Decision 14) 그 행을 지목할 방법이 없었다. 그래서 재시도로 Drive 가
+/// 성공해도 증빙링크는 영원히 빈 칸이었고, 사람이 Drive 에서 파일을 찾아
+/// 손으로 붙이고 있었다. **앱은 그 URL 을 이미 알고 있는데** 말이다.
+///
+/// 그래서 append 가 돌려주는 **들어간 자리**(`Submission.sheetsRange`)를
+/// 적어두고, Drive 가 나중에 성공하면 그 행의 **증빙링크 칸만** 채운다
+/// (`SheetsRepository.fillEvidenceLink`). 쓰기 전에 그 행이 여전히 우리
+/// 행인지 확인한다 — 회계 담당자가 위쪽 행을 지우면 번호가 밀리고, 밀린 줄
+/// 모르고 쓰면 남의 행에 적는다.
+///
+/// 확인에 걸려 못 채웠으면 그 사실을 `followUpNote` 에 적는다. 조용히 넘기면
+/// 사용자는 채워진 줄 안다.
 ///
 /// ## 부분 실패
 ///
@@ -39,6 +50,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:bodit_app/core/utils/retry.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
 import 'package:bodit_app/data/remote/drive_repository.dart';
 import 'package:bodit_app/data/remote/google_auth.dart';
@@ -48,6 +60,7 @@ import 'package:bodit_app/data/send_status.dart';
 import 'package:bodit_app/models/purchase_entry.dart';
 import 'package:bodit_app/models/sheet_row.dart';
 import 'package:drift/drift.dart' show Value;
+import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
 
 /// 한 건의 전송 결과.
 class SendOutcome {
@@ -108,6 +121,14 @@ class SubmissionSender {
       return await _blocked(row, 'Google 인가가 없습니다. 다시 로그인해 주세요.');
     }
 
+    // 들어올 때 **시트 행이 이미 들어가 있었는지** 기억한다.
+    //
+    // 이번 호출에서 Drive 가 성공했을 때 "나중에 성공한 것" 인지 가리는 기준이다.
+    // 같은 호출에서 Drive → Sheets 로 이어지면 append 가 링크를 이미 들고
+    // 가므로 채울 것이 없다. 반대로 지난번에 Drive 만 실패했던 건이면 시트에는
+    // 증빙링크가 빈 행이 이미 있고, 그 칸을 채우러 가야 한다.
+    final sheetsWasAlreadyIn = row.sheetsDone;
+
     final entry = _decode(row);
     final file = File(row.evidencePath);
     if (!file.existsSync()) {
@@ -122,6 +143,9 @@ class SubmissionSender {
     //    가장 먼저 보낸다 — 성공하면 그 URL 이 시트 행의 `증빙링크` 가 된다.
     //    실패해도 여기서 멈추지 않는다(위 설명 참조).
     if (!current.driveDone) {
+      // 세 곳 다 성공해도 **사람이 손 볼 일**이 남을 수 있다. 실패 사유와
+      // 섞지 않고 여기 모아 `followUpNote` 로 보낸다(아래 두 군데서 담는다).
+      final followUps = <String>[];
       try {
         final url = await drive.upload(
           client: client,
@@ -136,9 +160,34 @@ class SubmissionSender {
           driveUrl: Value(url),
           driveError: const Value(null),
         );
+
+        // 시트 행이 **먼저** 들어갔다면 그 행의 증빙링크가 비어 있다.
+        // 이제 링크가 생겼으니 그 칸만 채운다 — append-only 의 유일한 예외다
+        // (`SheetsRepository.fillEvidenceLink`).
+        if (sheetsWasAlreadyIn) {
+          final note = await _fillEvidenceLink(
+            client,
+            row: current,
+            entry: entry,
+            url: url,
+          );
+          if (note != null) followUps.add(note);
+        }
       } on Object catch (e) {
         current = current.copyWith(driveError: Value('$e'));
       }
+
+      // 폴더 기록 실패는 업로드 성공과 **같이** 올 수 있다 — 폴더는 만들었고
+      // 올리기도 됐는데 그 ID 만 시트에 못 적은 경우다. 실패 사유가 아니라
+      // 뒷일이므로 이쪽으로 간다.
+      final folderWarning = drive.folders.takeRecordWarning();
+      if (folderWarning != null) followUps.add(folderWarning);
+
+      current = current.copyWith(
+        // 이번 시도의 결과로 **다시 쓴다.** 지난번 "직접 붙여주세요" 가
+        // 이번에 채워졌으면 그 문구는 사라져야 한다.
+        followUpNote: Value(followUps.isEmpty ? null : followUps.join('\n\n')),
+      );
       await db.updateRow(current);
     }
 
@@ -147,13 +196,16 @@ class SubmissionSender {
     //    나중에 못 채운다 — 알고 감수한 쪽이다(위 설명 참조).
     if (!current.sheetsDone) {
       try {
-        await sheets.appendRow(
+        final range = await sheets.appendRow(
           client: client,
           row: entry.copyWith(evidenceUrl: current.driveUrl ?? ''),
         );
         current = current.copyWith(
           sheetsDone: true,
           sheetsError: const Value(null),
+          // 들어간 자리를 적어둔다. Drive 가 실패한 건이면 나중에 그 행의
+          // 증빙링크를 채우러 돌아와야 한다 — 그때 유일한 단서다.
+          sheetsRange: Value(range),
         );
       } on Object catch (e) {
         current = current.copyWith(sheetsError: Value('$e'));
@@ -201,6 +253,58 @@ class SubmissionSender {
       error: failureDetail(legs),
       failedWhere: failedLabels(legs),
     );
+  }
+
+  /// 시트 행이 먼저 들어간 뒤에 Drive 가 성공했을 때, 그 행의 증빙링크를 채운다.
+  ///
+  /// ## 왜 여기만 시트를 고치는가
+  ///
+  /// Drive 가 실패하면 시트 행은 증빙링크가 빈 채로 들어간다(ADR Decision 4 —
+  /// 세 목적지는 독립이고, 앞이 실패해도 뒤를 건너뛰지 않는다). 그 대가를
+  /// "링크 빈 행은 사람이 붙인다" 로 감수해왔는데, 실제로 운영에서 한 건
+  /// 생기고 나니 **앱은 Drive URL 을 알고 있는데** 사람이 그걸 찾아 옮기고
+  /// 있었다. 아는 걸 안 쓰는 셈이다.
+  ///
+  /// 그래서 **그 칸 하나만** 채운다. 금액·비목 같은 다른 칸은 영원히 안 고친다.
+  ///
+  /// 돌려주는 값: 사람이 손 볼 일이 남으면 그 문구, 깔끔히 끝났으면 null.
+  /// **실패해도 던지지 않는다** — 업로드는 이미 성공했고, 그걸 실패로 되돌리면
+  /// 다음 재시도가 같은 파일을 또 올린다.
+  Future<String?> _fillEvidenceLink(
+    gapis.AuthClient client, {
+    required Submission row,
+    required PurchaseEntry entry,
+    required String url,
+  }) async {
+    final range = row.sheetsRange;
+    if (range == null) {
+      // `sheetsRange` 컬럼이 생기기 전에 시트에 들어간 행이다 — 몇 번째 줄인지
+      // 알 방법이 없다(키 컬럼이 없다). 예전과 같은 결과지만 말은 해준다.
+      return '증빙링크가 빈 채로 시트에 들어간 건입니다.\n'
+          '시트의 증빙링크 칸에 직접 붙여주세요:\n$url';
+    }
+
+    try {
+      final filled = await retryTransient(
+        () => sheets.fillEvidenceLink(
+          client: client,
+          appendedRange: range,
+          url: url,
+          // 그 행이 여전히 우리 행인지 확인할 재료다.
+          expectVendor: entry.vendor,
+          expectDescription: entry.description,
+        ),
+        what: '증빙링크 채우기',
+      );
+      if (filled) return null;
+
+      // 쓰지 않기로 **판단한** 경우다. 행이 밀렸거나 다른 값이 들어 있다 —
+      // 남의 행에 쓰는 것보다 사람에게 넘기는 쪽이 낫다.
+      return '시트에서 그 행을 찾지 못해 증빙링크를 채우지 못했습니다.\n'
+          '행이 밀렸거나 이미 다른 값이 들어 있습니다. 직접 붙여주세요:\n$url';
+    } on Object catch (e) {
+      return '증빙링크를 시트에 채우지 못했습니다. 직접 붙여주세요:\n$url\n\n$e';
+    }
   }
 
   /// 큐에 저장된 JSON 을 원래 타입으로 되살린다.

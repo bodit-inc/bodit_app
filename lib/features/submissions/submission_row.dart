@@ -89,6 +89,21 @@ class SubmissionRow extends ConsumerWidget {
 
   bool get _hasError => _failureDetail != null && !_allDone;
 
+  /// 전송은 됐지만 **사람이 손 볼 일**이 남은 건의 한 줄.
+  ///
+  /// 실패 사유와 자리를 따로 둔다 — 실패는 [전송 시도] 로 풀리지만 이건
+  /// 세 곳 다 성공한 뒤에도 남는다(증빙링크를 못 채웠다 · 월 폴더를 못 적었다).
+  /// 그래서 `_allDone` 이어도 보여준다.
+  ///
+  /// `followUpNote` 는 **첫 줄이 사람이 읽을 문장**이고 나머지가 링크·예외
+  /// 원문이다. 그 규칙대로 접는다 — 펼쳐두면 목록 한 칸이 화면을 먹는다.
+  String? get _followUpSummary {
+    final note = row.followUpNote;
+    if (note == null) return null;
+    final first = note.split('\n').first.trim();
+    return first.isEmpty ? '확인이 필요한 일이 남았습니다.' : first;
+  }
+
   /// 아직 **어느 목적지에도 안 나간** 건만 고칠 수 있다.
   ///
   /// Drive 에 이미 올라간 건을 고치면 올라간 파일명과 시트에 들어갈 내용이
@@ -236,6 +251,16 @@ class SubmissionRow extends ConsumerWidget {
               child: ErrorDisclosure(
                 '실패 사유 보기',
                 detail: _failureDetail!,
+                align: MainAxisAlignment.start,
+              ),
+            ),
+          // 완료된 건에도 붙는다 — "다 갔는데 링크는 비어 있다" 가 바로 그 경우다.
+          if (row.followUpNote != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.md),
+              child: ErrorDisclosure(
+                _followUpSummary!,
+                detail: row.followUpNote!,
                 align: MainAxisAlignment.start,
               ),
             ),
