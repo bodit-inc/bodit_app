@@ -199,6 +199,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         value: _fmtDate(draft.belongDate),
                         placeholder: '입력 필요',
                         subtitle: '계산서 발행일자 또는 카드 결제일자',
+                        // 좁은 화면에서는 이 설명이 날짜를 밀어내
+                        // `2026-` / `11-03` 두 줄로 갈랐다. 줄여도 되는
+                        // 쪽은 설명이다(`LabeledRow.valueOnOneLine`).
+                        valueOnOneLine: true,
                         onTap: () => _pickDate(context, ref, draft),
                       ),
                       // OCR 이 읽은 날짜와 다르게 골랐다. 어느 쪽이 맞는지는
@@ -227,6 +231,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         value: _fmtDate(draft.spendDate ?? draft.belongDate),
                         placeholder: '소속날짜와 동일',
                         subtitle: '실제로 비용을 집행한 일자',
+                        // 소속날짜와 같은 모양의 줄이다 — 같이 지킨다.
+                        valueOnOneLine: true,
                       ),
                       const RowDivider(),
                       InlineEditRow(

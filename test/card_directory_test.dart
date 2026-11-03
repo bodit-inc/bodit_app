@@ -174,23 +174,32 @@ void main() {
       expect(d.cardNotice, isNull);
     });
 
-    test('카드가 없는 증빙이면 아무 말도 하지 않는다', () {
-      // 이체·현금 건마다 경고가 뜨면 배너를 아무도 안 읽게 된다.
+    test('카드가 없는 증빙이면 기본값을 넣고 배너는 안 띄운다', () {
+      // 이체·현금 건마다 경고가 뜨면 배너를 아무도 안 읽게 된다. 그런데
+      // 분류를 비워두면 그 건은 **전부** 사용자가 목록에서 골라야 했다.
       for (final v in <String?>[null, '', '   ']) {
         final d = ReviewController.applyCardClass(draftWith(v), cards, master);
-        expect(d.classCode, isNull);
+        expect(d.classCode, ReviewController.defaultClassCode, reason: '$v');
+        expect(d.className, '법인(신용)', reason: 'cardLast4=$v');
         expect(d.cardNotice, isNull, reason: 'cardLast4=$v');
+        // 기본값이라는 것은 조용한 한 줄로 말한다.
+        expect(d.classReason, contains('기본값'), reason: 'cardLast4=$v');
+        // **카드가 정한 사실이 아니다.** 여기에 넣으면 사용자가 다른 분류로
+        // 고칠 때 "카드가 정한 분류와 다르다" 경고가 뜬다.
+        expect(d.cardClass, isNull, reason: 'cardLast4=$v');
       }
     });
 
-    test('못 찾으면 분류를 비우고 왜 비었는지 말한다', () {
+    test('못 찾으면 기본값을 넣고 왜 못 찾았는지 말한다', () {
       final d = ReviewController.applyCardClass(
         draftWith('0000'),
         cards,
         master,
       );
-      expect(d.classCode, isNull);
+      expect(d.classCode, ReviewController.defaultClassCode);
       expect(d.cardNotice, contains('찾지 못했습니다'));
+      // 값이 채워진 채로 "직접 골라주세요" 로 끝나면 할 일을 알 수 없다.
+      expect(d.cardNotice, contains('기본값'));
     });
 
     test('미사용 카드는 "못 찾았다" 와 다른 문구로 알린다', () {
@@ -199,7 +208,9 @@ void main() {
         cards,
         master,
       );
-      expect(d.classCode, isNull);
+      // 카드 시트에 44 가 적혀 있지만 그걸 쓰지 않는다 — 낡은 행일 수 있어서
+      // 사용자가 확인해야 하는 신호다. 분류는 기본값으로 둔다.
+      expect(d.classCode, ReviewController.defaultClassCode);
       expect(d.cardNotice, contains('사용하지 않는'));
     });
 
@@ -212,6 +223,9 @@ void main() {
       expect(d.classCode, isNull, reason: '조용히 첫 번째를 고르면 절반이 틀린다');
       expect(d.classSuggestions.map((c) => c.code), [3, 24]);
       expect(d.cardNotice, contains('2장'));
+      // **기본값도 넣지 않는다.** 고를 후보가 떠 있는데 값이 채워져 있으면
+      // 사용자가 후보를 안 보고 지나간다.
+      expect(d.classReason, isNull);
     });
 
     test('마스터에 없는 코드면 멈추고 마스터를 짚어준다', () {
@@ -220,6 +234,8 @@ void main() {
         cards,
         master,
       );
+      // **기본값을 넣지 않는다.** 카드는 99 라고 말했는데 기본값 3 을 넣으면
+      // 카드가 말한 것과 다른 분류를 조용히 적는 셈이다.
       expect(d.classCode, isNull);
       expect(d.cardNotice, contains('99'));
       expect(d.cardNotice, contains('_분류마스터'));
@@ -238,10 +254,13 @@ void main() {
       expect(after.className, '수출바우처');
     });
 
-    test('시트를 못 읽었으면 그 사실을 알린다 — 조용히 비우지 않는다', () {
+    test('시트를 못 읽었으면 그 사실을 알리고 기본값을 넣는다', () {
       final d = ReviewController.applyCardClass(draftWith('3356'), null, null);
-      expect(d.classCode, isNull);
       expect(d.cardNotice, isNotNull);
+      // 마스터를 못 읽은 경우가 하필 picker 도 못 여는 경우다. 그때 기본값까지
+      // 포기하면 제출할 길이 없어서, 이름 하나는 코드에 둔다.
+      expect(d.classCode, ReviewController.defaultClassCode);
+      expect(d.className, ReviewController.defaultClassName);
     });
 
     test('다시 판단하면 지난 흔적이 남지 않는다', () {
@@ -256,12 +275,14 @@ void main() {
         cards,
         master,
       );
-      expect(second.classReason, isNull);
       expect(second.classSuggestions, isEmpty);
       expect(second.cardNotice, contains('찾지 못했습니다'));
       // 카드가 채운 값이었으니 카드가 바뀌면 같이 내려가야 한다.
       // 남겨두면 3356 의 분류가 0000 짜리 건에 조용히 붙는다.
-      expect(second.classCode, isNull);
+      expect(second.classCode, isNot(24));
+      expect(second.className, isNot('CTS(체크)'));
+      // 지난 근거도 남지 않는다 — 새 번호로 다시 판단한 결과만 보인다.
+      expect(second.classReason, isNot(contains('3356')));
     });
   });
 
@@ -478,7 +499,8 @@ void main() {
           cards,
           master,
         );
-        expect(d.classCode, isNull, reason: raw);
+        // 카드로는 못 정했다 — 그래서 기본값이다(카드 분류 44 가 아니다).
+        expect(d.classCode, ReviewController.defaultClassCode, reason: raw);
         expect(d.cardNotice, contains('읽지 못했습니다'), reason: raw);
       }
     });
@@ -775,7 +797,7 @@ void main() {
         master,
         history: history,
       );
-      expect(d.classCode, isNull);
+      expect(d.classCode, ReviewController.defaultClassCode);
       expect(d.cardNotice, contains('찾지 못했습니다'));
       expect(d.cardNotice, contains('매입내역 과거 건에도 없습니다'));
     });
@@ -806,7 +828,9 @@ void main() {
         master,
         history: history,
       );
-      expect(d.classCode, isNull);
+      // 이력의 24 를 쓰지 않았다. 못 정한 셈이므로 기본값이 들어간다.
+      expect(d.classCode, isNot(24));
+      expect(d.classCode, ReviewController.defaultClassCode);
       expect(d.cardNotice, contains('사용하지 않는'));
     });
 
@@ -821,7 +845,10 @@ void main() {
         master,
         history: history,
       );
-      expect(d.classCode, isNull);
+      // 이름을 못 푸는 99 는 버린다. 폴백이 없던 것과 같은 상태가 되므로
+      // 기본값이 들어가고, 근거에 "추정" 이 적히지 않는다.
+      expect(d.classCode, ReviewController.defaultClassCode);
+      expect(d.classReason, isNot(contains('추정')));
       expect(d.cardNotice, contains('찾지 못했습니다'));
     });
 

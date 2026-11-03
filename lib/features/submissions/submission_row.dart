@@ -225,7 +225,7 @@ class SubmissionRow extends ConsumerWidget {
             // 오른쪽 알약이 이미 "완료" 라고 말한다. 여기서 또 쓰면 같은 줄에
             // 완료가 두 번 찍힌다 — 실제로 그렇게 보였다.
             subtitle: sending
-                ? '전송하고 있습니다 — 끝나면 결과가 표시됩니다'
+                ? '전송중'
                 : editable
                 ? '눌러서 내용을 고칠 수 있습니다'
                 : _allDone

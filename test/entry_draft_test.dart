@@ -26,17 +26,28 @@ void main() {
       expect(_full().missingFields, isEmpty);
     });
 
-    test('비목이 비면 막히고 이름을 알려준다 — OCR 이 못 뽑는 항목이라 자주 걸린다', () {
+    test('비목은 비어도 제출할 수 있다 — 아무거나 고른 비목보다 빈 칸이 낫다', () {
+      // 영수증에 안 적혀 있는 값이라(OCR 로 못 뽑는다) 필수로 두면 사용자가
+      // 34개 중 아무거나 골랐다. 그건 틀린 비목이고 시트는 append-only 다.
       final d = _full().copyWith(expenseCategory: null);
-      expect(d.isComplete, isFalse);
-      expect(d.missingFields, contains('비목'));
+      expect(d.isComplete, isTrue);
+      expect(d.missingFields, isNot(contains('비목')));
+    });
+
+    test('안 고른 비목은 빈 칸으로 시트에 간다 — 대신 넣는 문구가 없다', () {
+      // 내역은 "운영팀 확인 요청" 으로 채우지만(자유 입력 칸) 비목은
+      // `_비목마스터` 의 34개 중 하나여야 해서 그럴 수 없다.
+      final e = _full()
+          .copyWith(expenseCategory: null)
+          .toEntry(createdBy: 'a@b.c');
+      expect(e.expenseCategory, '');
     });
 
     test('여러 칸이 비면 전부 알려준다', () {
       const d = EntryDraft(evidencePath: '/tmp/a.jpg');
       expect(
         d.missingFields,
-        containsAll(<String>['소속날짜', '업체명', '비목', '분류코드', '총금액']),
+        containsAll(<String>['소속날짜', '업체명', '분류코드', '총금액']),
       );
     });
 

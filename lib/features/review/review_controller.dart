@@ -169,12 +169,72 @@ class ReviewController extends Notifier<ReviewState> {
     }
   }
 
+  /// 근거가 없을 때 넣는 분류. 사내 증빙의 대부분이 이 분류다.
+  ///
+  /// **빈 칸으로 두는 것보다 낫다.** 분류는 필수값이라 비면 제출이 막히고,
+  /// 그때 사용자가 할 수 있는 일은 분류 목록을 처음부터 훑는 것뿐이다 —
+  /// 카드가 없는 증빙(계산서·이체확인증·현금영수증)은 애초에 근거가 없어서
+  /// 늘 그렇게 됐다.
+  ///
+  /// **카드가 정한 사실인 척하지 않는다.** `_fromHistory` 의 추정과 같은
+  /// 이유로 `cardClass` 에는 넣지 않는다 — 그 칸은 "카드가 정한 분류" 라서
+  /// 사용자가 다르게 고쳤을 때 경고를 띄우는 근거다. 기본값에 그 경고를
+  /// 붙이면 맞는 선택에도 경고가 뜬다. 대신 `classReason` 에 기본값이라고
+  /// 적어서 사용자가 보고 고칠 수 있게 한다.
+  static const defaultClassCode = 3;
+
+  /// 분류 마스터를 **못 읽었을 때만** 쓰는 이름.
+  ///
+  /// 분류명의 출처는 `_분류마스터` 하나라는 규칙은 그대로다 — 아래
+  /// [_withDefaultClass] 가 마스터를 먼저 본다. 그런데 마스터를 못 읽은
+  /// 경우가 하필 **picker 도 못 여는 경우**라, 그때 기본값까지 포기하면
+  /// 사용자는 제출할 길이 없다. 그 하나를 위해 이름을 코드에 둔다.
+  static const defaultClassName = '법인(신용)';
+
+  /// 못 정한 분류를 [defaultClassCode] 로 채운다.
+  ///
+  /// [why] 는 **왜 못 정했는지**다. 주면 그 말 뒤에 기본값을 넣었다는 문구를
+  /// 붙여 배너로 띄운다. 예전 문구는 "분류를 직접 골라주세요" 로 끝났는데,
+  /// 값이 이미 채워진 채로 그 말이 뜨면 사용자는 무엇을 해야 하는지 모른다.
+  ///
+  /// null 이면 배너를 띄우지 않는다 — 카드가 없는 증빙이 그렇다. 이체 건마다
+  /// 배너가 뜨면 아무도 안 읽는다. 그 경우에도 `classReason` 한 줄은 남으므로
+  /// 기본값이 들어갔다는 사실 자체는 화면에 보인다.
+  static EntryDraft _withDefaultClass(
+    EntryDraft d,
+    Map<int, String>? classNames, {
+    String? why,
+  }) {
+    // **사용자가 고른 값은 덮지 않는다.** 기본값은 빈 칸을 메우는 것이지
+    // 사람이 정한 것을 되돌리는 것이 아니다. 여기까지 왔는데 분류가 차 있으면
+    // 그건 picker 에서 직접 고른 값이다 — 카드가 채운 값은 호출부가 이미
+    // 지웠다(`fromCard`). 그 경우엔 왜 카드로 못 찾았는지만 말한다.
+    if (d.classCode != null) return d.copyWith(cardNotice: why);
+
+    final name = classNames?[defaultClassCode] ?? defaultClassName;
+    return d.copyWith(
+      classCode: defaultClassCode,
+      className: name,
+      classReason: '기본값 · $defaultClassCode $name',
+      cardNotice: why == null
+          ? null
+          : '$why 분류는 기본값 $defaultClassCode $name 으로 두었습니다 — '
+                '다르면 직접 골라주세요.',
+    );
+  }
+
   /// 카드 뒤 4자리로 분류를 정한다. **분류가 자동으로 채워지는 유일한 경로다.**
   ///
   /// 못 정하는 경우가 네 가지인데 **전부 다른 문구로 알린다.** 뭉뚱그려
   /// "분류를 찾지 못했습니다" 라고 하면 사용자가 뭘 해야 할지 모른다 —
   /// 카드번호를 고쳐야 하는지, 시트에 카드를 추가해야 하는지, 그냥 직접
   /// 고르면 되는지가 다 다르다.
+  ///
+  /// 근거가 하나도 없는 경우에는 [defaultClassCode] 를 넣는다. **고를 후보가
+  /// 있는 경우에는 넣지 않는다** — 겹친 카드·갈린 이력은 고를 것이 있는 상태라
+  /// 기본값을 끼우면 사용자가 후보를 안 보고 지나간다. 카드가 분류코드를
+  /// 알려줬는데 마스터에 그 코드가 없는 경우도 마찬가지다 — 그때 기본값을
+  /// 넣으면 카드가 말한 것과 다른 분류를 조용히 적는 셈이다.
   /// 인스턴스가 들고 있는 카드·마스터로 판단한다. 실제 로직은 [applyCardClass].
   EntryDraft _applyCardClass(EntryDraft draft) =>
       applyCardClass(draft, _cards, _classNames, history: _cardHistory);
@@ -209,15 +269,20 @@ class ReviewController extends Notifier<ReviewState> {
     );
 
     final raw = (d.cardLast4 ?? '').trim();
-    // 카드가 없는 증빙이다(계산서·이체확인증·현금영수증). 할 말이 없다 —
-    // 여기서 배너를 띄우면 이체 건마다 쓸데없는 경고가 뜬다.
-    if (raw.isEmpty) return d;
+    // 카드가 없는 증빙이다(계산서·이체확인증·현금영수증). 분류를 정할 근거가
+    // 아예 없으니 기본값을 넣는다 — 예전엔 빈 칸으로 뒀고, 그래서 카드 없는
+    // 건은 **전부** 사용자가 목록에서 직접 골라야 했다.
+    //
+    // 배너는 띄우지 않는다. 이 경우는 잘못된 것이 아니라 원래 그런 것이고,
+    // 이체 건마다 경고가 뜨면 정작 봐야 하는 배너까지 같이 무뎌진다.
+    // 기본값이 들어갔다는 것은 `classReason` 한 줄이 말한다.
+    if (raw.isEmpty) return _withDefaultClass(d, classNames);
 
     if (cards == null || classNames == null) {
-      return d.copyWith(
-        cardNotice:
-            '카드 정보를 불러오지 못해 분류를 자동으로 채우지 못했습니다. '
-            '분류를 직접 골라주세요.',
+      return _withDefaultClass(
+        d,
+        classNames,
+        why: '카드 정보를 불러오지 못해 분류를 자동으로 채우지 못했습니다.',
       );
     }
 
@@ -227,10 +292,14 @@ class ReviewController extends Notifier<ReviewState> {
     // 분류가 통째로 틀린 채 append-only 시트로 들어간다.
     final slots = CardDirectory.slotsOf(raw);
     if (slots == null || !CardDirectory.hasAnyDigit(slots)) {
-      return d.copyWith(
-        cardNotice:
-            '카드번호 뒤 4자리를 읽지 못했습니다. '
-            '보이는 자리만이라도 직접 입력하거나 분류를 골라주세요.',
+      return _withDefaultClass(
+        d,
+        classNames,
+        // 보이는 자리만 입력해도 후보를 좁힐 수 있다는 것을 같이 말한다 —
+        // 기본값이 채워졌다고 해서 카드 조회를 포기할 이유는 없다.
+        why:
+            '카드번호 뒤 4자리를 읽지 못했습니다 — '
+            '보이는 자리만이라도 입력하면 카드를 다시 찾아봅니다.',
       );
     }
 
@@ -267,15 +336,16 @@ class ReviewController extends Notifier<ReviewState> {
         );
         if (guessed != null) return guessed;
       }
-      return d.copyWith(
-        cardNotice: hits.isEmpty
+      return _withDefaultClass(
+        d,
+        classNames,
+        why: hits.isEmpty
             ? '$subject 를 카드보유내역에서 찾지 못했습니다'
                   // 이력까지 봤는지 **정확히** 말한다. 이력을 못 읽은 것과
                   // 봤는데 없는 것은 사용자가 할 일이 다르다.
                   '${history == null ? '' : ' — 매입내역 과거 건에도 없습니다'}. '
-                  '번호가 맞는지 확인하고 분류를 직접 골라주세요.'
-            : '$subject 는 지금 사용하지 않는 카드로 등록돼 있습니다. '
-                  '분류를 직접 골라주세요.',
+                  '번호가 맞는지 확인해주세요.'
+            : '$subject 는 지금 사용하지 않는 카드로 등록돼 있습니다.',
       );
     }
 

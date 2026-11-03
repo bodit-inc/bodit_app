@@ -298,12 +298,20 @@ abstract class EntryDraft with _$EntryDraft {
   }
 
   /// 제출에 필요한 칸이 다 찼는지.
-  /// **내역은 빠져 있다** — 모르면 [needsOpsReview] 로 채워 넘긴다.
-  /// 지어낸 내역보다 "확인 요청" 이 회계 담당자에게 낫다.
+  ///
+  /// **내역과 비목은 빠져 있다.** 둘 다 영수증에 안 적혀 있는 값이라
+  /// (OCR 로 뽑을 수 없다) 필수로 두면 사용자가 아무 값이나 채우고 지나간다.
+  /// 들어가는 모양만 다르다:
+  ///
+  ///   - 내역은 [needsOpsReview] 로 채운다. 자유 입력 칸이라 "확인 요청" 이
+  ///     들어갈 수 있고, 지어낸 내역보다 그게 회계 담당자에게 낫다
+  ///   - 비목은 **빈 칸으로 넘긴다.** `_비목마스터` 의 34개 중 하나여야 하는
+  ///     칸이라 대신 넣을 문구가 없다. 아무거나 골라 넣으면 그건 틀린 비목이고,
+  ///     시트는 append-only 라 앱이 되돌릴 수 없다 — 빈 칸은 담당자가 보고
+  ///     되물을 수 있지만, 그럴듯한 오답은 아무도 못 알아챈다
   bool get isComplete =>
       belongDate != null &&
       (vendor ?? '').isNotEmpty &&
-      (expenseCategory ?? '').isNotEmpty &&
       classCode != null &&
       totalAmount != null;
 
@@ -311,7 +319,6 @@ abstract class EntryDraft with _$EntryDraft {
   List<String> get missingFields => <String>[
     if (belongDate == null) '소속날짜',
     if ((vendor ?? '').isEmpty) '업체명',
-    if ((expenseCategory ?? '').isEmpty) '비목',
     if (classCode == null) '분류코드',
     if (totalAmount == null) '총금액',
   ];
@@ -326,7 +333,8 @@ abstract class EntryDraft with _$EntryDraft {
       belongDate: belongDate!,
       // 지출날짜는 영수증에 없다. 사용자가 안 고쳤으면 소속날짜를 쓴다.
       spendDate: spendDate ?? belongDate!,
-      expenseCategory: expenseCategory!,
+      // 안 골랐으면 빈 칸이다(위 [isComplete] 주석). 지어내지 않는다.
+      expenseCategory: expenseCategory ?? '',
       // 비어 있으면 지어내지 않고 운영팀에게 넘긴다.
       description: (description ?? '').isEmpty ? needsOpsReview : description!,
       vendor: vendor!,
