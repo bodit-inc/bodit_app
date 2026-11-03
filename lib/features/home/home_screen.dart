@@ -33,21 +33,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final queue = ref.watch(pendingSubmissionsProvider);
-    final pending =
-        queue.value
-            ?.where((s) => !s.slackDone || !s.sheetsDone || !s.driveDone)
-            .toList() ??
-        const [];
+    final send = ref.watch(backgroundSendProvider);
+    // 지금 전송줄에 올라가 있는 건은 **이 목록에서 뺀다.**
+    //
+    // 이 자리는 "전송 대기 N건 · 제출할 때 보내지 못한 건" 이다. 보내는
+    // 중인 건이 거기 섞이면 N 이 아직 못 간 건수를 말하지 않고 아래 문구도
+    // 거짓이 된다 — 방금 제출해서 잘 가고 있는 건을 "보내지 못했다" 고
+    // 읽게 된다. 진행 중인 건은 위의 띠(`SendingBanner`)가 맡는다.
+    //
+    // 전송줄은 한 건씩 빠지므로(`_drain` 의 finally), 실패해서 줄에서
+    // 빠진 건은 사유를 달고 이 목록에 다시 나타난다.
+    final inFlight = send.inFlight.toSet();
+    final pending = queue.value?.where((s) => !s.slackDone || !s.sheetsDone || !s.driveDone).where((s) => !inFlight.contains(s.id)).toList() ?? const [];
     // 전송이 백그라운드로 돌고 있는지. [전송 시도] 를 가리는 데 쓴다 —
     // 돌고 있는 중에 또 누르면 아무 일도 안 일어나는데, 사용자는 눌렀는지도
     // 모른다. 진행 상황은 아래 띠가 말한다.
-    final sending = ref.watch(backgroundSendProvider).isSending;
+    final sending = send.isSending;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isDevFlavor ? '매입내역(개발)' : '매입내역'),
-        actions: [_AccountMenu()],
-      ),
+      appBar: AppBar(title: Text(isDevFlavor ? '매입내역(개발)' : '매입내역'), actions: [_AccountMenu()]),
       // 전송 진행 띠는 **스크롤 밖 맨 위**에 둔다 — 목록 안에 두면 스크롤에
       // 밀려 사라지고, 사용자는 전송이 끝났는지 모르는 채로 또 누른다.
       body: Column(
@@ -72,34 +76,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: BigActionCard(
-                        icon: Icons.photo_camera_outlined,
-                        title: '증빙 촬영',
-                        subtitle: '영수증·전표',
-                        onTap: _capture,
-                      ),
+                      child: BigActionCard(icon: Icons.photo_camera_outlined, title: '증빙 촬영', subtitle: '영수증·전표', onTap: _capture),
                     ),
                     const SizedBox(width: Gap.md),
                     Expanded(
-                      child: BigActionCard(
-                        icon: Icons.image_outlined,
-                        title: '파일 선택',
-                        subtitle: 'PDF·JPG·PNG',
-                        onTap: _pickFiles,
-                      ),
+                      child: BigActionCard(icon: Icons.image_outlined, title: '파일 선택', subtitle: 'PDF·JPG·PNG', onTap: _pickFiles),
                     ),
                   ],
                 ),
                 if (pending.isNotEmpty) ...[
                   Row(
                     children: [
-                      Expanded(
-                        child: SectionHeader('전송 대기 ${pending.length}건 · 최근순'),
-                      ),
-                      TextButton(
-                        onPressed: () => _clearAll(context),
-                        child: const Text('전체 삭제'),
-                      ),
+                      Expanded(child: SectionHeader('전송 대기 ${pending.length}건 · 최근순')),
+                      TextButton(onPressed: () => _clearAll(context), child: const Text('전체 삭제')),
                     ],
                   ),
                   AppCard(
@@ -108,23 +97,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     children: [
                       // 구분선은 카드가 아니라 **여기서** 넣는다.
                       // 첫 줄을 뺀 각 줄 앞에 하나(`RowDivider` 참조).
-                      for (final (i, s) in pending.take(3).indexed) ...[
-                        if (i > 0) const RowDivider(),
-                        SubmissionRow(s),
-                      ],
+                      for (final (i, s) in pending.take(3).indexed) ...[if (i > 0) const RowDivider(), SubmissionRow(s)],
                     ],
                   ),
                   const SizedBox(height: Gap.md),
                   // 전송은 **백그라운드로** 돈다 — 홈을 떠나도 계속된다.
                   // 그래서 버튼 안에서 기다리지 않고 띠에게 진행을 넘긴다.
                   FilledButton(
-                    onPressed: sending
-                        ? null
-                        : () => unawaited(
-                            ref
-                                .read(backgroundSendProvider.notifier)
-                                .startPending(),
-                          ),
+                    onPressed: sending ? null : () => unawaited(ref.read(backgroundSendProvider.notifier).startPending()),
                     child: Text(sending ? '전송 중' : '전송 시도'),
                   ),
                   const NoteText(
@@ -135,26 +115,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const SectionHeader('바로가기'),
                 AppCard(
                   children: [
-                    _ShortcutRow(
-                      label: '스프레드시트',
-                      value: '매입내역',
-                      id: Config.spreadsheetId,
-                      url: spreadsheetUrl,
-                    ),
+                    _ShortcutRow(label: '스프레드시트', value: '매입내역', id: Config.spreadsheetId, url: spreadsheetUrl),
                     const RowDivider(),
-                    _ShortcutRow(
-                      label: '드라이브',
-                      value: '증빙 폴더',
-                      id: Config.driveFolderId,
-                      url: driveFolderUrl,
-                    ),
+                    _ShortcutRow(label: '드라이브', value: '증빙 폴더', id: Config.driveFolderId, url: driveFolderUrl),
                     const RowDivider(),
-                    _ShortcutRow(
-                      label: 'Slack',
-                      value: '#purchase',
-                      id: Config.slackChannelId,
-                      url: slackChannelUrl,
-                    ),
+                    _ShortcutRow(label: 'Slack', value: '#purchase', id: Config.slackChannelId, url: slackChannelUrl),
                   ],
                 ),
                 const NoteText('조회는 앱에서 다시 만들지 않고 원본으로 연결합니다.'),
@@ -260,12 +225,7 @@ class _AccountMenu extends ConsumerWidget {
 /// 설정값이 비어 있으면 **누를 수 없게** 하고 왜 그런지 말한다.
 /// 눌렀는데 아무 일도 안 일어나면 앱이 고장 난 줄 안다.
 class _ShortcutRow extends StatelessWidget {
-  const _ShortcutRow({
-    required this.label,
-    required this.value,
-    required this.id,
-    required this.url,
-  });
+  const _ShortcutRow({required this.label, required this.value, required this.id, required this.url});
 
   final String label;
   final String value;
