@@ -728,14 +728,46 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       // 증빙의 종류(영수증·매출전표·이체확인증)고, 위 `분류`
                       // 섹션의 값은 예산 분류다 — 코드에서는 `evidenceType`
                       // 으로 구분된다.
-                      LabeledRow(
-                        label: '분류',
-                        // 바텀시트에서 고르지만 **고치는 줄**이다. 아래 파일명
-                        // 줄과 같은 카드에 있으면서 한쪽만 `›` 면, 둘이 서로
-                        // 다른 동작으로 보인다.
-                        editable: true,
-                        value: draft.evidenceType,
-                        onTap: () => _pickEvidenceType(context, ref),
+                      //
+                      // **위 비목·분류와 같은 칩이다.** 셋 다 고정 목록에서
+                      // 바텀시트로 하나를 고르는 값인데 이 줄만 연필+밑줄
+                      // (`LabeledRow(editable: true)`)이라 키보드로 쳐 넣는
+                      // 칸처럼 보였다. 하는 일이 같으면 모양도 같아야 한다 —
+                      // 더구나 바로 아래 `파일명` 이 **실제로** 키보드로 치는
+                      // 줄이라, 둘이 같은 모양으로 붙어 있으면 어느 쪽이
+                      // 바텀시트인지 눌러보고서야 안다.
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: Gap.lg,
+                          vertical: Gap.md,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '분류',
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(color: AppColors.neutralFg),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  // 비목·분류와 달리 `선택하기` 칩이 없다 —
+                                  // 기본값(`영수증`)이 늘 들어 있어서 빈 상태가
+                                  // 생기지 않는다(`defaultEvidenceType`).
+                                  // 값 칩을 누르는 것이 곧 바꾸는 동작이다.
+                                  SuggestChip(
+                                    draft.evidenceType,
+                                    selected: true,
+                                    onTap: () =>
+                                        _pickEvidenceType(context, ref),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       const RowDivider(),
                       // 위 칸들(업체명·카드번호·내역)과 **같은 줄 모양**이다.
