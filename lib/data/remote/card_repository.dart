@@ -10,6 +10,23 @@
 ///
 /// 그래서 **비목은 업체 이력, 분류는 카드**가 담당한다.
 ///
+/// ## 카드번호는 **전체**로 대조한다
+///
+/// 예전에는 뒤 4자리만 들고 조회했다. 뒤 4자리는 열쇠가 아니라서 겹치면
+/// 사용자에게 물어야 했는데, 영수증에는 앞자리도 **인쇄돼 있었다** —
+/// `5531-46**-****-3927` 의 `5531-46` 을 버리고 `3927` 만 보고 있었던 셈이다.
+/// 앞 6자리(BIN)는 카드사·상품이 갈리는 자리라, 같이 보면 뒤 4자리가 겹치는
+/// 두 장도 저절로 갈린다.
+///
+/// 그래서 색인의 단위가 **번호 전체**다. 다만 양쪽 다 가려진 자리가 섞여
+/// 있으므로(카드 시트도 `5531-46**-****-3927` 로 마스킹해서 들고 있다)
+/// 비교는 자리 단위 호환 판정이다(`CardDirectory.compatible`) — 둘 다 아는
+/// 자리인데 값이 다를 때만 "다른 카드" 다.
+///
+/// **길이가 달라도 뒤에서 맞춰 비교한다.** 영수증이 뒤 4자리만 찍어주는
+/// 경우(`3927`)가 남아 있고, 매입내역 과거 행에는 뒤 4자리만 적힌 행이
+/// 그대로 있다. 뒤에서 맞추는 쪽이 둘을 같이 받는다.
+///
 /// ## 이 시트는 우리 것이 아니다
 ///
 /// 매입내역과 **다른 스프레드시트**고, 운영팀이 관리한다. 우리 계정으로는
@@ -26,6 +43,8 @@
 /// 컬럼 계약: `A no. · B 은행 · C 카드번호 · D 분류코드 · E 분류명 · F 구분 · G 현재사용여부`
 library;
 
+import 'dart:math' as math;
+
 import 'package:bodit_app/models/class_choice.dart';
 import 'package:flutter/foundation.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
@@ -35,7 +54,8 @@ import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
 @immutable
 class CardInfo {
   const CardInfo({
-    required this.last4,
+    required this.number,
+    required this.slots,
     required this.classCode,
     required this.active,
     this.bank = '',
@@ -43,9 +63,18 @@ class CardInfo {
     this.classNameOnSheet = '',
   });
 
-  /// 카드번호 뒤 4자리. **앞자리는 애초에 시트에도 없다** —
-  /// 카드 시트가 이미 `5531-46**-****-3927` 로 마스킹해서 들고 있다.
-  final String last4;
+  /// 카드번호 **전체**, 정규화된 표기(`5531-46**-****-3927`).
+  ///
+  /// 가려진 자리가 섞여 있다 — 카드 시트가 애초에 마스킹해서 들고 있고,
+  /// 우리가 풀 방법은 없다. 그 표기를 그대로 쓰는 것이 아니라
+  /// [CardDirectory.patternOf] 로 한 번 모은 값이다(구분자는 `-`,
+  /// 가려진 자리는 `*`). 같은 카드가 시트 표기 차이로 두 가지로 보이면
+  /// 안 된다.
+  final String number;
+
+  /// [number] 를 자리 단위로 쪼갠 것. 숫자면 그 숫자, 가려진 자리는 null.
+  /// 조회가 이걸 대조한다 — 문자열끼리 비교하면 마스크가 걸린다.
+  final List<String?> slots;
 
   /// `_분류마스터` 의 분류코드. 이름은 여기서 풀지 않는다(위 주석).
   final int classCode;
@@ -66,30 +95,34 @@ class CardInfo {
   final String classNameOnSheet;
 }
 
-/// 뒤 4자리로 카드를 찾는 색인.
+/// 카드번호로 카드를 찾는 색인.
 ///
-/// 뒤 4자리는 **열쇠가 아니다.** 지금은 21장이 전부 다르지만 카드가 늘면
-/// 언제든 겹칠 수 있다. 그래서 하나가 아니라 **목록**을 돌려준다 —
-/// 조용히 첫 번째를 고르면 겹치는 순간부터 절반이 틀린 예산에 잡힌다.
+/// 번호 전체를 보더라도 **열쇠는 아니다.** 양쪽 다 가려진 자리가 있어서
+/// 아는 자리만 맞는 카드가 둘일 수 있다. 그래서 하나가 아니라 **목록**을
+/// 돌려준다 — 조용히 첫 번째를 고르면 겹치는 순간부터 절반이 틀린 예산에
+/// 잡힌다.
 @immutable
 class CardDirectory {
-  const CardDirectory(this._byLast4);
+  const CardDirectory(this._cards);
 
   /// 시트 행들로 색인을 만든다. **순수 함수다** — 네트워크 없이 테스트한다.
   factory CardDirectory.fromRows(List<List<Object?>> rows) {
-    final out = <String, List<CardInfo>>{};
+    final out = <CardInfo>[];
     for (final row in rows) {
-      final last4 = last4Of(_cell(row, 2));
-      if (last4 == null) continue;
+      final slots = slotsOf(_cell(row, 2));
+      // 카드번호가 없거나(빈칸) 아는 자리가 하나도 없는 행은 쓸모가 없다 —
+      // 전부 가려진 번호는 **모든 조회에 걸려서** 아무 분류나 끌어온다.
+      if (slots == null || !hasAnyDigit(slots)) continue;
 
       // 분류코드가 비었거나 숫자가 아니면 그 행은 쓸모가 없다 — 분류를 못 정한다.
       // 시트 쪽 실수이므로 조용히 건너뛰되, 그 카드는 "못 찾음" 으로 떨어진다.
       final code = int.tryParse(_cell(row, 3));
       if (code == null) continue;
 
-      (out[last4] ??= <CardInfo>[]).add(
+      out.add(
         CardInfo(
-          last4: last4,
+          number: patternOf(slots),
+          slots: slots,
           classCode: code,
           active: _isActive(_cell(row, 6)),
           bank: _cell(row, 1),
@@ -101,107 +134,167 @@ class CardDirectory {
     return CardDirectory(out);
   }
 
-  final Map<String, List<CardInfo>> _byLast4;
+  final List<CardInfo> _cards;
 
-  static const empty = CardDirectory(<String, List<CardInfo>>{});
+  static const empty = CardDirectory(<CardInfo>[]);
 
-  /// 그 뒤 4자리를 가진 카드 전부 — 미사용 카드까지 포함한다.
-  List<CardInfo> find(String last4) =>
-      _byLast4[last4.trim()] ?? const <CardInfo>[];
+  /// 그 번호와 어긋나지 않는 카드 전부 — 미사용 카드까지 포함한다.
+  ///
+  /// 들어온 표기는 무엇이든 받는다(전체 번호·뒤 4자리·마스크 섞인 것).
+  /// 자리를 못 뽑으면 빈 목록이다 — 억지로 맞추면 틀린 카드를 고른다.
+  List<CardInfo> find(String raw) {
+    final slots = slotsOf(raw);
+    if (slots == null || !hasAnyDigit(slots)) return const <CardInfo>[];
+    return findByPattern(slots);
+  }
 
   /// 그중 지금 쓰는 카드만.
-  List<CardInfo> findActive(String last4) =>
-      find(last4).where((c) => c.active).toList();
+  List<CardInfo> findActive(String raw) =>
+      find(raw).where((c) => c.active).toList();
 
   /// 자리별로 대조해 후보를 돌려준다. **미사용 카드도 포함한다** —
   /// 버리면 "못 찾았다" 와 "지금 안 쓰는 카드다" 를 구분해줄 수 없다.
   ///
-  /// 순서는 활성 먼저, 그다음 뒤 4자리 오름차순이다. 화면에 "카드 A, 카드 B"
+  /// 순서는 활성 먼저, 그다음 번호 오름차순이다. 화면에 "카드 A, 카드 B"
   /// 로 나열하는 문구가 호출마다 뒤바뀌면 사용자가 다른 결과로 읽는다.
   List<CardInfo> findByPattern(List<String?> slots) {
-    final out = <CardInfo>[];
-    for (final e in _byLast4.entries) {
-      if (_matches(e.key, slots)) out.addAll(e.value);
-    }
-    out.sort((a, b) {
-      if (a.active != b.active) return a.active ? -1 : 1;
-      return a.last4.compareTo(b.last4);
-    });
+    final out = _cards.where((c) => compatible(c.slots, slots)).toList()
+      ..sort((a, b) {
+        if (a.active != b.active) return a.active ? -1 : 1;
+        return a.number.compareTo(b.number);
+      });
     return out;
-  }
-
-  static bool _matches(String last4, List<String?> slots) {
-    if (last4.length != 4 || slots.length != 4) return false;
-    for (var i = 0; i < 4; i++) {
-      final want = slots[i];
-      if (want != null && last4[i] != want) return false;
-    }
-    return true;
   }
 
   /// 두 자리 묶음이 **서로 어긋나지 않는가.** 둘 다 아는 자리인데 값이 다를
   /// 때만 false 다 — 한쪽이 가려진 자리면 어긋났다고 말할 근거가 없다.
   ///
-  /// 매입내역 과거 행과 대조할 때 쓴다. 그쪽 카드번호 칸에는 앱이 적은
-  /// `766*` 같은 패턴이 섞여 있어서, [_matches] 처럼 한쪽만 패턴이라고
-  /// 보면 `7662` 로 조회할 때 과거의 `766*` 행을 놓친다.
+  /// **뒤에서 맞춰 비교한다.** 길이가 다른 경우가 셋이나 있다:
+  ///
+  ///   - 영수증이 뒤 4자리만 찍어준 경우(`3927`) vs 시트의 전체 번호
+  ///   - 매입내역 과거 행 — 전체 번호를 쓰기 전에 적힌 행은 뒤 4자리뿐이다
+  ///   - 카드사마다 자리 수가 다르다(15·16자리)
+  ///
+  /// 겹치는 구간만 본다. 짧은 쪽이 모르는 앞자리는 **어긋났다고 말할 근거가
+  /// 없는 자리**라서, 가려진 자리와 똑같이 다룬다.
+  ///
+  /// 4자리 미만끼리는 비교하지 않는다 — [slotsOf] 가 애초에 그런 값을
+  /// 돌려주지 않지만, 호출부가 직접 만든 자리 묶음을 넘겼을 때 조용히
+  /// 아무 카드나 걸리는 것보다 false 가 낫다.
   static bool compatible(List<String?> a, List<String?> b) {
-    if (a.length != 4 || b.length != 4) return false;
-    for (var i = 0; i < 4; i++) {
-      final x = a[i];
-      final y = b[i];
+    if (a.length < 4 || b.length < 4) return false;
+    final n = math.min(a.length, b.length);
+    for (var i = 0; i < n; i++) {
+      final x = _fromEnd(a, i);
+      final y = _fromEnd(b, i);
       if (x != null && y != null && x != y) return false;
     }
     return true;
   }
 
-  int get cardCount => _byLast4.values.fold(0, (a, v) => a + v.length);
-
-  /// 마스킹된 카드번호에서 뒤 4자리를 뽑는다. **뒤 4자리가 온전할 때만** 쓴다.
+  /// 두 자리 묶음을 **겹쳐서** 아는 자리를 모은다. 뒤에서 맞춘다.
   ///
-  /// 시트 표기는 `5531-46**-****-3927` 인데, 저쪽이 공백이나 구분자를 바꿔도
-  /// 버티도록 **맨 뒤 연속된 숫자 4자리**만 본다. 사용자/OCR 이 `3927` 처럼
-  /// 네 자리만 줘도 같은 규칙으로 걸린다.
+  /// 영수증과 카드 시트는 **서로 다른 자리를 가린다.** 영수증이 `766*` 만
+  /// 찍어줬어도 시트가 `5525-76**-****-7662` 를 들고 있으면, 둘을 겹친
+  /// `5525-76**-****-7662` 가 우리가 아는 전부다. 한쪽만 적으면 아는 것을
+  /// 버리는 셈이다.
   ///
-  /// 뒤 4자리 **안에** 마스크가 끼면(`766*`·`*669`·`76*9`) `null` 이다 —
-  /// 그 경우는 [slotsOf] 로 자리별 대조를 한다.
-  static String? last4Of(String raw) {
-    final m = RegExp(r'(\d{4})\D*$').firstMatch(raw.trim());
-    return m?.group(1);
+  /// **어긋나지 않는 두 묶음에만 쓴다**([compatible] 로 먼저 확인한다).
+  /// 어긋난 자리가 있으면 먼저 온 쪽이 이기는데, 그건 틀린 번호를 만든다.
+  static List<String?> merge(List<String?> a, List<String?> b) {
+    final n = math.max(a.length, b.length);
+    final out = List<String?>.filled(n, null);
+    for (var i = 0; i < n; i++) {
+      out[n - 1 - i] = _fromEnd(a, i) ?? _fromEnd(b, i);
+    }
+    return out;
   }
+
+  /// 뒤에서 [i] 번째 자리. 범위를 넘으면 null — **모르는 자리**다.
+  static String? _fromEnd(List<String?> slots, int i) =>
+      i < slots.length ? slots[slots.length - 1 - i] : null;
+
+  int get cardCount => _cards.length;
 
   /// 구분자. 자리를 맞추려면 **먼저 지워야 한다** — `5531-46**-****-766*` 의
   /// `-` 와 `*` 는 둘 다 숫자가 아니지만 하나는 구분자고 하나는 가려진 자리다.
   /// 구분자만 지우고 남은 비숫자를 마스크로 본다.
   static final _separator = RegExp(r'[-\s·./_]');
 
-  /// 뒤 4자리를 **자리 단위**로 뽑는다. 숫자면 그 숫자, 가려진 자리는 `null`.
+  /// 카드번호를 **자리 단위**로 뽑는다. 숫자면 그 숫자, 가려진 자리는 `null`.
+  ///
+  /// 길이를 자르지 않는다 — 들어온 자리 수가 그대로 나온다. 영수증이 전체
+  /// 번호를 찍어줬으면 16자리, 뒤 4자리만 찍어줬으면 4자리다. 대조는
+  /// [compatible] 이 뒤에서 맞춰서 한다.
   ///
   /// 마스크 문자 종류를 열거하지 않는다 — `*`·`x`·`#`·`●` 중 무엇이 올지
   /// 모르고, 목록에서 빠진 문자가 하나라도 있으면 그 영수증은 또 조회가 안 된다.
   /// 구분자를 지운 뒤 **숫자가 아닌 것은 전부 가려진 자리**로 본다.
   ///
-  /// 4칸을 못 채우면 `null` 이다. `66*` 가 뒤 4자리의 `?66*` 인지 `66*?` 인지
-  /// 알 수 없고, 한쪽으로 가정하면 **틀린 카드를 고른다** — 분류가 통째로
-  /// 틀리고 시트는 append-only 라 되돌릴 수 없다.
+  /// 4칸을 못 채우면 `null` 이다. `66*` 가 `?66*` 인지 `66*?` 인지 알 수 없고,
+  /// 한쪽으로 가정하면 **틀린 카드를 고른다** — 분류가 통째로 틀리고 시트는
+  /// append-only 라 되돌릴 수 없다.
+  ///
+  /// **뒤에서 맞춰 비교하므로 짧은 입력은 "뒤 N자리" 로 읽힌다.** 앞자리만
+  /// 네 자리 치면(`5531`) 그 카드가 안 걸린다 — 영수증·OCR 은 번호를 통째로
+  /// 주고, 사람이 손으로 칠 때도 보이는 것은 뒤쪽이라 이 가정이 맞다.
+  ///
+  /// 그래서 **뒤쪽의 비숫자를 떨어내지 않는다.** 카드번호 칸에 메모가 붙어
+  /// 있으면(`5531-46**-****-3927 (법인)`) 자리가 밀려 그 카드를 못 찾는다 —
+  /// 예전처럼 "맨 뒤 숫자 4자리" 만 봤다면 넘어갔을 경우다. 그렇다고 떨어내면
+  /// 영수증에 실제로 찍히는 `766*` 의 마지막 자리가 사라져서 **자리 수가
+  /// 어긋나고, 그쪽은 틀린 카드를 고르게 된다.** 둘 중에는 못 찾는 쪽이 낫다 —
+  /// 못 찾으면 화면이 "번호가 맞는지 확인해주세요" 라고 말하고 분류는
+  /// 기본값으로 남지만, 틀린 카드를 고르면 **틀린 예산**이 append-only
+  /// 시트에 들어간다.
   static List<String?>? slotsOf(String raw) {
     final s = raw.trim().replaceAll(_separator, '');
     if (s.length < 4) return null;
     final out = <String?>[];
-    for (final ch in s.substring(s.length - 4).split('')) {
+    for (final ch in s.split('')) {
       out.add(_isDigit(ch) ? ch : null);
     }
     return out;
   }
 
-  /// 자리들을 표기로 되돌린다 — 가려진 자리는 `*`. 저장·문구에 이 형태를 쓴다.
+  /// 자리들을 표기로 되돌린다 — 가려진 자리는 `*`, **4자리마다 `-`**.
+  /// 저장·문구에 이 형태를 쓴다(`5531-46**-****-3927`).
   ///
-  /// 원문이 `766x` 든 `766#` 든 `766*` 하나로 모은다. 같은 카드가 영수증마다
-  /// 다른 문자로 시트에 들어가면 나중에 사람이 훑을 때 다른 카드로 보인다.
-  static String patternOf(List<String?> slots) =>
-      slots.map((e) => e ?? '*').join();
+  /// 원문이 `5531 46xx xxxx 766x` 든 `5531.46##.####.766#` 든 하나로 모은다.
+  /// 같은 카드가 영수증마다 다른 모양으로 시트에 들어가면 나중에 사람이
+  /// 훑을 때 다른 카드로 보인다.
+  ///
+  /// 4로 안 나눠지는 길이(15자리 Amex 등)는 **앞에서부터** 넷씩 묶고 남는
+  /// 것을 끝에 붙인다. 카드사가 인쇄하는 모양(4-6-5)과는 다르지만, 자리 수가
+  /// 몇이든 같은 규칙이라 같은 카드가 두 가지로 보이지 않는다.
+  static String patternOf(List<String?> slots) {
+    final out = StringBuffer();
+    for (var i = 0; i < slots.length; i++) {
+      if (i > 0 && i % 4 == 0) out.write('-');
+      out.write(slots[i] ?? '*');
+    }
+    return out.toString();
+  }
 
-  /// 네 자리가 전부 숫자인가. 참이면 완전일치 조회와 같다.
+  /// 표기를 정규화한다 — [slotsOf] 로 자리를 뽑아 [patternOf] 로 되돌린다.
+  ///
+  /// 자리를 못 뽑거나(`392`) 아는 자리가 하나도 없으면(`****`·`카드없음`)
+  /// null 이다. **그때 원본을 버릴지는 호출부가 정한다** — OCR 이 `****` 를
+  /// 읽어온 것은 "카드 결제인데 번호가 전부 가려졌다" 는 뜻이라, 빈 칸으로
+  /// 만들면 "카드 결제가 아니다" 와 구분되지 않는다.
+  ///
+  /// OCR 결과와 사용자 입력을 **들어오는 자리에서** 한 번 모아둔다.
+  /// 나중에 모으면 `5531 46xx xxxx 3927` 로 읽은 값과 정규화한 값이 달라서,
+  /// 사용자가 아무것도 안 고쳤는데 "…로 인식했습니다" 가 뜬다.
+  static String? normalized(String? raw) {
+    if (raw == null) return null;
+    final slots = slotsOf(raw);
+    if (slots == null || !hasAnyDigit(slots)) return null;
+    return patternOf(slots);
+  }
+
+  /// 자리가 전부 숫자인가. 참이면 가려진 자리가 없다는 뜻이다 —
+  /// 카드 영수증은 대개 가려서 인쇄하므로 흔한 경우는 아니다.
   static bool isExact(List<String?> slots) => slots.every((e) => e != null);
 
   /// 아는 자리가 하나라도 있는가. 전부 가려졌으면(`****`·`카드없음`)

@@ -306,10 +306,10 @@ screen('09-amount', '검토 폼 ③ — 금액. 부가세는 자동 계산하지
       style="border:1px solid #D9BE7A;color:#7A5200">1.1로 나누기</span></div></div>
   <div class="sec">결제수단</div>
   <div class="card">
-    <div class="row"><span class="lb">카드번호</span><span class="vl">•••• 1234</span></div>
+    <div class="row"><span class="lb">카드번호</span><span class="vl">5531-46**-****-1234</span></div>
     <div class="row"><span class="lb">비고</span><span class="vl ph">선택 입력</span></div>
   </div>
-  <div class="note">카드번호는 뒤 4자리만 저장합니다. 앞자리는 인식 즉시 버립니다.</div>
+  <div class="note">카드번호는 영수증에 인쇄된 대로 저장합니다. 가려진 자리는 그대로 둡니다.</div>
   <div style="height:10px"></div>
   <div class="btn">제출</div>
 </div>''')

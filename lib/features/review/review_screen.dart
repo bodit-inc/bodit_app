@@ -262,10 +262,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       // 사용자가 알 길이 없었다. 지금은 그게 분류까지 끌고 간다.
                       InlineEditRow(
                         label: '카드번호',
-                        certainty: draft.certaintyOf('card_last4'),
-                        value: draft.cardLast4,
+                        certainty: draft.certaintyOf('card_number'),
+                        value: draft.cardNumber,
                         placeholder: '카드 결제가 아니면 비워둡니다',
-                        hintText: '예: 3927 · 가려진 자리는 766* 처럼',
+                        // **번호 전체를 보이는 대로** 치게 안내한다 — 앞자리를
+                        // 같이 대조하면 뒤 4자리가 겹치는 카드도 갈린다.
+                        // 뒤 4자리만 찍힌 영수증도 있으니 그 예도 같이 둔다.
+                        hintText: '예: 5531-46**-****-3927 · 뒤 4자리만 보이면 3927',
                         // **숫자 키패드를 쓰지 않는다.** 영수증에 `766*` 처럼
                         // 가려진 자리가 찍혀 있으면 보이는 대로 입력해야 앱이
                         // 후보를 좁히는데, 숫자 키패드에는 `*` 가 없어서
@@ -275,16 +278,16 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         // 숫자 하나 틀린 분류가 그대로 남는다.
                         onSubmit: (v) => ref
                             .read(reviewControllerProvider.notifier)
-                            .setCardLast4(v),
+                            .setCardNumber(v),
                       ),
-                      // 되돌리기도 `setCardLast4` 를 탄다. 숫자 하나가 바뀌면
+                      // 되돌리기도 `setCardNumber` 를 탄다. 숫자 하나가 바뀌면
                       // 분류가 통째로 달라지므로 값만 바꿔선 안 된다.
-                      if (draft.cardLast4OcrConflict != null)
+                      if (draft.cardNumberOcrConflict != null)
                         OcrConflictNote(
-                          ocrValue: draft.cardLast4OcrConflict!,
+                          ocrValue: draft.cardNumberOcrConflict!,
                           onRevert: () => ref
                               .read(reviewControllerProvider.notifier)
-                              .setCardLast4(draft.cardLast4OcrConflict!),
+                              .setCardNumber(draft.cardNumberOcrConflict!),
                         ),
 
                       const RowDivider(),
@@ -564,7 +567,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                       if (draft.classReason != null)
                                         SuggestReason(draft.classReason!),
 
-                                      // 뒤 4자리가 겹쳤을 때의 후보. **자동으로 안 고른다** —
+                                      // 카드번호가 겹쳤을 때의 후보. **자동으로 안 고른다** —
                                       // 조용히 첫 번째를 쓰면 절반이 틀린 예산에 잡힌다.
                                       if (draft
                                           .classSuggestions
