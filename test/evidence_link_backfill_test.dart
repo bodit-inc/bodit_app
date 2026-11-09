@@ -143,7 +143,7 @@ void main() {
         vendor: '영풍문고',
         classCode: 44,
         className: '딥테크(카드)',
-        cardLast4: '3927',
+        cardNumber: '5531-46**-****-3927',
         totalAmount: 19000,
         supplyAmount: 19000,
         vatAmount: 0,

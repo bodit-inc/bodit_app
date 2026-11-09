@@ -40,7 +40,10 @@ abstract class EntryDraft with _$EntryDraft {
     String? expenseCategory,
     int? classCode,
     String? className,
-    String? cardLast4,
+
+    /// 카드번호 **전체**, `5531-46**-****-3927` 꼴로 정규화한 값.
+    /// 가려진 자리는 `*` 그대로 둔다 — 영수증에 그렇게 인쇄돼 있다.
+    String? cardNumber,
 
     /// ISO 4217 코드. 금액 세 칸은 이 통화의 **최소 단위**로 들고 있다.
     @Default('KRW') String currency,
@@ -72,7 +75,7 @@ abstract class EntryDraft with _$EntryDraft {
     /// 한 줄에 합치면 어느 쪽이 추측이고 어느 쪽이 사실인지 섞인다.
     String? classReason,
 
-    /// 뒤 4자리가 겹쳐서 분류를 못 정했을 때의 후보들.
+    /// 카드번호가 겹쳐서 분류를 못 정했을 때의 후보들.
     ///
     /// **비어 있지 않으면 분류를 자동으로 채우지 않았다는 뜻이다.**
     /// 조용히 첫 번째를 고르면 겹치는 순간부터 절반이 틀린 예산에 잡힌다.
@@ -104,7 +107,7 @@ abstract class EntryDraft with _$EntryDraft {
     /// 1등은 [expenseCategory] 에 이미 채워져 있다. 이 목록이 **둘 이상이면
     /// 이력이 갈렸다는 뜻**이고, 그때는 나머지도 보여준다 — 1등만 보여주면
     /// 사용자는 다른 선택이 있었다는 사실조차 모른 채 추천을 제출한다.
-    /// 분류 후보([classSuggestions])와 성격이 다르다: 그쪽은 뒤 4자리가
+    /// 분류 후보([classSuggestions])와 성격이 다르다: 그쪽은 카드번호가
     /// 겹쳐서 **정하지 못한** 것이고, 이쪽은 정했지만 **갈린** 것이다.
     @Default(<CategoryTally>[]) List<CategoryTally> categorySuggestions,
 
@@ -150,7 +153,7 @@ abstract class EntryDraft with _$EntryDraft {
       expenseCategory: e.expenseCategory,
       classCode: e.classCode,
       className: e.className,
-      cardLast4: e.cardLast4,
+      cardNumber: e.cardNumber,
       currency: e.currency,
       totalAmount: e.totalAmount,
       supplyAmount: e.supplyAmount,
@@ -218,10 +221,10 @@ abstract class EntryDraft with _$EntryDraft {
   String? get descriptionOcrConflict =>
       _conflict(ocrOriginal?.description, description);
 
-  /// 카드번호. 앱이 가려진 자리를 좁혀 실제 번호로 바꾼 경우는 **고친 것이
+  /// 카드번호. 앱이 가려진 자리를 카드 시트로 채운 경우는 **고친 것이
   /// 아니다** — 그때는 `applyCardClass` 가 원본도 같이 갱신한다.
-  String? get cardLast4OcrConflict =>
-      _conflict(ocrOriginal?.cardLast4, cardLast4);
+  String? get cardNumberOcrConflict =>
+      _conflict(ocrOriginal?.cardNumber, cardNumber);
 
   int? get totalAmountOcrConflict =>
       _conflict(ocrOriginal?.totalAmount, totalAmount);
@@ -231,7 +234,7 @@ abstract class EntryDraft with _$EntryDraft {
       belongDateOcrConflict != null ||
       vendorOcrConflict != null ||
       descriptionOcrConflict != null ||
-      cardLast4OcrConflict != null ||
+      cardNumberOcrConflict != null ||
       totalAmountOcrConflict != null;
 
   static T? _conflict<T>(T? ocr, T? now) {
@@ -340,7 +343,7 @@ abstract class EntryDraft with _$EntryDraft {
       vendor: vendor!,
       classCode: classCode!,
       className: className ?? '',
-      cardLast4: cardLast4 ?? '',
+      cardNumber: cardNumber ?? '',
       currency: currency,
       totalAmount: total,
       // 공급가액이 안 찍혀 있으면 총액을 그대로 둔다. 1.1로 나누지 않는다 —

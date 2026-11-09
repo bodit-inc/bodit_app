@@ -34,26 +34,40 @@ List<Object?> past(Object code, String card) => <Object?>[
 const _masked = '5531-46**-****-3927';
 
 void main() {
-  group('뒤 4자리 뽑기', () {
-    test('시트의 마스킹 표기에서 뽑는다', () {
-      expect(CardDirectory.last4Of(_masked), '3927');
+  group('번호 표기 모으기', () {
+    test('시트의 마스킹 표기는 그대로 들고 있는다', () {
+      // 이미 우리 규칙과 같은 모양이다. 자리를 버리지 않는다 —
+      // 앞자리가 뒤 4자리 겹침을 가르는 근거다.
+      expect(CardDirectory.normalized(_masked), _masked);
     });
 
-    test('구분자가 바뀌어도 뽑는다 — 저쪽 시트라 표기를 못 고정한다', () {
-      expect(CardDirectory.last4Of('5531 46** **** 9832'), '9832');
-      expect(CardDirectory.last4Of('5531·46**·****·7669'), '7669');
-      expect(CardDirectory.last4Of('5531460000005982'), '5982');
+    test('구분자·마스크 문자가 달라도 한 모양으로 모은다', () {
+      // 저쪽 시트라 표기를 못 고정하고, 영수증도 인쇄가 제각각이다.
+      // 같은 카드가 두 모양으로 시트에 들어가면 사람이 다른 카드로 읽는다.
+      expect(CardDirectory.normalized('5531 46** **** 9832'), '5531-46**-****-9832');
+      expect(CardDirectory.normalized('5531·46xx·xxxx·7669'), '5531-46**-****-7669');
+      expect(CardDirectory.normalized('5531460000005982'), '5531-4600-0000-5982');
     });
 
-    test('사용자가 네 자리만 쳐도 같은 규칙으로 걸린다', () {
-      expect(CardDirectory.last4Of('3927'), '3927');
-      expect(CardDirectory.last4Of(' 3927 '), '3927');
+    test('뒤 4자리만 찍힌 영수증도 그대로 받는다', () {
+      // 대조는 뒤에서 맞추므로 짧아도 걸린다.
+      expect(CardDirectory.normalized('3927'), '3927');
+      expect(CardDirectory.normalized(' 3927 '), '3927');
     });
 
-    test('숫자가 모자라면 못 뽑는다 — 억지로 맞추지 않는다', () {
-      expect(CardDirectory.last4Of(''), isNull);
-      expect(CardDirectory.last4Of('392'), isNull);
-      expect(CardDirectory.last4Of('카드없음'), isNull);
+    test('4로 안 나눠지는 자리 수는 남는 것을 끝에 붙인다', () {
+      // 15자리(Amex)는 카드사 인쇄가 4-6-5 지만, 자리 수마다 규칙을 두면
+      // 같은 카드가 두 모양이 된다. 규칙 하나로 모은다.
+      expect(CardDirectory.normalized('378282246310005'), '3782-8224-6310-005');
+    });
+
+    test('쓸 수 없는 값은 null — 억지로 맞추지 않는다', () {
+      expect(CardDirectory.normalized(null), isNull);
+      expect(CardDirectory.normalized(''), isNull);
+      expect(CardDirectory.normalized('392'), isNull);
+      // 네 자리지만 아는 자리가 없다 — 모든 카드가 걸린다.
+      expect(CardDirectory.normalized('****'), isNull);
+      expect(CardDirectory.normalized('카드없음'), isNull);
     });
   });
 
@@ -114,14 +128,37 @@ void main() {
     });
   });
 
-  group('뒤 4자리는 열쇠가 아니다', () {
-    test('겹치면 둘 다 돌려준다', () {
-      // 지금은 21장이 전부 다르지만 카드가 늘면 언제든 겹친다.
+  group('뒤 4자리만으로는 갈리지 않는다', () {
+    test('뒤 4자리로 조회하면 겹치는 두 장이 다 걸린다', () {
       final d = CardDirectory.fromRows([
         row(_masked, 3),
         row('9410-19**-****-3927', 24),
       ]);
       expect(d.findActive('3927'), hasLength(2));
+    });
+
+    test('번호 전체로 조회하면 앞자리가 갈라준다', () {
+      // **이게 전체 번호를 읽는 이유다.** 앞자리는 영수증에 인쇄돼 있었는데
+      // 예전엔 버렸고, 그래서 사용자에게 어느 카드인지 되물었다.
+      final d = CardDirectory.fromRows([
+        row(_masked, 3),
+        row('9410-19**-****-3927', 24),
+      ]);
+      expect(d.findActive(_masked), hasLength(1));
+      expect(d.findActive(_masked).single.classCode, 3);
+      expect(d.findActive('9410-19**-****-3927').single.classCode, 24);
+    });
+
+    test('가려진 자리는 어긋남이 아니다 — 양쪽이 다른 자리를 가린다', () {
+      final d = CardDirectory.fromRows([row(_masked, 3)]);
+      // 영수증이 앞자리만 보여주고 뒤를 가린 경우다. 아는 자리로 걸린다 —
+      // 가려진 자리는 "어긋났다" 고 말할 근거가 없다.
+      expect(d.findActive('5531-46**-****-****'), hasLength(1));
+      expect(d.findActive('5531-46**-****-39**'), hasLength(1));
+      // 아는 자리가 어긋나면 다른 카드다.
+      expect(d.findActive('9410-19**-****-3927'), isEmpty);
+      // 전부 가려졌으면 조회 자체를 하지 않는다 — 모든 카드가 걸린다.
+      expect(d.findActive('****-****-****-****'), isEmpty);
     });
   });
 
@@ -159,8 +196,8 @@ void main() {
       row('4373-68**-****-2222', 99),
     ]);
 
-    EntryDraft draftWith(String? last4) =>
-        EntryDraft(evidencePath: '/tmp/x.jpg', cardLast4: last4);
+    EntryDraft draftWith(String? number) =>
+        EntryDraft(evidencePath: '/tmp/x.jpg', cardNumber: number);
 
     test('한 장이면 분류를 채우고 근거를 남긴다', () {
       final d = ReviewController.applyCardClass(
@@ -180,13 +217,13 @@ void main() {
       for (final v in <String?>[null, '', '   ']) {
         final d = ReviewController.applyCardClass(draftWith(v), cards, master);
         expect(d.classCode, ReviewController.defaultClassCode, reason: '$v');
-        expect(d.className, '법인(신용)', reason: 'cardLast4=$v');
-        expect(d.cardNotice, isNull, reason: 'cardLast4=$v');
+        expect(d.className, '법인(신용)', reason: 'cardNumber=$v');
+        expect(d.cardNotice, isNull, reason: 'cardNumber=$v');
         // 기본값이라는 것은 조용한 한 줄로 말한다.
-        expect(d.classReason, contains('기본값'), reason: 'cardLast4=$v');
+        expect(d.classReason, contains('기본값'), reason: 'cardNumber=$v');
         // **카드가 정한 사실이 아니다.** 여기에 넣으면 사용자가 다른 분류로
         // 고칠 때 "카드가 정한 분류와 다르다" 경고가 뜬다.
-        expect(d.cardClass, isNull, reason: 'cardLast4=$v');
+        expect(d.cardClass, isNull, reason: 'cardNumber=$v');
       }
     });
 
@@ -246,7 +283,7 @@ void main() {
       final picked = draftWith('3356')
           .copyWith(classCode: 32, className: '수출바우처');
       final after = ReviewController.applyCardClass(
-        picked.copyWith(cardLast4: '0000'),
+        picked.copyWith(cardNumber: '0000'),
         cards,
         master,
       );
@@ -271,7 +308,7 @@ void main() {
         master,
       );
       final second = ReviewController.applyCardClass(
-        first.copyWith(cardLast4: '0000'),
+        first.copyWith(cardNumber: '0000'),
         cards,
         master,
       );
@@ -306,25 +343,22 @@ void main() {
       }
     });
 
-    test('구분자는 지우고 자리를 맞춘다', () {
+    test('구분자는 지우고 자리를 맞춘다 — 자리를 자르지 않는다', () {
       // `-` 와 `*` 는 둘 다 숫자가 아니지만 하나는 구분자다.
+      // **앞자리를 버리지 않는다** — 대조의 근거가 거기 있다.
       expect(CardDirectory.slotsOf('5531-46**-****-766*'), <String?>[
-        '7',
-        '6',
-        '6',
-        null,
+        '5', '5', '3', '1',
+        '4', '6', null, null,
+        null, null, null, null,
+        '7', '6', '6', null,
       ]);
-      expect(CardDirectory.slotsOf('5531 46** **** 76*9'), <String?>[
-        '7',
-        '6',
-        null,
-        '9',
-      ]);
+      expect(CardDirectory.slotsOf('5531 46** **** 76*9')?.length, 16);
     });
 
     test('네 자리를 못 채우면 추측하지 않는다', () {
-      // `66*` 가 `?66*` 인지 `66*?` 인지 알 수 없다. 한쪽으로 가정하면
-      // 틀린 카드를 고르고 분류가 통째로 틀린다.
+      // 대조는 뒤에서 맞추므로 `66*` 는 "뒤 세 자리" 로 읽히는데, 뒤 세
+      // 자리만 맞는 카드는 여러 장이고 그중 하나를 고르면 분류가 통째로
+      // 틀린다. 시트는 append-only 라 되돌릴 수 없다.
       expect(CardDirectory.slotsOf('66*'), isNull);
       expect(CardDirectory.slotsOf('*'), isNull);
       expect(CardDirectory.slotsOf(''), isNull);
@@ -338,18 +372,40 @@ void main() {
       expect(CardDirectory.hasAnyDigit(korean), isFalse);
     });
 
-    test('전부 숫자면 완전일치다', () {
+    test('가려진 자리가 하나도 없으면 완전일치다', () {
       final slots = CardDirectory.slotsOf('3927')!;
       expect(CardDirectory.isExact(slots), isTrue);
       expect(CardDirectory.hasAnyDigit(slots), isTrue);
       expect(CardDirectory.isExact(CardDirectory.slotsOf('392*')!), isFalse);
+      // 카드 영수증은 대개 가려서 인쇄한다 — 전체 번호는 완전일치가 아니다.
+      expect(CardDirectory.isExact(CardDirectory.slotsOf(_masked)!), isFalse);
     });
 
-    test('표기를 하나로 모은다', () {
+    test('표기를 하나로 모으고 4자리마다 끊는다', () {
       // 같은 카드가 영수증마다 다른 문자로 시트에 들어가면 안 된다.
       expect(CardDirectory.patternOf(CardDirectory.slotsOf('766x')!), '766*');
       expect(CardDirectory.patternOf(CardDirectory.slotsOf('766#')!), '766*');
       expect(CardDirectory.patternOf(CardDirectory.slotsOf('3927')!), '3927');
+      expect(
+        CardDirectory.patternOf(CardDirectory.slotsOf('5531 46xx xxxx 3927')!),
+        _masked,
+      );
+    });
+
+    test('아는 자리를 겹쳐 모은다 — 양쪽이 다른 자리를 가린다', () {
+      // 영수증은 `766*`, 카드 시트는 `5525-76**-****-7662` 를 안다.
+      // 한쪽만 적으면 아는 것을 버린다.
+      final merged = CardDirectory.merge(
+        CardDirectory.slotsOf('766*')!,
+        CardDirectory.slotsOf('5525-76**-****-7662')!,
+      );
+      expect(CardDirectory.patternOf(merged), '5525-76**-****-7662');
+      // 뒤에서 맞춘다 — 짧은 쪽의 자리가 뒤로 간다.
+      final tail = CardDirectory.merge(
+        CardDirectory.slotsOf('1234')!,
+        CardDirectory.slotsOf('5525-76**-****-****')!,
+      );
+      expect(CardDirectory.patternOf(tail), '5525-76**-****-1234');
     });
 
     test('후보를 활성 먼저, 번호순으로 돌려준다', () {
@@ -361,7 +417,11 @@ void main() {
         row('9410-19**-****-3356', 24),
       ]);
       final hits = cards.findByPattern(CardDirectory.slotsOf('766*')!);
-      expect(hits.map((c) => c.last4), <String>['7661', '7663', '7662']);
+      expect(hits.map((c) => c.number), <String>[
+        '5525-76**-****-7661',
+        '5525-76**-****-7663',
+        '5525-76**-****-7662',
+      ]);
       expect(hits.last.active, isFalse);
     });
 
@@ -373,17 +433,21 @@ void main() {
       ]);
       final hits = cards.findByPattern(CardDirectory.slotsOf('7***')!);
       expect(hits.length, 2);
-      expect(hits.every((c) => c.last4.startsWith('7')), isTrue);
+      // 조회값이 네 자리라 **뒤 네 자리**와 대조된다.
+      expect(
+        hits.every((c) => c.number.split('-').last.startsWith('7')),
+        isTrue,
+      );
     });
   });
 
   group('가려진 자리로 분류 정하기', () {
     const master = {3: '법인(신용)', 24: 'CTS(체크)', 44: '글로벌팁스(카드)'};
 
-    EntryDraft draftWith(String? last4) =>
-        EntryDraft(evidencePath: '/tmp/x.jpg', cardLast4: last4);
+    EntryDraft draftWith(String? number) =>
+        EntryDraft(evidencePath: '/tmp/x.jpg', cardNumber: number);
 
-    test('후보가 한 장이면 실제 뒤 4자리로 바꿔 넣는다', () {
+    test('후보가 한 장이면 카드 시트가 아는 자리를 겹쳐 넣는다', () {
       // 패턴이 그대로 시트에 들어가면 회계 담당자가 카드를 특정할 수 없다.
       final cards = CardDirectory.fromRows(<List<Object?>>[
         row('5525-76**-****-7662', 44),
@@ -394,9 +458,9 @@ void main() {
         cards,
         master,
       );
-      expect(d.cardLast4, '7662');
+      expect(d.cardNumber, '5525-76**-****-7662');
       expect(d.classCode, 44);
-      // 추측이 섞였다는 것이 보여야 한다.
+      // 영수증에 없던 자리를 색인으로 메웠으니 추측이 섞였다 — 보여야 한다.
       expect(d.classReason, contains('766*'));
       expect(d.classReason, contains('추정'));
       expect(d.cardNotice, isNull);
@@ -415,8 +479,8 @@ void main() {
       );
       expect(d.classCode, 44);
       expect(d.cardNotice, isNull);
-      // 어느 카드인지는 모르므로 번호는 패턴을 그대로 남긴다.
-      expect(d.cardLast4, '766*');
+      // 어느 카드인지는 모르므로 영수증에서 읽은 것만 남긴다.
+      expect(d.cardNumber, '766*');
       expect(d.classReason, contains('후보 2장'));
     });
 
@@ -505,8 +569,9 @@ void main() {
       }
     });
 
-    test('완전일치는 문구가 예전과 같다', () {
-      // 가려진 자리가 없는 흔한 경우의 말투를 바꾸지 않았다.
+    test('뒤 4자리만 읽은 건은 앞자리를 메웠다고 적는다', () {
+      // 영수증에 뒤 4자리만 찍혀 있으면 앞자리는 **우리가 못 본 자리**다.
+      // 색인으로 메운 것이므로 그렇게 말한다.
       final cards = CardDirectory.fromRows(<List<Object?>>[
         row('9410-19**-****-3356', 24),
       ]);
@@ -515,7 +580,21 @@ void main() {
         cards,
         master,
       );
-      expect(d.classReason, '카드 3356 · CTS(체크)');
+      expect(d.cardNumber, '9410-19**-****-3356');
+      expect(d.classReason, '카드 9410-19**-****-3356 · CTS(체크) (3356 로 추정)');
+    });
+
+    test('영수증이 번호를 통째로 찍어줬으면 추정이 아니다', () {
+      // **경고는 드물어야 읽힌다.** 카드 시트가 채워준 자리가 없으면
+      // (둘이 같은 자리를 가렸다) 확정 매칭과 같은 말투로 둔다.
+      final cards = CardDirectory.fromRows(<List<Object?>>[row(_masked, 3)]);
+      final d = ReviewController.applyCardClass(
+        draftWith(_masked),
+        cards,
+        master,
+      );
+      expect(d.cardNumber, _masked);
+      expect(d.classReason, '카드 $_masked · 법인(신용)');
       expect(d.classReason, isNot(contains('추정')));
     });
   });
@@ -523,8 +602,8 @@ void main() {
   group('카드가 정한 분류를 기억한다', () {
     const master = {3: '법인(신용)', 24: 'CTS(체크)', 44: '글로벌팁스(카드)'};
 
-    EntryDraft draftWith(String? last4) =>
-        EntryDraft(evidencePath: '/tmp/x.jpg', cardLast4: last4);
+    EntryDraft draftWith(String? number) =>
+        EntryDraft(evidencePath: '/tmp/x.jpg', cardNumber: number);
 
     test('확정하면 cardClass 에 코드와 이름을 같이 남긴다', () {
       // 나중에 사용자가 다른 분류로 고쳤는지 비교하려면 원래 값이 있어야 한다.
@@ -552,7 +631,7 @@ void main() {
         master,
       );
       final second = ReviewController.applyCardClass(
-        first.copyWith(cardLast4: '0000'),
+        first.copyWith(cardNumber: '0000'),
         cards,
         master,
       );
@@ -568,13 +647,13 @@ void main() {
       ]);
       final d = ReviewController.applyCardClass(
         draftWith('766*')
-            .copyWith(ocrOriginal: const OcrOriginal(cardLast4: '766*')),
+            .copyWith(ocrOriginal: const OcrOriginal(cardNumber: '766*')),
         cards,
         master,
       );
-      expect(d.cardLast4, '7662');
-      expect(d.ocrOriginal?.cardLast4, '7662');
-      expect(d.cardLast4OcrConflict, isNull);
+      expect(d.cardNumber, '5525-76**-****-7662');
+      expect(d.ocrOriginal?.cardNumber, '5525-76**-****-7662');
+      expect(d.cardNumberOcrConflict, isNull);
     });
 
     test('좁히지 못했으면 원본을 건드리지 않는다', () {
@@ -586,12 +665,12 @@ void main() {
       ]);
       final d = ReviewController.applyCardClass(
         draftWith('766*')
-            .copyWith(ocrOriginal: const OcrOriginal(cardLast4: '766*')),
+            .copyWith(ocrOriginal: const OcrOriginal(cardNumber: '766*')),
         cards,
         master,
       );
-      expect(d.cardLast4, '766*');
-      expect(d.ocrOriginal?.cardLast4, '766*');
+      expect(d.cardNumber, '766*');
+      expect(d.ocrOriginal?.cardNumber, '766*');
     });
 
     test('사용자가 다른 분류로 고치면 카드와 다르다고 본다', () {
@@ -624,7 +703,35 @@ void main() {
       expect(CardDirectory.compatible(slots('*66*'), slots('7663')), isTrue);
     });
 
+    test('길이가 달라도 뒤에서 맞춰 겹치는 구간만 본다', () {
+      // 매입내역에는 뒤 4자리만 적힌 과거 행이 있고, 영수증은 번호를
+      // 통째로 찍어준다. 뒤에서 맞추지 않으면 둘이 영원히 안 걸린다.
+      expect(
+        CardDirectory.compatible(slots('7662'), slots('5525-76**-****-7662')),
+        isTrue,
+      );
+      expect(
+        CardDirectory.compatible(slots('766*'), slots('5525-76**-****-7662')),
+        isTrue,
+      );
+      // 겹치는 구간에서 어긋나면 다른 카드다.
+      expect(
+        CardDirectory.compatible(slots('7663'), slots('5525-76**-****-7662')),
+        isFalse,
+      );
+      // 짧은 쪽이 모르는 앞자리는 가려진 자리와 같다 — 어긋남이 아니다.
+      expect(
+        CardDirectory.compatible(
+          slots('9410-19**-****-7662'),
+          slots('7662'),
+        ),
+        isTrue,
+      );
+    });
+
     test('네 자리가 아니면 비교하지 않는다', () {
+      // 뒤 두 자리만 맞는 카드는 여러 장이다. 조용히 아무 카드나 걸리는
+      // 것보다 false 가 낫다.
       expect(
         CardDirectory.compatible(<String?>['7', '6'], slots('7662')),
         isFalse,
@@ -698,6 +805,25 @@ void main() {
       ]);
     });
 
+    test('뒤 4자리만 적힌 옛 행도 전체 번호 조회에 걸린다', () {
+      // 카드번호 칸이 전체 번호로 바뀌기 전에 들어간 행이 시트에 그대로
+      // 남아 있다. 못 걸리면 그 카드의 이력이 하루아침에 사라진다.
+      final h = CardClassHistory.fromRows(<List<Object?>>[
+        past(44, '7662'),
+        past(44, '5525-76**-****-7662'),
+      ]);
+      expect(
+        h.countsFor(CardDirectory.slotsOf('5525-76**-****-7662')!),
+        <int, int>{44: 2},
+      );
+      // 앞자리가 어긋나는 행은 안 걸린다 — 전체로 보면 다른 카드다.
+      expect(
+        h.countsFor(CardDirectory.slotsOf('9410-19**-****-7662')!),
+        <int, int>{44: 1},
+        reason: '뒤 4자리만 적힌 옛 행은 앞자리를 모르므로 여전히 걸린다',
+      );
+    });
+
     test('빈 색인은 아무것도 돌려주지 않는다', () {
       expect(
         CardClassHistory.empty.countsFor(CardDirectory.slotsOf('7662')!),
@@ -714,8 +840,8 @@ void main() {
       row('9410-19**-****-3356', 24),
     ]);
 
-    EntryDraft draftWith(String? last4) =>
-        EntryDraft(evidencePath: '/tmp/x.jpg', cardLast4: last4);
+    EntryDraft draftWith(String? number) =>
+        EntryDraft(evidencePath: '/tmp/x.jpg', cardNumber: number);
 
     test('과거가 한 분류로 모이면 채우고 추정이라고 적는다', () {
       final history = CardClassHistory.fromRows(<List<Object?>>[
@@ -753,7 +879,7 @@ void main() {
       expect(d.copyWith(classCode: 3).classDiffersFromCard, isFalse);
     });
 
-    test('뒤 4자리를 좁혀 적지 않는다 — 실제 번호를 아는 사람이 없다', () {
+    test('번호를 좁혀 적지 않는다 — 실제 번호를 아는 사람이 없다', () {
       // 카드보유내역에 없는 카드라 `766*` 가 어느 번호인지 알 길이 없다.
       final history = CardClassHistory.fromRows(<List<Object?>>[
         past(44, '7662'),
@@ -765,7 +891,7 @@ void main() {
         history: history,
       );
       expect(d.classCode, 44);
-      expect(d.cardLast4, '766*');
+      expect(d.cardNumber, '766*');
       expect(d.classReason, contains('766*'));
     });
 
@@ -864,7 +990,8 @@ void main() {
         history: history,
       );
       expect(d.classCode, 24);
-      expect(d.classReason, '카드 3356 · CTS(체크)');
+      // 뒤 4자리만 읽은 건이라 앞자리는 색인이 메웠다("추정").
+      expect(d.classReason, '카드 9410-19**-****-3356 · CTS(체크) (3356 로 추정)');
       expect(d.cardClass?.code, 24);
     });
   });

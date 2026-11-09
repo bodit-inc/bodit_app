@@ -31,8 +31,9 @@ abstract class OcrOriginal with _$OcrOriginal {
     String? vendor,
     String? description,
 
-    /// 뒤 4자리. 가려진 자리가 있으면 `766*` 처럼 들어온다.
-    String? cardLast4,
+    /// 카드번호 전체. 가려진 자리가 있으면 `5531-46**-****-3927` 처럼
+    /// 들어온다 — 영수증에 인쇄된 대로다.
+    String? cardNumber,
 
     /// 통화의 최소 단위(원은 원, 달러는 센트) — `EntryDraft.totalAmount` 와 같다.
     int? totalAmount,

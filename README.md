@@ -126,7 +126,7 @@ make test
 선택이 틀린 것이다.
 
 나머지는 깨지면 데이터가 상하는 자리들이다 — 파일명 치환(`filename_test`),
-금액·통화(`currency_test` · `korean_amount_test`), 카드 뒤 4자리 매칭
+금액·통화(`currency_test` · `korean_amount_test`), 카드번호 매칭
 (`card_directory_test`), 총금액 수정 시 공급가액·부가세 연동(`entry_draft_test`).
 
 ## 구조

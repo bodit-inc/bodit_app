@@ -15,7 +15,7 @@ EntryDraft _full() => EntryDraft(
   expenseCategory: '도서인쇄비',
   classCode: 1,
   className: '법인',
-  cardLast4: '1234',
+  cardNumber: '5531-46**-****-1234',
   totalAmount: 19000,
 );
 
@@ -369,7 +369,7 @@ void main() {
         belongDate: DateTime(2026, 8, 5),
         vendor: '영풍문고',
         description: '8월 도서',
-        cardLast4: '1234',
+        cardNumber: '5531-46**-****-1234',
         totalAmount: 19000,
       ),
     );
@@ -378,7 +378,7 @@ void main() {
       final d = read();
       expect(d.vendorOcrConflict, isNull);
       expect(d.descriptionOcrConflict, isNull);
-      expect(d.cardLast4OcrConflict, isNull);
+      expect(d.cardNumberOcrConflict, isNull);
       expect(d.belongDateOcrConflict, isNull);
       expect(d.totalAmountOcrConflict, isNull);
       expect(d.hasOcrConflict, isFalse);
@@ -391,7 +391,10 @@ void main() {
         read().copyWith(description: '9월 도서').descriptionOcrConflict,
         '8월 도서',
       );
-      expect(read().copyWith(cardLast4: '5678').cardLast4OcrConflict, '1234');
+      expect(
+        read().copyWith(cardNumber: '9410-19**-****-5678').cardNumberOcrConflict,
+        '5531-46**-****-1234',
+      );
       expect(read().copyWith(totalAmount: 20000).totalAmountOcrConflict, 19000);
       expect(
         read().copyWith(belongDate: DateTime(2026, 8, 6)).belongDateOcrConflict,

@@ -60,7 +60,7 @@ class OcrResult {
     this.totalAmount,
     this.supplyAmount,
     this.vatAmount,
-    this.cardLast4,
+    this.cardNumber,
     this.vatPrinted = false,
     this.quality = ImageQuality.ok,
     this.confidence = const <String, double>{},
@@ -80,7 +80,7 @@ class OcrResult {
       totalAmount: num_(j['total_amount']),
       supplyAmount: num_(j['supply_amount']),
       vatAmount: num_(j['vat_amount']),
-      cardLast4: str(j['card_last4']),
+      cardNumber: str(j['card_number']),
       vatPrinted: j['vat_printed'] == true,
       quality: _quality(j['image_quality']),
       confidence: _confidence(j['confidence']),
@@ -115,8 +115,10 @@ class OcrResult {
   final int? supplyAmount;
   final int? vatAmount;
 
-  /// 뒤 4자리만. 프롬프트에서 앞자리를 아예 읽지 말라고 지시한다.
-  final String? cardLast4;
+  /// 카드번호 **전체**, 영수증에 인쇄된 대로. 가려진 자리는 `*` 로 들어온다
+  /// (`5531-46**-****-3927`). 앞자리를 같이 받는 이유는
+  /// `card_repository.dart` 의 "카드번호는 전체로 대조한다" 에 적어뒀다.
+  final String? cardNumber;
 
   /// 영수증에 부가세가 **인쇄돼 있었는지**. false 면 총액만 찍힌 것이므로
   /// 사용자에게 "1.1로 나누기" 를 물어본다.
@@ -126,7 +128,7 @@ class OcrResult {
   final ImageQuality quality;
 
   /// 항목별 확신도(0.0~1.0). 키는 스키마의 필드명 그대로다
-  /// (`belong_date`·`vendor`·`description`·`total_amount`·`card_last4`).
+  /// (`belong_date`·`vendor`·`description`·`total_amount`·`card_number`).
   ///
   /// **없는 키는 "모른다" 지 "확신한다" 가 아니다.** 화면이 그렇게 다룬다 —
   /// 비어 있다고 전부 초록으로 칠하면 경고가 아니라 거짓말이 된다.
@@ -176,13 +178,16 @@ class OcrService {
         'type': 'boolean',
         'description': '부가세가 영수증에 실제로 인쇄돼 있었는지',
       },
-      'card_last4': <String, Object>{
+      'card_number': <String, Object>{
         'type': <String>['string', 'null'],
         'description':
-            '카드번호 뒤 4자리만. 앞자리는 읽지 말 것. '
-            '뒤 4자리 중 가려진 자리가 있으면 **보이는 대로** 적는다("766*"·"*669"). '
-            '가려진 자리를 지어내거나 빼고 세 자리만 적지 말 것 — '
-            '자리 수가 맞아야 앱이 카드를 찾는다',
+            '카드번호 **전체**를 인쇄된 대로. 앞자리도 같이 읽는다 — '
+            '앱이 앞자리까지 대조해서 카드를 찾는다. '
+            '가려진 자리는 **보이는 대로** 적는다("5531-46**-****-3927"·"766*"). '
+            '가려진 자리를 지어내거나 빼고 적지 말 것 — '
+            '자리 수가 맞아야 앱이 카드를 찾는다. '
+            '구분자는 아무 모양이어도 된다(앱이 "-" 로 모은다). '
+            '뒤 4자리만 인쇄된 영수증이면 그 네 자리만 적는다',
       },
       'image_quality': <String, Object>{
         'type': 'object',
@@ -227,14 +232,14 @@ class OcrService {
           'vendor': <String, Object>{'type': 'number'},
           'description': <String, Object>{'type': 'number'},
           'total_amount': <String, Object>{'type': 'number'},
-          'card_last4': <String, Object>{'type': 'number'},
+          'card_number': <String, Object>{'type': 'number'},
         },
         'required': <String>[
           'belong_date',
           'vendor',
           'description',
           'total_amount',
-          'card_last4',
+          'card_number',
         ],
         'additionalProperties': false,
       },
@@ -247,7 +252,7 @@ class OcrService {
       'supply_amount',
       'vat_amount',
       'vat_printed',
-      'card_last4',
+      'card_number',
       'image_quality',
       'confidence',
     ],
@@ -261,10 +266,13 @@ class OcrService {
 - 부가세: 영수증에 적혀 있을 때만 채운다. 총액만 있으면 vat_amount 는 null,
   vat_printed 는 false 로 둔다. **총액을 1.1로 나누지 마라** — 면세 품목(도서 등)이
   있어서 틀린다.
-- 카드번호는 **뒤 4자리만** 읽는다. 앞자리는 읽지도 마라.
-  뒤 4자리에 가려진 자리가 있으면 보이는 대로 적어라 — `766*`·`*669`·`76*9`.
-  **자리 수를 맞춰라.** 가려진 자리를 빼고 `766` 이라고 적으면 앱이 카드를
-  찾지 못한다. 지어내서 채우는 것도 안 된다.
+- 카드번호는 **전체를 인쇄된 대로** 읽는다. 앞자리도 같이 읽어라 —
+  앞자리가 카드사·상품이 갈리는 자리라, 앱이 전체로 대조해 카드를 찾는다.
+  가려진 자리는 보이는 대로 적어라 — `5531-46**-****-3927`·`766*`·`76*9`.
+  **자리 수를 맞춰라.** 가려진 자리를 빼고 `5531463927` 이라고 적으면 앱이
+  카드를 찾지 못한다. 지어내서 채우는 것도 안 된다.
+  구분자는 아무 모양이어도 된다 — 앱이 `-` 로 모은다.
+  영수증에 뒤 4자리만 인쇄돼 있으면 그 네 자리만 적어라.
 - 금액은 쉼표를 빼고 정수로.
 - 읽을 수 없는 항목은 null 로 둔다. 지어내지 마라.
 - confidence 는 **읽은 글자가 맞다는 확신**이다. 값이 그럴듯한지가 아니다.

@@ -46,8 +46,16 @@ abstract class PurchaseEntry with _$PurchaseEntry implements SheetRow {
     /// 분류명. [classCode] 로 마스터에서 찾아 채운다.
     required String className,
 
-    /// 카드 뒤 4자리만. **앞자리는 OCR 결과에서도 즉시 버린다.**
-    required String cardLast4,
+    /// 카드번호 **전체**, 영수증에 인쇄된 대로(`5531-46**-****-3927`).
+    ///
+    /// 가려진 자리는 `*` 로 남는다 — 카드사가 그렇게 인쇄하므로 우리가
+    /// 풀 수 있는 자리가 아니다. 구분자는 4자리마다 `-` 로 모은다
+    /// (`CardDirectory.patternOf`).
+    ///
+    /// 뒤 4자리만 적던 칸이었다. 앞자리를 버리면 뒤 4자리가 겹치는 카드를
+    /// 가를 수 없고, 그러면 **분류를 사용자에게 되묻게 된다** —
+    /// 정작 앞자리는 영수증에 인쇄돼 있었다(`card_repository.dart`).
+    required String cardNumber,
 
     required int totalAmount,
     required int supplyAmount,
@@ -79,7 +87,23 @@ abstract class PurchaseEntry with _$PurchaseEntry implements SheetRow {
 
   const new _();
 
-  factory fromJson(Map<String, dynamic> json) => _$PurchaseEntryFromJson(json);
+  /// 큐에 저장된 JSON 에서 되살린다.
+  ///
+  /// **`cardLast4` 라는 옛 키를 같이 받는다.** 이 칸이 뒤 4자리에서 전체
+  /// 번호로 바뀌었는데, 앱을 올리는 순간 **전송 못 한 건이 기기에 남아
+  /// 있을 수 있다.** 옛 키를 무시하면 그 건은 되살릴 때 던지고
+  /// (`cardLast4` 는 required 였다) 사용자는 증빙을 처음부터 다시 올린다.
+  /// 들어온 뒤 4자리는 그대로 쓴다 — 자리 수가 짧을 뿐 틀린 값이 아니고,
+  /// 조회는 뒤에서 맞춰 비교한다(`CardDirectory.compatible`).
+  factory fromJson(Map<String, dynamic> json) =>
+      _$PurchaseEntryFromJson(_withCardNumber(json));
+
+  /// 옛 키(`cardLast4`)를 새 키로 옮긴다. 새 키가 이미 있으면 건드리지 않는다.
+  static Map<String, dynamic> _withCardNumber(Map<String, dynamic> json) {
+    final legacy = json['cardLast4'];
+    if (json['cardNumber'] != null || legacy == null) return json;
+    return <String, dynamic>{...json, 'cardNumber': legacy};
+  }
 
   /// 소속날짜에서 파생. 시트 1번 컬럼.
   int get belongYear => belongDate.year;
@@ -117,7 +141,7 @@ abstract class PurchaseEntry with _$PurchaseEntry implements SheetRow {
     vendor, //              7  업체명
     classCode, //           8  분류코드
     className, //           9  분류명
-    cardLast4, //          10  카드번호
+    cardNumber, //         10  카드번호
     _cur.toSheetValue(totalAmount), //  11  총금액
     _cur.toSheetValue(supplyAmount), // 12  공급가액
     _cur.toSheetValue(vatAmount), //    13  부가세

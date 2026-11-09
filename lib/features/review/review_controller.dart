@@ -105,7 +105,7 @@ class ReviewController extends Notifier<ReviewState> {
 
   static const _uuid = Uuid();
 
-  /// 뒤 4자리 → 카드. 분류를 정하는 근거다.
+  /// 카드번호 → 카드. 분류를 정하는 근거다.
   ///
   /// 컨트롤러가 들고 있는 이유: 사용자가 **카드번호를 고치면 분류를 다시 정해야**
   /// 하는데, 그때마다 시트를 다시 읽을 수는 없다. 한 번 읽어 세션 동안 쓴다.
@@ -223,7 +223,7 @@ class ReviewController extends Notifier<ReviewState> {
     );
   }
 
-  /// 카드 뒤 4자리로 분류를 정한다. **분류가 자동으로 채워지는 유일한 경로다.**
+  /// 카드번호로 분류를 정한다. **분류가 자동으로 채워지는 유일한 경로다.**
   ///
   /// 못 정하는 경우가 네 가지인데 **전부 다른 문구로 알린다.** 뭉뚱그려
   /// "분류를 찾지 못했습니다" 라고 하면 사용자가 뭘 해야 할지 모른다 —
@@ -268,7 +268,7 @@ class ReviewController extends Notifier<ReviewState> {
       cardClass: null,
     );
 
-    final raw = (d.cardLast4 ?? '').trim();
+    final raw = (d.cardNumber ?? '').trim();
     // 카드가 없는 증빙이다(계산서·이체확인증·현금영수증). 분류를 정할 근거가
     // 아예 없으니 기본값을 넣는다 — 예전엔 빈 칸으로 뒀고, 그래서 카드 없는
     // 건은 **전부** 사용자가 목록에서 직접 골라야 했다.
@@ -286,10 +286,12 @@ class ReviewController extends Notifier<ReviewState> {
       );
     }
 
-    // 자리 단위로 뽑는다. `766*`·`*669`·`76*9` 처럼 가려진 자리가 섞여 있어도
-    // **아는 자리만으로 후보를 좁힐 수 있다.** 네 자리를 못 채우거나 아는
-    // 자리가 하나도 없으면 멈춘다 — 그때 추측하면 틀린 카드를 고르고,
-    // 분류가 통째로 틀린 채 append-only 시트로 들어간다.
+    // 자리 단위로 뽑는다. 영수증은 번호를 통째로 찍어주면서 가운데를 가린다
+    // (`5531-46**-****-3927`). **아는 자리만으로 후보를 좁힐 수 있다** —
+    // 앞 6자리는 카드사·상품이 갈리는 자리라, 뒤 4자리가 겹치는 두 장도
+    // 저절로 갈린다. 네 자리를 못 채우거나 아는 자리가 하나도 없으면 멈춘다 —
+    // 그때 추측하면 틀린 카드를 고르고, 분류가 통째로 틀린 채 append-only
+    // 시트로 들어간다.
     final slots = CardDirectory.slotsOf(raw);
     if (slots == null || !CardDirectory.hasAnyDigit(slots)) {
       return _withDefaultClass(
@@ -298,19 +300,20 @@ class ReviewController extends Notifier<ReviewState> {
         // 보이는 자리만 입력해도 후보를 좁힐 수 있다는 것을 같이 말한다 —
         // 기본값이 채워졌다고 해서 카드 조회를 포기할 이유는 없다.
         why:
-            '카드번호 뒤 4자리를 읽지 못했습니다 — '
+            '카드번호를 읽지 못했습니다 — '
             '보이는 자리만이라도 입력하면 카드를 다시 찾아봅니다.',
       );
     }
 
-    // 표기를 하나로 모은다(`766x`·`766#` → `766*`). 이 값이 시트 카드번호
-    // 칸으로 가므로, 같은 카드가 영수증마다 다른 문자로 들어가면 안 된다.
+    // 표기를 하나로 모은다(`5531 46xx xxxx 766x` → `5531-46**-****-766*`).
+    // 이 값이 시트 카드번호 칸으로 가므로, 같은 카드가 영수증마다 다른
+    // 모양으로 들어가면 안 된다.
     final shown = CardDirectory.patternOf(slots);
     final exact = CardDirectory.isExact(slots);
-    if (shown != raw) d = d.copyWith(cardLast4: shown);
+    if (shown != raw) d = d.copyWith(cardNumber: shown);
 
-    // 문구의 주어. 완전일치면 "카드 3927", 가려진 자리가 있으면
-    // "766* 에 해당되는 카드" — 사용자가 할 일이 다르다.
+    // 문구의 주어. 가려진 자리가 없으면 "카드 3927", 있으면
+    // "5531-46**-****-3927 에 해당되는 카드" — 사용자가 할 일이 다르다.
     final subject = exact ? '카드 $shown' : '$shown 에 해당되는 카드';
 
     final hits = cards.findByPattern(slots);
@@ -381,30 +384,41 @@ class ReviewController extends Notifier<ReviewState> {
       // 시트를 읽는 이유는 분류 하나뿐이고, 그 답이 이미 정해졌으면 어느
       // 카드인지는 물을 필요가 없다.
       //
-      // 다만 한 장으로 좁혀졌을 때만 **실제 뒤 4자리를 시트에 쓴다.** 여러
-      // 장이 남았으면 어느 번호인지 모르므로 패턴을 그대로 남긴다 —
-      // 모르는 것을 아는 것처럼 적으면 회계 담당자가 카드를 잘못 짚는다.
-      final settled = active.length == 1 ? active.single.last4 : null;
+      // 다만 한 장으로 좁혀졌을 때만 **카드 시트가 아는 자리를 겹쳐 쓴다.**
+      // 영수증과 카드 시트는 서로 다른 자리를 가리므로, 둘을 겹친 것이
+      // 우리가 아는 전부다(`CardDirectory.merge`). 여러 장이 남았으면 어느
+      // 번호인지 모르므로 영수증에서 읽은 것만 남긴다 — 모르는 것을 아는
+      // 것처럼 적으면 회계 담당자가 카드를 잘못 짚는다.
+      final settled = active.length == 1
+          ? CardDirectory.patternOf(
+              CardDirectory.merge(slots, active.single.slots),
+            )
+          : null;
       return d.copyWith(
-        cardLast4: settled ?? d.cardLast4,
-        // **앱이 좁힌 것은 사용자가 고친 것이 아니다.** 원본을 그대로 두면
+        cardNumber: settled ?? d.cardNumber,
+        // **앱이 채운 것은 사용자가 고친 것이 아니다.** 원본을 그대로 두면
         // "766* 로 인식했습니다" 가 떠서, 앱이 한 일을 사용자 탓으로 돌린다.
         // 되돌리기 칩도 `766*` 를 다시 넣으려 한다.
         ocrOriginal: settled == null
             ? d.ocrOriginal
-            : d.ocrOriginal?.copyWith(cardLast4: settled),
+            : d.ocrOriginal?.copyWith(cardNumber: settled),
         classCode: only.code,
         className: only.name,
         // 사용자가 나중에 다른 분류로 고치면 이 값과 비교해 알려준다.
         cardClass: only,
         // 근거를 안 보여주면 사용자가 못 믿고 46개 목록을 다시 연다.
-        // 추측이 섞였으면 그 사실도 같이 적는다 — 확정 매칭과 같은 모양으로
-        // 보이면 사용자가 검토 없이 지나친다.
-        classReason: exact
+        //
+        // **카드 시트가 채워준 자리가 있으면 "추정" 이라고 적는다.** 기준은
+        // 하나다 — 시트에서 읽은 번호(`settled`)가 영수증에서 읽은 것(`shown`)
+        // 보다 아는 자리가 많으면, 우리가 못 본 자리를 색인으로 메운 것이다.
+        // 영수증에 뒤 4자리만 찍혀 있던 경우가 그렇다. 반대로 영수증이 번호를
+        // 통째로 찍어줬고 시트도 같은 자리를 가렸으면 둘이 같아서, 흔한 경우에
+        // 경고가 붙지 않는다(경고는 드물어야 읽힌다).
+        classReason: settled == null
+            ? '카드 $shown · ${only.name} (후보 ${active.length}장이 모두 같은 분류)'
+            : settled == shown
             ? '카드 $shown · ${only.name}'
-            : settled != null
-            ? '카드 $settled · ${only.name} ($shown 로 추정)'
-            : '카드 $shown · ${only.name} (후보 ${active.length}장이 모두 같은 분류)',
+            : '카드 $settled · ${only.name} ($shown 로 추정)',
       );
     }
 
@@ -413,7 +427,7 @@ class ReviewController extends Notifier<ReviewState> {
     return d.copyWith(
       classSuggestions: choices,
       cardNotice: exact
-          ? '뒤 4자리가 $shown 인 카드가 ${choices.length}장입니다. '
+          ? '카드번호가 $shown 인 카드가 ${choices.length}장입니다. '
                 '어느 쪽인지 골라주세요.'
           : '$shown 에 해당되는 카드 "${_cardList(active)}" 가 있습니다. '
                 '분류에서 직접 선택해주세요.',
@@ -430,7 +444,7 @@ class ReviewController extends Notifier<ReviewState> {
   ///   - **`cardClass` 에는 넣지 않는다.** 그 칸은 "카드가 정한 사실" 이고,
   ///     사용자가 다른 분류로 고쳤을 때 "카드가 정한 분류는 …" 경고를 띄우는
   ///     근거다. 추정에 그 경고를 붙이면 맞는 선택에도 경고가 뜬다
-  ///   - 뒤 4자리를 **좁혀 적지 않는다.** 카드보유내역에 없는 카드라 실제
+  ///   - 번호를 **좁혀 적지 않는다.** 카드보유내역에 없는 카드라 실제
   ///     번호를 아는 사람이 아무도 없다 (`766*` 는 `766*` 로 남는다)
   static EntryDraft? _fromHistory(
     EntryDraft draft, {
@@ -492,8 +506,12 @@ class ReviewController extends Notifier<ReviewState> {
   }
 
   /// 문구에 쓸 카드 이름. 은행이 비어 있으면 번호만.
+  ///
+  /// **번호 전체를 적는다.** 여기 나열되는 카드들은 영수증에서 읽은 자리가
+  /// 전부 같아서 후보로 남은 것이다 — 뒤 4자리만 적으면 사용자가 둘을
+  /// 구별할 수 없다.
   static String _cardLabel(CardInfo c) =>
-      c.bank.isEmpty ? c.last4 : '${c.bank} ${c.last4}';
+      c.bank.isEmpty ? c.number : '${c.bank} ${c.number}';
 
   /// 후보를 나열한다. **셋까지만** 적는다 — `7***` 같은 입력이면 스무 장이
   /// 걸리는데, 다 적으면 배너가 화면을 덮고 아무도 읽지 않는다.
@@ -503,21 +521,19 @@ class ReviewController extends Notifier<ReviewState> {
     return cards.length <= limit ? head : '$head 외 ${cards.length - limit}장';
   }
 
-  /// 사용자가 카드 뒤 4자리를 고쳤다. **분류를 다시 정한다.**
+  /// 사용자가 카드번호를 고쳤다. **분류를 다시 정한다.**
   ///
   /// OCR 이 숫자 하나를 잘못 읽으면 분류가 통째로 틀리는데, 고쳐도 분류가
   /// 그대로면 사용자는 고친 줄 안다.
-  Future<void> setCardLast4(String raw) async {
-    // 사용자가 전체 번호를 붙여넣을 수도 있다. 뒤 4자리만 남긴다 —
-    // 앞자리는 저장하지 않는다(ADR: 카드번호는 뒤 4자리만).
+  Future<void> setCardNumber(String raw) async {
+    // 표기만 모은다(`5531 46xx xxxx 766x` → `5531-46**-****-766*`).
+    // **자리를 버리지 않는다** — 앞자리까지 대조해서 카드를 찾으므로
+    // 사용자가 영수증에 보이는 대로 치는 것이 가장 잘 걸린다.
     //
-    // **가려진 자리를 버리지 않는다.** 예전엔 `last4Of` 로 연속된 숫자 4자리만
-    // 받아서, 사용자가 영수증에 보이는 대로 `766*` 를 쳐도 빈 값이 됐다.
-    final slots = CardDirectory.slotsOf(raw);
-    final last4 = slots == null || !CardDirectory.hasAnyDigit(slots)
-        ? ''
-        : CardDirectory.patternOf(slots);
-    update((d) => d.copyWith(cardLast4: last4));
+    // 자리를 못 뽑거나 아는 자리가 하나도 없으면 빈 칸으로 만든다 —
+    // 사용자가 지우려고 비운 경우가 그렇다.
+    final number = CardDirectory.normalized(raw) ?? '';
+    update((d) => d.copyWith(cardNumber: number));
 
     // 아직 못 읽었으면 지금 읽어본다. 사용자 조작 중이지만 동의 화면은
     // 띄우지 않는다 — 번호 하나 고치다가 팝업이 뜨면 흐름이 끊긴다.
@@ -530,13 +546,13 @@ class ReviewController extends Notifier<ReviewState> {
     update(_applyCardClass);
   }
 
-  /// 뒤 4자리가 겹쳤을 때 사용자가 고른 분류.
+  /// 카드번호가 겹쳤을 때 사용자가 고른 분류.
   void chooseClass(ClassChoice choice) {
     update(
       (d) => d.copyWith(
         classCode: choice.code,
         className: choice.name,
-        classReason: '카드 ${d.cardLast4 ?? ''} · ${choice.name} (직접 고름)',
+        classReason: '카드 ${d.cardNumber ?? ''} · ${choice.name} (직접 고름)',
         // **카드가 준 후보 중 하나**를 고른 것이므로 카드와 어긋난 게 아니다.
         // 여기서 안 적으면 정당한 선택에 "카드와 다르다" 경고가 붙는다.
         cardClass: choice,
@@ -657,6 +673,16 @@ class ReviewController extends Notifier<ReviewState> {
       try {
         final bytes = await capture.compressForOcr(e.file);
         final r = await ocr.extract(imageBytes: bytes);
+        // **표기를 여기서 한 번 모은다.** 아래 두 곳(draft·ocrOriginal)에
+        // 같은 값이 들어가야 한다 — 한쪽만 정규화하면 사용자가 아무것도
+        // 안 고쳤는데 "…로 인식했습니다" 가 뜬다.
+        //
+        // 정규화가 안 되는 값(`****`)은 **원문을 그대로 들고 간다.**
+        // 빈 칸으로 만들면 "카드 결제인데 번호가 전부 가려졌다" 와
+        // "카드 결제가 아니다" 가 구분되지 않는다 — 앞쪽은 보이는 자리를
+        // 입력하면 카드를 찾을 수 있다고 알려줘야 한다.
+        final cardNumber =
+            CardDirectory.normalized(r.cardNumber) ?? r.cardNumber;
         draft = draft.copyWith(
           belongDate: r.belongDate,
           spendDate: r.belongDate,
@@ -666,7 +692,7 @@ class ReviewController extends Notifier<ReviewState> {
           supplyAmount: r.supplyAmount,
           vatAmount: r.vatAmount,
           vatPrinted: r.vatPrinted,
-          cardLast4: r.cardLast4,
+          cardNumber: cardNumber,
           confidence: r.confidence,
           // 읽을 만한 사진이었으면 할 말이 없다. 멀쩡한 사진에 경고를 띄우면
           // 정작 흔들린 사진의 경고도 같이 무시된다.
@@ -677,7 +703,7 @@ class ReviewController extends Notifier<ReviewState> {
             belongDate: r.belongDate,
             vendor: r.vendor,
             description: r.description,
-            cardLast4: r.cardLast4,
+            cardNumber: cardNumber,
             totalAmount: r.totalAmount,
           ),
         );
