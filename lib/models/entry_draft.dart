@@ -97,10 +97,20 @@ abstract class EntryDraft with _$EntryDraft {
     /// 44개 목록에서 직접 찾게 된다. 못 찾았으면 못 찾았다고 말한다.
     String? cardNotice,
 
-    /// 같은 업체로 과거에 쓴 내역 후보. **자동으로 채우지 않는다** —
+    /// 과거에 쓴 내역 후보. **자동으로 채우지 않는다** —
     /// 내역은 건마다 달라서("8월 도서" → "9월 도서") 지난 값을 넣으면
     /// 9월에 8월 것이 조용히 들어간다. 고르는 건 사용자가 한다.
     @Default(<String>[]) List<String> descriptionSuggestions,
+
+    /// 그 후보가 **같은 업체가 아니라 비슷한 업체**에서 왔는지.
+    ///
+    /// 업체명이 정확히 맞으면 `이 업체로 전에 쓴 내역`(`VendorSuggestion`)이고,
+    /// 지점명이 달라 못 맞았으면 `비슷한 업체로 전에 쓴 내역`
+    /// (`CategoryGuess`)이다. **화면의 라벨이 달라야 한다** — 다른 지점의
+    /// 내역을 "이 업체" 것이라고 적으면, 사용자는 확인 없이 고른다.
+    ///
+    /// 문구 자체를 들고 있지 않는 이유: 사람이 읽을 말은 화면이 붙인다.
+    @Default(false) bool descriptionsFromSimilarVendor,
 
     /// 같은 업체를 과거에 어떤 비목으로 처리했는지, 건수 많은 것부터.
     ///
@@ -110,6 +120,58 @@ abstract class EntryDraft with _$EntryDraft {
     /// 분류 후보([classSuggestions])와 성격이 다르다: 그쪽은 카드번호가
     /// 겹쳐서 **정하지 못한** 것이고, 이쪽은 정했지만 **갈린** 것이다.
     @Default(<CategoryTally>[]) List<CategoryTally> categorySuggestions,
+
+    /// 업체명이 맞는 과거 이력이 **없을 때** OCR 이 읽은 값으로 추측한 비목
+    /// 후보들. 비목 화면이 검색창 위에 칩으로 띄운다.
+    ///
+    /// [categorySuggestions] 와 성격이 다르다. 그쪽은 같은 업체의 **기록**이라
+    /// 1등이 [expenseCategory] 에 이미 채워져 있지만, 이쪽은 업체명이 비슷하거나
+    /// 내역에 같은 말이 들어간 행을 긁어모은 **짐작**이라 아무 칸도 채우지
+    /// 않는다 — 짐작을 칸에 넣으면 사용자는 앱이 알아낸 값으로 읽고 그대로
+    /// 제출한다. 시트는 append-only 라 틀린 비목은 되돌릴 수 없다.
+    @Default(<CategoryTally>[]) List<CategoryTally> categoryGuesses,
+
+    /// 그 추측의 근거 한 줄. 화면이 칩 아래에 그대로 보여준다.
+    ///
+    /// **근거 없는 짐작은 띄우지 않는다.** 왜 이 셋이 떴는지 모르면
+    /// 사용자는 맨 위 칩을 누르거나 전부 무시하는 수밖에 없다.
+    String? categoryGuessReason,
+
+    /// 모델이 **품목을 읽고** 짐작한 비목 후보들(`EntryAdvisor`).
+    ///
+    /// 위의 [categoryGuesses] 와 **출처가 다르다.** 그쪽은 과거 행을 센 것이라
+    /// 건수가 붙지만, 이쪽은 `멀티탭 3구 1.5M` 같은 글자를 보고 "사무용품비
+    /// 아니면 장비구입비" 라고 읽은 것이라 셀 것이 없다. 과거에 한 번도 안 산
+    /// 물건은 여기만 채워진다 — 비목 화면에서 가장 흔한 경우다.
+    ///
+    /// 셋을 **한 줄로 합치지 않는다.** 센 것과 읽은 것을 섞으면 어느 쪽이
+    /// 기록인지 사용자가 알 수 없다(분류 근거와 비목 근거를 줄 따로 쓰는 것과
+    /// 같은 이유).
+    @Default(<String>[]) List<String> categoryHints,
+
+    /// 그 짐작의 이유 한 문장. 모델이 적어준 한국어다.
+    String? categoryHintReason,
+
+    /// 영수증에 **인쇄된** 결제 시각(`19:24`). 안 찍혀 있으면 null.
+    ///
+    /// **시트에는 안 들어간다** — 시간 컬럼이 없다. 두 군데서 쓴다:
+    /// 내역을 짐작하는 재료(`EntryAdvisor`)와, 짐작한 내역 아래에 적는
+    /// 근거(`19:24 결제`). 사용자가 고칠 칸도 아니다.
+    String? spendTime,
+
+    /// 모델이 짐작한 **내역** 후보들(`EntryAdvisor`).
+    ///
+    /// 첫 값은 [description] 에 이미 들어가 있을 수 있다 — 내역은 비어 있으면
+    /// `운영팀 확인 요청` 으로 제출돼서 담당자가 되물어야 하는 칸이라,
+    /// **표시된 짐작이 빈 칸보다 낫다**(비목과 다루는 방식이 다른 이유다).
+    @Default(<String>[]) List<String> descriptionGuesses,
+
+    /// [description] 에 들어 있는 값이 **모델의 짐작**인지.
+    ///
+    /// OCR 이 읽은 품목명이나 사용자가 쓴 값과 **구분돼야 한다** — 짐작을
+    /// 사실처럼 보여주면 아무도 확인하지 않고, 시트는 append-only 다.
+    /// 화면이 칸 아래에 짐작이라고 적는다.
+    @Default(false) bool descriptionIsGuess,
 
     /// OCR 이 읽은 **원래 값**. 사용자가 고친 뒤에도 남는다.
     ///
@@ -272,6 +334,14 @@ abstract class EntryDraft with _$EntryDraft {
   /// 없다는 뜻이고, 그러면 화면도 줄을 띄우지 않는다.
   List<CategoryTally> get otherCategorySuggestions =>
       categorySuggestions.where((t) => t.category != expenseCategory).toList();
+
+  /// 칸에 들어 있는 값을 뺀 내역 짐작들. 화면이 "짐작한 다른 내역" 으로 띄운다.
+  ///
+  /// 지금 값은 이미 칸에 있으므로 여기서 뺀다 — 같은 말이 칸과 칩에 두 번
+  /// 뜨면 누를 이유가 없는 칩이 하나 생긴다(비목 칩과 같은 규칙,
+  /// [otherCategorySuggestions] 참조).
+  List<String> get otherDescriptionGuesses =>
+      descriptionGuesses.where((d) => d != description).toList();
 
   /// 분류를 **카드가 정한 것과 다르게** 고쳤는가.
   ///

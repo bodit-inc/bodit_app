@@ -9,6 +9,7 @@ import 'package:bodit_app/core/utils/korean_amount.dart';
 import 'package:bodit_app/core/widgets/amount_keypad.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/providers.dart';
+import 'package:bodit_app/features/review/category_screen.dart';
 import 'package:bodit_app/features/review/reading_trivia.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
 import 'package:bodit_app/models/class_choice.dart';
@@ -86,6 +87,19 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   Widget _form(BuildContext context, ReviewState state) {
     // 시안 ④ — OCR 진행 중
     if (state.isReading) return const _ReadingView();
+
+    // 비목이 빈 건은 **폼 앞에서 먼저 묻는다**(`category_screen.dart`).
+    //
+    // 라우트로 밀지 않고 여기서 대신 그린다 — 진행 화면(`_ReadingView`)과
+    // 같은 방식이다. 라우트면 뒤로가기로 이 화면을 건너뛸 수 있는데, 그러면
+    // PopScope 밖이라 OCR 결과를 통째로 잃는다.
+    //
+    // 키를 건 인덱스로 둔다. 여러 장이면 같은 위젯이 건마다 다시 쓰이는데,
+    // 키가 없으면 **앞 건에서 고른 선택이 다음 건에 남는다.**
+    final asking = state.categoryQueue;
+    if (asking.isNotEmpty) {
+      return CategoryScreen(key: ValueKey(asking.first), index: asking.first);
+    }
 
     final draft = state.current;
     if (draft == null) {
@@ -307,9 +321,15 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         value: draft.description,
                         placeholder: '직접 입력',
                         warnPlaceholder: true,
+                        // 직접 쓴 값이므로 짐작 표시를 내린다.
                         onSubmit: (v) => ref
                             .read(reviewControllerProvider.notifier)
-                            .update((d) => d.copyWith(description: v)),
+                            .update(
+                              (d) => d.copyWith(
+                                description: v,
+                                descriptionIsGuess: false,
+                              ),
+                            ),
                       ),
                       if (draft.descriptionOcrConflict != null) ...[
                         OcrConflictNote(
@@ -323,6 +343,33 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                               ),
                         ),
                       ],
+                      // **짐작으로 채운 칸이라고 말한다.**
+                      //
+                      // 이 칸은 비면 `$needsOpsReview` 으로 제출돼서 담당자가
+                      // 되물어야 하므로, 표시된 짐작이 빈 칸보다 낫다
+                      // (`EntryAdvisor` 주석). 그 대신 **사실처럼 보이면
+                      // 안 된다** — 근거(결제 시각)와 함께 짐작이라고 적어서
+                      // 사용자가 한 번 보고 지나가게 한다. 고치거나 지우면
+                      // 표시도 같이 사라진다.
+                      if (draft.descriptionIsGuess)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            Gap.lg,
+                            0,
+                            Gap.lg,
+                            Gap.sm,
+                          ),
+                          child: Text(
+                            (draft.spendTime ?? '').isEmpty
+                                ? '영수증으로 짐작한 내역입니다. 다르면 눌러서 고쳐주세요.'
+                                : '${draft.spendTime} 결제 · 짐작한 내역입니다. '
+                                      '다르면 눌러서 고쳐주세요.',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: AppColors.neutralFg),
+                            textAlign: TextAlign.end,
+                          ),
+                        ),
+
                       // 비워두면 "$needsOpsReview" 으로 들어가고 회계 담당자가
                       // 다시 물어야 한다. **직접 써야 한다는 것을 칸 아래
                       // 경고색 한 줄로 못박는다** — 예전엔 placeholder 를
@@ -350,45 +397,34 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                           ),
                         ),
 
-                      // 같은 업체로 과거에 쓴 내역. **자동으로 안 채운다** —
-                      // 내역은 건마다 달라서("8월 도서" → "9월 도서") 지난 값을
-                      // 넣으면 9월에 8월 것이 조용히 들어간다. 눌러서 고른다.
+                      // 과거에 쓴 내역. **자동으로 안 채운다** — 내역은 건마다
+                      // 달라서("8월 도서" → "9월 도서") 지난 값을 넣으면 9월에
+                      // 8월 것이 조용히 들어간다. 눌러서 고른다.
+                      //
+                      // **원처를 적는다.** 지점명이 달라 업체명이 못 맞은
+                      // 건에도 후보를 띄우는데, 그걸 "이 업체" 것이라고 적으면
+                      // 사용자는 확인 없이 고른다.
                       if (draft.descriptionSuggestions.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            Gap.lg,
-                            0,
-                            Gap.lg,
-                            Gap.md,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                '이 업체로 전에 쓴 내역',
-                                style: Theme.of(context).textTheme.labelSmall,
-                              ),
-                              const SizedBox(height: Gap.sm),
-                              Wrap(
-                                spacing: Gap.sm,
-                                runSpacing: Gap.sm,
-                                children: [
-                                  for (final d in draft.descriptionSuggestions)
-                                    SuggestChip(
-                                      d,
-                                      selected: d == draft.description,
-                                      onTap: () => ref
-                                          .read(
-                                            reviewControllerProvider.notifier,
-                                          )
-                                          .update(
-                                            (x) => x.copyWith(description: d),
-                                          ),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
+                        _DescriptionChips(
+                          label: draft.descriptionsFromSimilarVendor
+                              ? '비슷한 업체로 전에 쓴 내역'
+                              : '이 업체로 전에 쓴 내역',
+                          values: draft.descriptionSuggestions,
+                          current: draft.description,
+                        ),
+
+                      // 모델이 짐작한 **다른 내역.** 첫 값은 칸에 이미 들어가
+                      // 있으므로 거기서 빼고 보여준다 — 비목 칩과 같은 규칙이다
+                      // (`EntryDraft.otherCategorySuggestions`).
+                      //
+                      // 고를 것이 없으면(후보가 하나뿐) 줄을 띄우지 않는다.
+                      // `식사` 하나를 칸에 넣고 아래에 또 `식사` 를 적으면
+                      // 누를 이유가 없는 칩이 하나 생긴다.
+                      if (draft.otherDescriptionGuesses.isNotEmpty)
+                        _DescriptionChips(
+                          label: '짐작한 다른 내역',
+                          values: draft.otherDescriptionGuesses,
+                          current: draft.description,
                         ),
                     ],
                   ),
@@ -728,14 +764,46 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       // 증빙의 종류(영수증·매출전표·이체확인증)고, 위 `분류`
                       // 섹션의 값은 예산 분류다 — 코드에서는 `evidenceType`
                       // 으로 구분된다.
-                      LabeledRow(
-                        label: '분류',
-                        // 바텀시트에서 고르지만 **고치는 줄**이다. 아래 파일명
-                        // 줄과 같은 카드에 있으면서 한쪽만 `›` 면, 둘이 서로
-                        // 다른 동작으로 보인다.
-                        editable: true,
-                        value: draft.evidenceType,
-                        onTap: () => _pickEvidenceType(context, ref),
+                      //
+                      // **위 비목·분류와 같은 칩이다.** 셋 다 고정 목록에서
+                      // 바텀시트로 하나를 고르는 값인데 이 줄만 연필+밑줄
+                      // (`LabeledRow(editable: true)`)이라 키보드로 쳐 넣는
+                      // 칸처럼 보였다. 하는 일이 같으면 모양도 같아야 한다 —
+                      // 더구나 바로 아래 `파일명` 이 **실제로** 키보드로 치는
+                      // 줄이라, 둘이 같은 모양으로 붙어 있으면 어느 쪽이
+                      // 바텀시트인지 눌러보고서야 안다.
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: Gap.lg,
+                          vertical: Gap.md,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '분류',
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(color: AppColors.neutralFg),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  // 비목·분류와 달리 `선택하기` 칩이 없다 —
+                                  // 기본값(`영수증`)이 늘 들어 있어서 빈 상태가
+                                  // 생기지 않는다(`defaultEvidenceType`).
+                                  // 값 칩을 누르는 것이 곧 바꾸는 동작이다.
+                                  SuggestChip(
+                                    draft.evidenceType,
+                                    selected: true,
+                                    onTap: () =>
+                                        _pickEvidenceType(context, ref),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       const RowDivider(),
                       // 위 칸들(업체명·카드번호·내역)과 **같은 줄 모양**이다.
@@ -1080,6 +1148,62 @@ class _ReadingViewState extends ConsumerState<_ReadingView> {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 내역 후보 칩 한 줄. 과거 이력에서 온 것과 모델이 짐작한 것이 **같은
+/// 모양**을 쓴다 — 하는 일이 같다(누르면 내역 칸에 들어간다). 어디서 온
+/// 값인지는 [label] 이 말한다.
+///
+/// 화면 안에 두는 이유: `core/widgets` 는 기능을 모르는 층인데 이건 "내역" 을
+/// 안다. 같은 조합이 다른 화면에도 생기면 그때 올린다.
+class _DescriptionChips extends ConsumerWidget {
+  const _DescriptionChips({
+    required this.label,
+    required this.values,
+    required this.current,
+  });
+
+  final String label;
+  final List<String> values;
+
+  /// 지금 내역 칸의 값. 같은 칩에 체크를 찍어준다.
+  final String? current;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
+          const SizedBox(height: Gap.sm),
+          Wrap(
+            spacing: Gap.sm,
+            runSpacing: Gap.sm,
+            children: [
+              for (final d in values)
+                SuggestChip(
+                  d,
+                  selected: d == current,
+                  onTap: () => ref
+                      .read(reviewControllerProvider.notifier)
+                      .update(
+                        // 사용자가 **고른** 값이다. 짐작 표시를 지운다 —
+                        // 안 지우면 직접 고른 값 아래에 "짐작한 내역입니다"
+                        // 가 그대로 남는다.
+                        (x) => x.copyWith(
+                          description: d,
+                          descriptionIsGuess: false,
+                        ),
+                      ),
+                ),
+            ],
+          ),
         ],
       ),
     );
