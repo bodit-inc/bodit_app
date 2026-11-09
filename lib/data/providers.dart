@@ -10,6 +10,7 @@ import 'package:bodit_app/data/local/queue_db.dart';
 import 'package:bodit_app/data/remote/card_repository.dart';
 import 'package:bodit_app/data/remote/drive_folder_index.dart';
 import 'package:bodit_app/data/remote/drive_repository.dart';
+import 'package:bodit_app/data/remote/entry_advisor.dart';
 import 'package:bodit_app/data/remote/google_auth.dart';
 import 'package:bodit_app/data/remote/ocr_service.dart';
 import 'package:bodit_app/data/remote/sheets_repository.dart';
@@ -69,6 +70,12 @@ final slackRepositoryProvider = Provider<SlackRepository>((ref) {
 
 final ocrServiceProvider = Provider<OcrService>((ref) {
   return OcrService(apiKey: Config.anthropicApiKey);
+});
+
+/// 영수증을 보고 **비목·내역**을 짐작하는 조언. 이미 아는 칸은 묻지 않는다
+/// (`EntryAdvisor` 주석 — 기록이 있으면 짐작을 덧붙이지 않는다).
+final entryAdvisorProvider = Provider<EntryAdvisor>((ref) {
+  return EntryAdvisor(apiKey: Config.anthropicApiKey);
 });
 
 final submissionSenderProvider = Provider<SubmissionSender>((ref) {

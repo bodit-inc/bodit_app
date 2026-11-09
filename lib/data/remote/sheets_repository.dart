@@ -76,7 +76,7 @@ class VendorSuggestion {
 
   /// 시트 행들로 추천을 만든다. **순수 함수다** — 네트워크 없이 테스트한다.
   ///
-  /// 행 모양은 [SheetsRepository.suggestForVendor] 가 읽는 범위와 같다:
+  /// 행 모양은 [SheetsRepository.lookupForVendor] 가 읽는 범위와 같다:
   /// `E 비목 · F 내역 · G 업체명 · H 분류코드 · I 분류명`.
   /// 비목이 비었거나 분류코드가 숫자가 아닌 행은 **아직 완성되지 않은 행**이라
   /// 세지 않는다 — 그런 행을 근거로 추천하면 사용자가 못 믿는다.
@@ -84,7 +84,7 @@ class VendorSuggestion {
     List<List<Object?>> rows, {
     required String vendor,
   }) {
-    final needle = _normalize(vendor);
+    final needle = _squash(vendor);
     if (needle.isEmpty) return null;
 
     // 비목별 건수. **조합(비목+분류코드)이 아니라 비목으로 센다** —
@@ -98,13 +98,12 @@ class VendorSuggestion {
     var total = 0;
 
     for (final row in rows) {
-      if (row.length < 5) continue;
-      if (_normalize('${row[2]}') != needle) continue;
+      // 완성되지 않은 행을 거르는 규칙은 **한 곳에 둔다** — 추측
+      // ([CategoryGuess])도 같은 행을 보므로, 두 벌로 두면 한쪽만 고쳐진다.
+      if (!_isUsableRow(row)) continue;
+      if (_squash('${row[2]}') != needle) continue;
 
       final category = '${row[0]}'.trim();
-      if (category.isEmpty || int.tryParse('${row[3]}'.trim()) == null) {
-        continue;
-      }
 
       total++;
       counts[category] = (counts[category] ?? 0) + 1;
@@ -119,31 +118,295 @@ class VendorSuggestion {
 
     if (counts.isEmpty) return null;
 
-    // 건수 많은 것부터. **같으면 시트에 먼저 나온 쪽이 먼저다** —
-    // `List.sort` 는 안정 정렬이 아니라서 동률을 그냥 두면 같은 시트를
-    // 조회할 때마다 칩 순서가 바뀔 수 있다.
-    final seen = counts.keys.toList();
-    final tallies =
-        counts.entries
-            .map((e) => CategoryTally(category: e.key, count: e.value))
-            .toList()
-          ..sort((a, b) {
-            final byCount = b.count.compareTo(a.count);
-            if (byCount != 0) return byCount;
-            return seen.indexOf(a.category).compareTo(seen.indexOf(b.category));
-          });
-
     return VendorSuggestion(
-      categoryTallies: tallies,
+      categoryTallies: _rankCategories(counts),
       totalCount: total,
       // 최근 것부터 최대 6개. 더 보여주면 고르는 게 일이 된다.
       recentDescriptions: descriptions.keys.toList().reversed.take(6).toList(),
     );
   }
 
-  /// 업체명 비교용 정규화. 공백·괄호 표기 차이로 못 찾는 걸 막는다.
-  static String _normalize(String s) =>
-      s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '');
+}
+
+/// 과거 행 하나가 **추천의 근거로 쓸 만한지.**
+///
+/// 비목이 비었거나 분류코드가 숫자가 아닌 행은 아직 완성되지 않은 행이다 —
+/// 그런 행을 근거로 "지난 3건이 도서인쇄비였습니다" 라고 말하면 사용자가
+/// 한 번 확인해보고 다시는 추천을 믿지 않는다.
+///
+/// 범위는 `E2:I` 다: `E 비목 · F 내역 · G 업체명 · H 분류코드 · I 분류명`.
+bool _isUsableRow(List<Object?> row) {
+  if (row.length < 5) return false;
+  if ('${row[0]}'.trim().isEmpty) return false;
+  return int.tryParse('${row[3]}'.trim()) != null;
+}
+
+/// 글자 비교용 정규화. 공백·대소문자 표기 차이로 못 찾는 걸 막는다.
+String _squash(String s) =>
+    s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '');
+
+/// 비목별 건수를 **많은 것부터** 세운다.
+///
+/// 동률은 **먼저 나온 쪽이 먼저다.** `List.sort` 는 안정 정렬이 아니라서
+/// 그냥 두면 같은 시트를 읽을 때마다 칩 순서가 바뀐다 — 사용자는 앱이
+/// 추천을 바꿨다고 읽는다.
+///
+/// [counts] 는 **등장 순서대로** 넣은 맵이어야 한다(Dart 의 기본 Map 은
+/// 삽입 순서를 지킨다). 그 순서가 곧 동률의 기준이다.
+List<CategoryTally> _rankCategories(Map<String, int> counts, {int? limit}) {
+  final seen = counts.keys.toList();
+  final ranked =
+      counts.entries
+          .map((e) => CategoryTally(category: e.key, count: e.value))
+          .toList()
+        ..sort((a, b) {
+          final byCount = b.count.compareTo(a.count);
+          if (byCount != 0) return byCount;
+          return seen.indexOf(a.category).compareTo(seen.indexOf(b.category));
+        });
+  return limit == null ? ranked : ranked.take(limit).toList();
+}
+
+/// 받침에 맞는 주격 조사. `'도서' 가` · `'책상' 이`.
+///
+/// 근거 문구에 **OCR 이 읽은 말이 그대로 박힌다.** 조사를 하나로 고정하면
+/// 둘 중 한쪽은 늘 틀린 한국어가 되고, 그 문구는 사용자가 "왜 이 비목이
+/// 떴는지" 를 판단하는 유일한 근거다.
+///
+/// 한글 음절은 `(코드 - 0xAC00) % 28` 이 0 일 때 받침이 없다. 한글이 아닌
+/// 글자(숫자·영문)로 끝나면 읽는 방법이 사람마다 달라서 `이` 로 둔다 —
+/// 괄호로 감싼 말 뒤라 어느 쪽이든 읽을 수 있다.
+String _subjectParticle(String word) {
+  if (word.isEmpty) return '이';
+  final c = word.codeUnitAt(word.length - 1);
+  if (c < 0xAC00 || c > 0xD7A3) return '이';
+  return (c - 0xAC00) % 28 == 0 ? '가' : '이';
+}
+
+/// OCR 이 읽은 값으로 비목을 **추측한** 것. 업체명이 정확히 맞는 과거 이력이
+/// 없을 때의 차선책이다.
+///
+/// [VendorSuggestion] 과 성격이 다르다. 그쪽은 "이 업체를 지난 6건 모두
+/// 도서인쇄비로 처리했다" 는 **기록**이라 칸을 채워도 된다. 이쪽은 업체명이
+/// 비슷하거나 내역에 같은 말이 들어간 행을 긁어모은 **짐작**이라 칸을 채우지
+/// 않는다 — 칩으로 띄워서 사용자가 고르게 한다.
+///
+/// 그래서 근거를 같이 들고 다닌다. "그나마 이거일 것 같다" 는 말은 왜 그렇게
+/// 보였는지를 같이 말해주지 않으면 사용자가 판단할 수 없다.
+@immutable
+class CategoryGuess {
+  const CategoryGuess({
+    required this.tallies,
+    required this.reason,
+    this.recentDescriptions = const <String>[],
+  }) : assert(tallies.length > 0, '후보가 없으면 추측이 아니다');
+
+  /// 후보 비목들, 근거 건수가 많은 것부터. 최대 [maxCandidates] 개.
+  final List<CategoryTally> tallies;
+
+  /// 왜 이 후보들이 떴는지. 화면이 칩 아래에 그대로 보여준다.
+  final String reason;
+
+  /// **비슷한 업체로** 과거에 쓴 내역들. 최근 것부터, 중복 제거.
+  ///
+  /// 업체명이 비슷해서 걸린 경우에만 채운다. **내역이 겹쳐서 걸린 경우는
+  /// 비운다** — 그때 걸린 행은 남의 가게 것이고, 내역은 "이 건에 무엇을
+  /// 샀나" 라서 다른 가게의 문구를 후보로 주면 틀린 내역을 권하는 셈이다.
+  /// 비목은 가게가 달라도 같을 수 있지만(도서는 어디서 사도 도서인쇄비)
+  /// 내역은 그렇지 않다.
+  ///
+  /// [VendorSuggestion.recentDescriptions] 와 같은 성격이다 —
+  /// **자동으로 채우지 않는다.** 내역은 건마다 달라서("8월 도서" →
+  /// "9월 도서") 지난 값을 넣으면 9월에 8월 것이 조용히 들어간다.
+  final List<String> recentDescriptions;
+
+  /// 내역 후보 수의 상한. 더 보여주면 고르는 게 일이 된다
+  /// (`VendorSuggestion` 과 같은 6개).
+  static const _maxDescriptions = 6;
+
+  /// 칩으로 띄울 후보 수의 상한.
+  ///
+  /// 셋을 넘기면 "그나마 이거일 것 같은 것" 이 아니라 **짧은 목록**이 된다.
+  /// 그러면 아래 전체 목록과 하는 일이 같아지고, 사용자는 둘 중 어디서
+  /// 골라야 하는지 헷갈린다.
+  static const maxCandidates = 3;
+
+  /// 두 업체명이 **같은 가게로 보이는지.**
+  ///
+  /// 두 가지로 본다:
+  ///
+  ///   - 한쪽이 다른 쪽을 품는다 — `영풍문고` ↔ `영풍문고 종로점`
+  ///   - **앞머리가 세 글자 이상 같다** — `영풍문고 종로점` ↔ `영풍문고 강남점`.
+  ///     양쪽에 지점명이 붙으면 서로 품지 않아서 품기만으로는 못 걸린다.
+  ///     영수증마다 지점이 다른 가게(편의점·문고·카페)가 바로 그 경우다
+  ///
+  /// 앞머리를 **세 글자**로 끊은 이유: 두 글자면 `서울우유` 와 `서울식당` 이
+  /// 같은 가게가 된다. 앞 세 글자가 같고 뒤가 다른 **남의 가게**는 드물다.
+  ///
+  /// 두 글자 미만은 아예 보지 않는다 — 한 글자가 들어간 업체명은 수십 개가
+  /// 걸려서, 그건 추측이 아니라 소음이다.
+  static bool similarVendor(String a, String b) {
+    final x = _squash(a);
+    final y = _squash(b);
+    if (x.length < 2 || y.length < 2) return false;
+    if (x.contains(y) || y.contains(x)) return true;
+
+    var same = 0;
+    while (same < x.length &&
+        same < y.length &&
+        x.codeUnitAt(same) == y.codeUnitAt(same)) {
+      same++;
+    }
+    return same >= _minPrefix;
+  }
+
+  static const _minPrefix = 3;
+
+  /// 과거 행에서 추측을 만든다. **순수 함수다** — 네트워크 없이 테스트한다.
+  ///
+  /// 근거를 **센 것이 아니라 고른다.** 두 신호를 섞지 않고 강한 쪽 하나만
+  /// 쓴다:
+  ///
+  ///   1. **업체명이 비슷한 과거 행** — `영풍문고 종로점` 과 `영풍문고` 는
+  ///      같은 가게다. 정확히 맞는 행이 없어서 추천이 비었을 뿐이다
+  ///   2. **내역에 같은 말이 들어간 과거 행** — 업체가 처음이어도
+  ///      `9월 도서` 는 과거의 `8월 도서` 와 같은 비목일 가능성이 높다
+  ///
+  /// 섞어서 한 번에 세면 안 된다. 1번은 거의 같은 가게이고 2번은 말이
+  /// 겹친 것뿐인데, 합치면 2번 행이 많은 비목이 1번을 밀어낸다 —
+  /// 근거 문구도 둘 중 무엇이라고 말할 수 없게 된다.
+  static CategoryGuess? fromRows(
+    List<List<Object?>> rows, {
+    String? vendor,
+    String? description,
+  }) {
+    final usable = rows.where(_isUsableRow).toList();
+    if (usable.isEmpty) return null;
+
+    // ── 1. 업체명이 비슷한 행 ──────────────────────────────────────
+    //
+    // 판정은 [similarVendor] 하나다. 지점명만 다른 가게가 여기서 걸린다.
+    final needle = vendor ?? '';
+    if (_squash(needle).length >= 2) {
+      final counts = <String, int>{};
+      // **내역도 같이 모은다.** 같은 가게에서 전에 무엇을 샀는지는 이 건의
+      // 내역 후보이기도 하다 — 업체명이 정확히 맞을 때
+      // ([VendorSuggestion.recentDescriptions]) 해주던 일을, 지점명이 달라
+      // 못 맞은 건에도 해준다. 예전엔 그 건에서 내역 칸이 통째로 비었다.
+      final descriptions = <String, void>{};
+      var matched = 0;
+      for (final row in usable) {
+        if (!similarVendor(needle, '${row[2]}')) continue;
+        matched++;
+        final category = '${row[0]}'.trim();
+        counts[category] = (counts[category] ?? 0) + 1;
+
+        // 시트가 append-only 라 뒤에 있는 것이 최근이다. 다시 넣어 최신
+        // 등장 위치로 끌어올린다(LinkedHashMap 의 삽입 순서).
+        final desc = '${row[1]}'.trim();
+        if (desc.isNotEmpty) {
+          descriptions.remove(desc);
+          descriptions[desc] = null;
+        }
+      }
+      if (counts.isNotEmpty) {
+        return CategoryGuess(
+          tallies: _rankCategories(counts, limit: maxCandidates),
+          reason: '업체명이 비슷한 과거 $matched건에서 쓴 비목입니다.',
+          recentDescriptions: descriptions.keys.toList().reversed
+              .take(_maxDescriptions)
+              .toList(),
+        );
+      }
+    }
+
+    // ── 2. 내역에 같은 말이 들어간 행 ──────────────────────────────
+    //
+    // 겹치는 말이 여러 개면 **가장 많이 걸린 말 하나**만 쓴다. 두 말을
+    // 합치면 근거 문구가 "'도서'·'8월' 이 들어간 12건" 이 되는데, 그중
+    // 열 건은 `8월` 때문에 걸린 식대다.
+    var bestWord = '';
+    var bestRows = <List<Object?>>[];
+    for (final word in _keywords(description ?? '')) {
+      final hit = usable
+          .where((row) => _squash('${row[1]}').contains(word))
+          .toList();
+      if (hit.length > bestRows.length) {
+        bestWord = word;
+        bestRows = hit;
+      }
+    }
+    if (bestRows.isEmpty) return null;
+
+    final counts = <String, int>{};
+    for (final row in bestRows) {
+      final category = '${row[0]}'.trim();
+      counts[category] = (counts[category] ?? 0) + 1;
+    }
+    return CategoryGuess(
+      tallies: _rankCategories(counts, limit: maxCandidates),
+      reason:
+          "내역에 '$bestWord'${_subjectParticle(bestWord)} "
+          '들어간 과거 ${bestRows.length}건에서 쓴 비목입니다.',
+    );
+  }
+
+  /// 내역에서 뽑은 **찾을 만한 말**들.
+  ///
+  /// 두 가지를 버린다:
+  ///
+  ///   - **한 글자** — `외`·`건` 하나로 과거 행 절반이 걸린다
+  ///   - **숫자가 섞인 말** — `8월`·`2박` 은 비목과 아무 상관이 없는데
+  ///     `8월 도서`·`8월 식대`·`8월 택시` 를 전부 끌어온다. 비목을 가르는
+  ///     말은 숫자가 아닌 쪽(`도서`)이다
+  static List<String> _keywords(String description) {
+    final words = _squash(description).isEmpty
+        ? <String>[]
+        : description.split(RegExp(r'[\s,./·\-()\[\]]+'));
+    return <String>[
+      for (final w in words)
+        if (_squash(w).length >= 2 && !w.contains(RegExp(r'\d'))) _squash(w),
+    ];
+  }
+}
+
+/// 과거 행을 **한 번 읽어** 만든 두 가지 — 업체명이 맞은 이력과, 못 맞췄을
+/// 때의 추측.
+///
+/// 하나로 묶은 이유는 **같은 범위를 두 번 읽지 않기 위해서**다. 추측이
+/// 필요한 순간은 추천이 비는 순간이라, 따로 부르면 시트를 두 번 읽고
+/// 사용자는 그 시간을 두 번 기다린다.
+@immutable
+class VendorLookup {
+  const VendorLookup({this.suggestion, this.guess});
+
+  /// 과거 행에서 둘을 만든다. **순수 함수다** — 네트워크 없이 테스트한다.
+  ///
+  /// 업체명이 맞은 이력이 있으면 추측은 만들지 않는다 — 기록이 있는데 짐작을
+  /// 같이 띄우면 어느 쪽이 근거 있는 값인지 흐려진다.
+  factory VendorLookup.fromRows(
+    List<List<Object?>> rows, {
+    String? vendor,
+    String? description,
+  }) {
+    final suggestion = (vendor ?? '').isEmpty
+        ? null
+        : VendorSuggestion.fromRows(rows, vendor: vendor!);
+    if (suggestion != null) return VendorLookup(suggestion: suggestion);
+    return VendorLookup(
+      guess: CategoryGuess.fromRows(
+        rows,
+        vendor: vendor,
+        description: description,
+      ),
+    );
+  }
+
+  /// 업체명이 **정확히** 맞은 과거 이력. 있으면 비목 칸을 채운다.
+  final VendorSuggestion? suggestion;
+
+  /// 그게 없을 때의 추측. **칸을 채우지 않는다** — 칩으로만 띄운다.
+  final CategoryGuess? guess;
 }
 
 /// 매입내역 한 행에서 뽑은 것 — 카드번호 자리들과 그때 쓴 분류코드.
@@ -162,7 +425,7 @@ class _CardClassRow {
 /// 있고, 그 사이에 올라온 영수증은 분류를 통째로 못 정한다. 그런데 같은 카드로
 /// 전에 제출한 건이 있으면 **어느 분류였는지는 매입내역에 이미 적혀 있다.**
 ///
-/// 업체 이력 추천(`suggestForVendor`)과는 다르다. 그쪽은 "같은 업체면 같은
+/// 업체 이력 추천(`lookupForVendor`)과는 다르다. 그쪽은 "같은 업체면 같은
 /// 비목" 이라는 경향이고, 이쪽은 **같은 카드**다 — 분류를 정하는 것은 어차피
 /// 카드이므로 근거의 종류가 같고, 다만 출처가 마스터가 아니라 과거 기록이다.
 /// 그래서 결과는 **추정**으로 표시한다(`applyCardClass`).
@@ -409,17 +672,26 @@ class SheetsRepository {
     return CardClassHistory.fromRows(res.values ?? <List<Object?>>[]);
   }
 
-  /// 업체명으로 과거 처리를 찾아 **비목**을 제안한다.
+  /// 과거 처리를 찾아 **비목**을 제안하고, 못 찾으면 추측한다.
   ///
   /// **자동완성의 실제 승부처가 여기다.** OCR 은 비목을 못 뽑는다 —
   /// 영수증에 안 적혀 있다. 이 조회가 잘 되면 사용자가 34개 중에서 고를 일이 없다.
   ///
+  /// 업체명이 정확히 맞으면 [VendorLookup.suggestion] 이고, 그게 없을 때
+  /// 업체명·내역이 비슷한 행으로 만든 짐작이 [VendorLookup.guess] 다.
+  /// **한 번 읽어 둘을 만든다** — 추측이 필요한 순간은 추천이 비는
+  /// 순간이라, 따로 읽으면 사용자가 같은 조회를 두 번 기다린다.
+  ///
+  /// [vendor] 가 비어도 부른다 — OCR 이 상호를 못 읽은 건이 그렇고,
+  /// 그때도 내역으로 추측할 수 있다.
+  ///
   /// 분류는 제안하지 않는다 — 카드가 정한다([VendorSuggestion] 주석 참조).
   ///
   /// 시트 전체를 매번 읽지 않도록 [maxRows] 로 최근 구간만 본다.
-  Future<VendorSuggestion?> suggestForVendor({
+  Future<VendorLookup> lookupForVendor({
     required gapis.AuthClient client,
-    required String vendor,
+    String? vendor,
+    String? description,
     int maxRows = 2000,
   }) async {
     final api = sheets.SheetsApi(client);
@@ -428,11 +700,12 @@ class SheetsRepository {
       spreadsheetId,
       "'$dataSheetName'!E2:I${maxRows + 1}",
     );
-    // 세는 일은 `VendorSuggestion.fromRows` 가 한다 — 여기 두면 네트워크
-    // 없이는 못 돌려서, 1등을 고르는 규칙을 테스트로 고정할 수 없다.
-    return VendorSuggestion.fromRows(
+    // 세는 일은 `VendorLookup.fromRows` 가 한다 — 여기 두면 네트워크 없이는
+    // 못 돌려서, 1등을 고르는 규칙이 조용히 틀려도 아무도 모른다.
+    return VendorLookup.fromRows(
       res.values ?? <List<Object?>>[],
       vendor: vendor,
+      description: description,
     );
   }
 }

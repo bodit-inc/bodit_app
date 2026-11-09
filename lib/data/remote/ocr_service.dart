@@ -1,12 +1,19 @@
 /// 증빙 이미지에서 매입내역 항목을 뽑는다.
 ///
-/// Dart 에는 공식 Anthropic SDK 가 없으므로 `POST /v1/messages` 를 직접 친다.
+/// 요청을 만드는 일은 `AnthropicClient` 가 한다 — 여기는 **무엇을 묻는지**
+/// (스키마와 프롬프트)와 받은 값을 어떻게 읽는지만 들고 있다.
 /// `output_config.format` 으로 JSON 스키마를 강제하므로 파싱이 실패하지 않는다.
 ///
 /// ## 뽑는 것 / 못 뽑는 것
 ///
 /// **비목·분류코드는 여기서 뽑지 않는다.** 영수증에 안 적혀 있다.
-/// 그건 과거 이력 추천(`MasterDataRepository` + 시트 조회)이 담당한다.
+/// 비목은 과거 이력 추천(`VendorSuggestion`)이 1차이고, 그게 비면
+/// **별도 호출**이 품목을 보고 짐작한다(`CategoryAdvisor`).
+///
+/// **같은 요청에 합치지 않는다.** 이 프롬프트는 "인쇄된 값만 읽어라,
+/// 추론하지 마라" 로 일관돼야 한다 — 여기에 "비목은 추측해라" 를 붙이면
+/// 모델이 다른 칸도 추측하기 시작한다. 금액을 추론한 영수증은 사람이
+/// 알아채지 못한다.
 ///
 /// ## 부가세를 자동 계산하지 않는다
 ///
@@ -35,6 +42,7 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:bodit_app/data/remote/anthropic.dart';
 import 'package:http/http.dart' as http;
 
 /// 사진이 OCR 하기에 괜찮았는지. 모델이 스스로 판정한다.
@@ -55,6 +63,7 @@ class ImageQuality {
 class OcrResult {
   const OcrResult({
     this.belongDate,
+    this.spendTime,
     this.vendor,
     this.description,
     this.totalAmount,
@@ -75,6 +84,7 @@ class OcrResult {
 
     return OcrResult(
       belongDate: date(j['belong_date']),
+      spendTime: str(j['spend_time']),
       vendor: str(j['vendor']),
       description: str(j['description']),
       totalAmount: num_(j['total_amount']),
@@ -109,6 +119,14 @@ class OcrResult {
   }
 
   final DateTime? belongDate;
+
+  /// 영수증에 **인쇄된** 결제 시각, `19:24` 꼴. 안 찍혀 있으면 null.
+  ///
+  /// 시트에는 안 들어간다(시간 컬럼이 없다). **내역을 짐작하는 재료**다 —
+  /// 식당 영수증의 `19:24` 는 그 건이 저녁식사라는 뜻이고, 그게 회계
+  /// 담당자가 읽고 싶은 내역이다(`EntryAdvisor`).
+  final String? spendTime;
+
   final String? vendor;
   final String? description;
   final int? totalAmount;
@@ -137,14 +155,9 @@ class OcrResult {
 
 class OcrService {
   OcrService({required String apiKey, http.Client? client})
-    : _apiKey = apiKey,
-      _client = client ?? http.Client();
+    : _api = AnthropicClient(apiKey: apiKey, client: client);
 
-  final String _apiKey;
-  final http.Client _client;
-
-  static const _endpoint = 'https://api.anthropic.com/v1/messages';
-  static const _model = 'claude-opus-5';
+  final AnthropicClient _api;
 
   /// 응답 스키마. `additionalProperties: false` + `required` 가 있어야 강제된다.
   static const _schema = <String, Object>{
@@ -153,6 +166,12 @@ class OcrService {
       'belong_date': <String, Object>{
         'type': <String>['string', 'null'],
         'description': '영수증에 인쇄된 거래일. YYYY-MM-DD. 없으면 null',
+      },
+      'spend_time': <String, Object>{
+        'type': <String>['string', 'null'],
+        'description':
+            '영수증에 인쇄된 결제 시각. `HH:MM` 24시간제로. '
+            '인쇄돼 있지 않으면 null — **날짜에서 지어내지 말 것**',
       },
       'vendor': <String, Object>{
         'type': <String>['string', 'null'],
@@ -246,6 +265,7 @@ class OcrService {
     },
     'required': <String>[
       'belong_date',
+      'spend_time',
       'vendor',
       'description',
       'total_amount',
@@ -273,6 +293,8 @@ class OcrService {
   카드를 찾지 못한다. 지어내서 채우는 것도 안 된다.
   구분자는 아무 모양이어도 된다 — 앱이 `-` 로 모은다.
   영수증에 뒤 4자리만 인쇄돼 있으면 그 네 자리만 적어라.
+- 시각(spend_time)은 **인쇄돼 있을 때만** `HH:MM` 로. 날짜만 찍혀 있으면 null 이다 —
+  이 값은 "저녁에 쓴 건" 같은 판단에 쓰이므로 지어내면 틀린 내역이 된다.
 - 금액은 쉼표를 빼고 정수로.
 - 읽을 수 없는 항목은 null 로 둔다. 지어내지 마라.
 - confidence 는 **읽은 글자가 맞다는 확신**이다. 값이 그럴듯한지가 아니다.
@@ -308,71 +330,22 @@ class OcrService {
     required Uint8List imageBytes,
     String mediaType = 'image/jpeg',
   }) async {
-    final body = <String, Object>{
-      'model': _model,
-      'max_tokens': 2048,
-      // 단순 추출이라 낮은 effort 로 충분하다. 비용·지연이 같이 준다.
-      'output_config': <String, Object>{
-        'effort': 'low',
-        'format': <String, Object>{'type': 'json_schema', 'schema': _schema},
-      },
-      'messages': <Object>[
+    final json = await _api.structured(
+      what: 'OCR',
+      schema: _schema,
+      content: <Object>[
         <String, Object>{
-          'role': 'user',
-          'content': <Object>[
-            <String, Object>{
-              'type': 'image',
-              'source': <String, Object>{
-                'type': 'base64',
-                'media_type': mediaType,
-                'data': base64Encode(imageBytes),
-              },
-            },
-            <String, Object>{'type': 'text', 'text': _prompt},
-          ],
+          'type': 'image',
+          'source': <String, Object>{
+            'type': 'base64',
+            'media_type': mediaType,
+            'data': base64Encode(imageBytes),
+          },
         },
+        <String, Object>{'type': 'text', 'text': _prompt},
       ],
-    };
-
-    final res = await _client.post(
-      Uri.parse(_endpoint),
-      headers: <String, String>{
-        'content-type': 'application/json',
-        'x-api-key': _apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: jsonEncode(body),
     );
 
-    if (res.statusCode != 200) {
-      throw OcrException('OCR 실패 (${res.statusCode}): ${res.body}');
-    }
-
-    // utf8 로 직접 디코딩한다 — http 의 기본 latin1 해석이 한글을 깬다.
-    final decoded =
-        jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-
-    // 안전 정책상 거절되면 content 가 비어 있을 수 있다.
-    if (decoded['stop_reason'] == 'refusal') {
-      throw const OcrException('모델이 요청을 거절했습니다.');
-    }
-
-    final content = decoded['content'] as List<dynamic>;
-    final text =
-        content.cast<Map<String, dynamic>>().firstWhere(
-              (b) => b['type'] == 'text',
-            )['text']
-            as String;
-
-    return OcrResult.fromJson(jsonDecode(text) as Map<String, dynamic>);
+    return OcrResult.fromJson(json);
   }
-}
-
-class OcrException implements Exception {
-  const OcrException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => message;
 }

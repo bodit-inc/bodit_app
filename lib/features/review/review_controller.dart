@@ -38,6 +38,7 @@ class ReviewState {
     this.selected = 0,
     this.isReading = false,
     this.readCount = 0,
+    this.categoryQueue = const <int>[],
     this.isSubmitting = false,
     this.editingId,
     this.error,
@@ -54,6 +55,16 @@ class ReviewState {
   /// 끝까지 읽은 건 수. **진행 화면이 이걸 보여준다** — 열 장을 찍으면
   /// 몇 장이 남았는지 모르는 채로 한참 기다리게 된다.
   final int readCount;
+
+  /// 아직 **비목을 물어야 하는** 건들의 인덱스. 앞에서부터 하나씩 빠진다.
+  ///
+  /// 비어 있지 않으면 검토 폼 앞에 비목 화면이 선다
+  /// (`features/review/category_screen.dart`).
+  ///
+  /// 왜 bool 하나가 아니라 목록인가: 여러 장을 한 번에 찍으면 **비목이 빈
+  /// 건만** 골라 하나씩 물어야 한다. 한 건이라도 비었다고 전부 다시 물으면
+  /// 이력으로 이미 채워진 건까지 사용자가 확인하게 된다.
+  final List<int> categoryQueue;
 
   /// 제출을 눌러 **큐에 적는 중.** 로컬 쓰기라 금방 풀린다 —
   /// 전송은 백그라운드로 넘어가므로 여기서 기다리지 않는다.
@@ -82,6 +93,7 @@ class ReviewState {
     int? selected,
     bool? isReading,
     int? readCount,
+    List<int>? categoryQueue,
     bool? isSubmitting,
     int? editingId,
     String? error,
@@ -92,6 +104,7 @@ class ReviewState {
       selected: selected ?? this.selected,
       isReading: isReading ?? this.isReading,
       readCount: readCount ?? this.readCount,
+      categoryQueue: categoryQueue ?? this.categoryQueue,
       isSubmitting: isSubmitting ?? this.isSubmitting,
       editingId: editingId ?? this.editingId,
       error: clearError ? null : (error ?? this.error),
@@ -116,6 +129,14 @@ class ReviewController extends Notifier<ReviewState> {
   /// (`card_repository.dart` 주석 참조).
   Map<int, String>? _classNames;
 
+  /// 비목 마스터(`_비목마스터` 의 34개).
+  ///
+  /// 컨트롤러가 들고 있는 이유: **모델에게 짐작을 물을 때 스키마에 박는다**
+  /// (`CategoryAdvisor`). 화면의 picker 는 `expenseCategoriesProvider` 를 보지만
+  /// 그쪽은 autoDispose + interactive 인가라, 읽기 경로에서 쓰면 사진을 읽는
+  /// 중에 동의 화면이 뜰 수 있다.
+  List<String>? _categories;
+
   /// 카드 → 분류, **매입내역 과거 행에서 만든 것.** 카드보유내역에 그 카드가
   /// 아직 없을 때만 보는 두 번째 근거다([applyCardClass]).
   ///
@@ -131,7 +152,10 @@ class ReviewController extends Notifier<ReviewState> {
   Future<void>? _cardDataLoad;
 
   Future<void> _loadCardData(gapis.AuthClient client) {
-    if (_cards != null && _classNames != null && _cardHistory != null) {
+    if (_cards != null &&
+        _classNames != null &&
+        _cardHistory != null &&
+        _categories != null) {
       return Future<void>.value();
     }
     return _cardDataLoad ??= _loadCardDataOnce(client).whenComplete(() {
@@ -155,6 +179,13 @@ class ReviewController extends Notifier<ReviewState> {
         _cardHistory ??= await ref
             .read(sheetsRepositoryProvider)
             .cardClassHistory(client: client);
+      }),
+      // 비목 마스터. 분류와 달리 **칸을 채우는 데 쓰지 않는다** —
+      // 모델에게 "이 34개 중에서 골라라" 고 말하기 위한 목록이다.
+      _loadOrWarn('비목 마스터', () async {
+        _categories ??= await ref
+            .read(masterDataRepositoryProvider)
+            .categories(client);
       }),
     ]);
   }
@@ -612,7 +643,47 @@ class ReviewController extends Notifier<ReviewState> {
       for (var k = 0; k < math.min(concurrency, evidence.length); k++) worker(),
     ]);
 
-    state = state.copyWith(isReading: false);
+    // 비목이 비어 있는 건은 **폼 앞에서 먼저 묻는다.**
+    //
+    // 비목은 필수가 아니라(`EntryDraft.isComplete`) 비어도 제출이 막히지
+    // 않는다. 그래서 폼 안의 한 칸으로 두면 다른 열네 칸과 같은 무게로
+    // 보이고, 실제로 빈 채 제출된 행이 쌓였다 — 회계 담당자는 그 행마다
+    // 제출자에게 되물어야 한다.
+    //
+    // 이력으로 **채워진 건은 묻지 않는다.** 근거가 있는 값을 다시 확인하라고
+    // 세우면 화면이 하나 늘어난 것 말고 바뀌는 게 없고, 그렇게 자주 서는
+    // 화면은 사용자가 내용을 안 보고 [다음] 만 누른다.
+    state = state.copyWith(isReading: false, categoryQueue: _needCategory());
+  }
+
+  /// 비목이 빈 건들의 인덱스.
+  List<int> _needCategory() => <int>[
+    for (var i = 0; i < state.drafts.length; i++)
+      if ((state.drafts[i].expenseCategory ?? '').isEmpty) i,
+  ];
+
+  /// 비목 화면에서 [다음] 을 눌렀다. [category] 가 null 이면 `비목없이 다음` 이다.
+  ///
+  /// **대기열의 맨 앞 건에 적는다** — `selected`(지금 보고 있는 건)가 아니다.
+  /// 비목 화면은 폼이 열리기 전에 서므로 사용자가 고른 건이라는 개념이 없고,
+  /// 앞에서부터 차례로 묻는다.
+  ///
+  /// 안 골랐으면 **아무것도 쓰지 않는다.** 빈 문자열을 넣어도 결과는 같지만,
+  /// "사용자가 건너뛰었다" 와 "아직 안 물었다" 를 칸으로 구분할 수 있어야
+  /// 나중에 이 흐름을 고칠 때 추측하지 않는다.
+  void answerCategory(String? category) {
+    final queue = state.categoryQueue;
+    if (queue.isEmpty) return;
+
+    final i = queue.first;
+    final drafts = <EntryDraft>[...state.drafts];
+    if (category != null && category.isNotEmpty && i < drafts.length) {
+      // `suggestedCategory` 는 건드리지 않는다 — 그 칸은 **업체 이력이 제안한
+      // 값**이고, 사용자가 직접 고른 값을 거기 넣으면 폼이 "과거 이력은
+      // …였습니다" 를 자기 선택에 대고 띄운다.
+      drafts[i] = drafts[i].copyWith(expenseCategory: category);
+    }
+    state = state.copyWith(drafts: drafts, categoryQueue: queue.sublist(1));
   }
 
   /// 카드·분류 마스터를 **미리 읽기만 해둔다.**
@@ -686,6 +757,9 @@ class ReviewController extends Notifier<ReviewState> {
         draft = draft.copyWith(
           belongDate: r.belongDate,
           spendDate: r.belongDate,
+          // 시트에 들어가는 값은 아니다 — 내역을 짐작하는 재료다
+          // (`EntryDraft.spendTime`).
+          spendTime: r.spendTime,
           vendor: r.vendor,
           description: r.description,
           totalAmount: r.totalAmount,
@@ -725,10 +799,21 @@ class ReviewController extends Notifier<ReviewState> {
     if (client != null) await _loadCardData(client);
 
     // ── 자동완성의 실제 승부처: 과거에 같은 업체를 어떻게 처리했는가 ──
+    //
+    // **상호를 못 읽은 건도 조회한다.** 예전엔 업체명이 비면 건너뛰었는데,
+    // 그때가 하필 사용자가 가장 막막한 경우다 — 비목 칸이 비고 왜 비었는지도
+    // 모른다. 내역만 읽혔으면 그걸로 추측할 수 있다(`CategoryGuess`).
     final vendor = draft.vendor;
-    if (client != null && vendor != null && vendor.isNotEmpty) {
+    final description = draft.description;
+    if (client != null &&
+        ((vendor ?? '').isNotEmpty || (description ?? '').isNotEmpty)) {
       try {
-        final s = await sheets.suggestForVendor(client: client, vendor: vendor);
+        final lookup = await sheets.lookupForVendor(
+          client: client,
+          vendor: vendor,
+          description: description,
+        );
+        final s = lookup.suggestion;
         if (s != null) {
           // **분류(classCode·className)는 여기서 채우지 않는다.**
           // 업체 이력은 추측이고 카드는 사실이다 — 같은 업체에서 같은 걸 사도
@@ -748,14 +833,115 @@ class ReviewController extends Notifier<ReviewState> {
             categorySuggestions: s.categoryTallies,
           );
         }
+
+        // 이력이 없을 때의 짐작. **칸을 채우지 않는다** — 비목 화면이
+        // 칩으로만 띄우고 고르는 것은 사용자가 한다(`CategoryGuess` 주석).
+        final guess = lookup.guess;
+        if (guess != null) {
+          draft = draft.copyWith(
+            categoryGuesses: guess.tallies,
+            categoryGuessReason: guess.reason,
+            // 비슷한 업체로 걸렸으면 **내역 후보도 같이 온다.** 업체명이
+            // 정확히 맞을 때만 주던 것을, 지점명이 달라 못 맞은 건에도
+            // 준다 — 예전엔 그 건에서 내역 칸이 통째로 비었다.
+            // 비어 있으면 굳이 쓰지 않는다(아래 라벨 플래그도 그대로 둔다).
+            descriptionSuggestions: guess.recentDescriptions.isEmpty
+                ? draft.descriptionSuggestions
+                : guess.recentDescriptions,
+            descriptionsFromSimilarVendor:
+                guess.recentDescriptions.isNotEmpty,
+          );
+        }
+
       } on Object {
         // 추천은 실패해도 진행에 지장 없다. 사용자가 직접 고르면 된다.
       }
     }
 
+    // ── 그래도 빈 칸이 있으면 영수증을 읽고 짐작한다 ─────────────────
+    //
+    // 여기가 과거 이력으로 안 되는 자리다:
+    //
+    //   - 비목: `멀티탭 3구 1.5M` 은 처음 사는 물건이라 걸릴 과거 행이 없다.
+    //     글자만 보면 사무용품비 아니면 장비구입비다
+    //   - 내역: **이력으로 메울 수가 없다.** 지난 값을 넣으면 9월에 8월 것이
+    //     들어간다. 이 건의 내역은 이 영수증에서 읽어야 한다 —
+    //     `더좋은밥상 · 19:24 · 32,000원` 이면 저녁식사다
+    //
+    // **이미 아는 칸은 묻지 않는다.** 이력이 채운 비목, 인쇄된 품목이 그렇다.
+    //
+    // 위 try 밖에 둔다 — **이력 조회가 실패했어도 짐작은 해본다.** 조회가
+    // 실패한 건이야말로 칸이 비는 건이다. 물을 것이 없으면 `suggest` 가
+    // 호출 없이 null 이다.
+    draft = await _advise(draft);
+
     // ── 분류는 카드가 정한다 ────────────────────────────────────────
     //    업체 이력보다 **뒤에** 둔다. 순서가 바뀌면 이력이 분류를 덮는다.
     return _applyCardClass(draft);
+  }
+
+  /// 영수증을 읽고 **빈 칸을 짐작해** draft 에 붙인다.
+  ///
+  /// 비목과 내역을 **다르게 다룬다:**
+  ///
+  ///   - **비목은 칸을 안 채운다.** 칩으로만 띄우고 고르는 것은 사용자다.
+  ///     마스터의 34개 중 하나여야 하는 칸이라, 그럴듯한 오답이 들어가면
+  ///     아무도 못 알아채고 시트는 append-only 다
+  ///   - **내역은 비었을 때 채운다.** 비워두면 `운영팀 확인 요청` 으로
+  ///     제출돼서 담당자가 제출자에게 되물어야 한다. 표시된 짐작
+  ///     (`descriptionIsGuess`)이 그보다 낫다 — 화면이 칸 아래에 짐작이라고
+  ///     적고, 사용자는 눌러서 고칠 수 있다
+  ///
+  /// 실패해도 삼킨다 — 짐작이 없으면 사용자가 직접 채우면 되고, 그건 이
+  /// 기능이 생기기 전의 동작이다. 여기서 던지면 멀쩡히 읽은 증빙이 통째로
+  /// 실패한 것처럼 보인다.
+  Future<EntryDraft> _advise(EntryDraft draft) async {
+    final needCategory = (draft.expenseCategory ?? '').isEmpty;
+    final needDescription = (draft.description ?? '').trim().isEmpty;
+    if (!needCategory && !needDescription) return draft;
+
+    try {
+      final hint = await ref
+          .read(entryAdvisorProvider)
+          .suggest(
+            categories: _categories ?? const <String>[],
+            needCategory: needCategory,
+            needDescription: needDescription,
+            // 이력이 정한 비목은 **재료로 넘긴다** — 복리후생비로 잡힌
+            // 식당이면 내역은 식사다.
+            knownCategory: draft.expenseCategory,
+            vendor: draft.vendor,
+            printedDescription: draft.description,
+            spendTime: draft.spendTime,
+            totalAmount: draft.totalAmount,
+            currency: draft.currency,
+            // 회사가 같은 일을 어떻게 적어왔는지가 가장 좋은 재료다.
+            pastDescriptions: draft.descriptionSuggestions,
+          )
+          // 칸 하나 때문에 읽기가 끝나지 않으면 안 된다. 20초면 모델이
+          // 답할 시간은 충분하고, 넘기면 짐작 없이 폼으로 간다.
+          .timeout(const Duration(seconds: 20));
+      if (hint == null || hint.isEmpty) return draft;
+
+      // 과거 행으로 이미 띄우는 비목은 **빼고** 넘긴다 — 같은 이름이 센 것과
+      // 읽은 것 양쪽에 뜨면 사용자는 둘이 다른 것인 줄 읽는다.
+      final shown = draft.categoryGuesses.map((t) => t.category).toSet();
+      final hints = hint.categories.where((c) => !shown.contains(c)).toList();
+
+      return draft.copyWith(
+        categoryHints: hints,
+        categoryHintReason: hints.isEmpty ? null : hint.categoryReason,
+        // 첫 값을 칸에 넣는다. **비어 있을 때만** 왔으므로 덮을 값이 없다.
+        description: needDescription && hint.descriptions.isNotEmpty
+            ? hint.descriptions.first
+            : draft.description,
+        descriptionGuesses: hint.descriptions,
+        descriptionIsGuess: needDescription && hint.descriptions.isNotEmpty,
+      );
+    } on Object catch (e) {
+      log.w('비목·내역 짐작을 받지 못했다 (사용자가 직접 채운다): $e');
+      return draft;
+    }
   }
 
   /// 전송 대기 중인 건을 다시 연다. OCR 은 돌리지 않는다 — 이미 확정된 값이다.
