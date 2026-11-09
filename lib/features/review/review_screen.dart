@@ -9,6 +9,7 @@ import 'package:bodit_app/core/utils/korean_amount.dart';
 import 'package:bodit_app/core/widgets/amount_keypad.dart';
 import 'package:bodit_app/core/widgets/app_widgets.dart';
 import 'package:bodit_app/data/providers.dart';
+import 'package:bodit_app/features/review/reading_trivia.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
 import 'package:bodit_app/models/class_choice.dart';
 import 'package:bodit_app/models/entry_draft.dart';
@@ -967,7 +968,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 }
 
 /// 시안 ④ — OCR 진행 중.
-/// 시안 ④ — OCR 진행 중.
 ///
 /// **읽는 동안에도 쓸 만하지 않은 사진을 알린다.** 예전엔 끝날 때까지 돌아가는
 /// 동그라미만 보여줬다. 그래서 열 장을 찍으면 전부 끝난 뒤에야 "셋째 장이
@@ -975,13 +975,54 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 ///
 /// 사진 품질은 OCR 응답에 같이 오므로(`ocr_service.dart`) 기기에서 따로 재지
 /// 않는다 — 읽을 수 있었는지는 읽어본 쪽이 가장 잘 안다.
-class _ReadingView extends ConsumerWidget {
+///
+/// **기다리는 동안 읽을 것을 준다.** 진행 문구 한 줄만 두면 5초가 길다 —
+/// 소 상식을 한 꼭지씩 띄운다(`reading_trivia.dart`).
+///
+/// 꼭지를 고르는 일이 `build` 에 있으면 안 된다. 읽은 장수가 올라갈 때마다
+/// 다시 그려지므로 **장이 끝날 때마다 글이 바뀐다** — 읽던 문장이 사라진다.
+/// 그래서 상태로 들고 있고 바꾸는 쪽은 타이머 하나다.
+class _ReadingView extends ConsumerStatefulWidget {
   const _ReadingView();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ReadingView> createState() => _ReadingViewState();
+}
+
+class _ReadingViewState extends ConsumerState<_ReadingView> {
+  /// 이번 기다림에 쓸 순서. 섞어서 앞에서부터 꺼낸다 —
+  /// 매번 무작위로 뽑으면 바로 다음에 같은 글이 또 나온다.
+  late final List<String> _trivia = shuffledTrivia();
+
+  int _index = 0;
+  Timer? _timer;
+
+  /// 한 꼭지를 들고 있는 시간.
+  ///
+  /// 한 장(약 5초)이면 한 꼭지로 끝나고, 여러 장이라 오래 걸릴 때만 다음으로
+  /// 넘어간다. **읽는 데 걸리는 시간보다 넉넉히** 잡았다 — 읽는 중에 글이
+  /// 갈리면 기다림을 달래려던 것이 거꾸로 짜증이 된다.
+  static const _rotate = Duration(seconds: 7);
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(_rotate, (_) {
+      setState(() => _index = (_index + 1) % _trivia.length);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(reviewControllerProvider);
     final total = state.drafts.length;
+    final text = Theme.of(context).textTheme;
 
     // 이미 문제가 드러난 장. 읽기가 끝나기 전에 보여준다.
     final problems = <int>[
@@ -996,12 +1037,24 @@ class _ReadingView extends ConsumerWidget {
         children: [
           const SizedBox(height: Gap.xxl),
           const Center(child: CircularProgressIndicator()),
-          const SizedBox(height: Gap.lg),
-          Center(
+          const SizedBox(height: Gap.xl),
+          // 돌아가는 동그라미 **바로 아래**가 상식 자리다.
+          //
+          // 앞에는 `영수증을 읽는 중…` 과 `기다리는 동안` 이 있었는데 둘 다
+          // 뺐다. 읽는 중이라는 말은 앱바(`분석 중`)와 동그라미가 이미 하고
+          // 있어서 세 번째로 적을 말이 아니었고, 그 두 줄이 눈이 머물 자리를
+          // 상식에서 끌어갔다. 몇 장째인지도 같이 사라졌다 — 그 숫자가 다시
+          // 필요하면 상식 아래에 작게 두고, 위로 올리지는 않는다.
+          //
+          // 꼭지가 바뀔 때 툭 갈리지 않게 겹쳐 넘긴다. 키를 글자 자체로 두면
+          // 같은 글로 다시 그려질 때(읽은 장수 변화)는 전환이 일어나지 않는다.
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 400),
             child: Text(
-              total > 1
-                  ? '영수증을 읽는 중… ($total장 중 ${state.readCount}장)'
-                  : '영수증을 읽는 중…',
+              _trivia[_index],
+              key: ValueKey(_trivia[_index]),
+              textAlign: TextAlign.center,
+              style: text.bodyMedium?.copyWith(height: 1.7),
             ),
           ),
           const SizedBox(height: Gap.sm),
