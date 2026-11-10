@@ -32,16 +32,38 @@ class SlackRepository {
     required String botToken,
     required this.channelId,
     String userIds = '',
+    String remoteUserIds = '',
     http.Client? client,
   }) : _token = botToken,
-       _userIds = parseUserIds(userIds),
+       // **원격이 빌드에 구워진 것을 덮는다** — 순서가 곧 우선순위다.
+       _userIds = {...parseUserIds(userIds), ...parseUserIds(remoteUserIds)},
        _client = client ?? http.Client();
 
   final String _token;
   final String channelId;
   final http.Client _client;
 
-  /// 이메일 → Slack user id. 설정에서 통째로 받는다(`Config.slackUserIds`).
+  /// 이메일 → Slack user id. **두 겹이다.**
+  ///
+  ///   1. `.env` 의 `SLACK_USER_IDS` — 빌드에 구워진 바닥
+  ///   2. Remote Config 의 `slack_user_ids` — 그 위에 얹히고, 겹치면 이긴다
+  ///
+  /// ## 왜 두 겹인가 (왜 원격만 쓰지 않나)
+  ///
+  /// 원격만 쓰면 `.env` 의 `FIREBASE_*` 를 비워둔 빌드에서 **전원의 멘션이
+  /// 사라진다.** 그 값들은 비워도 되게 설계했고(`core/config.dart` 의
+  /// "Firebase" 주석), 비면 "업데이트 안내만 안 뜨고 앱은 돈다" 가 약속이다.
+  /// 멘션까지 같이 죽으면 그 약속이 깨진다.
+  ///
+  /// ## 왜 원격이 이기나
+  ///
+  /// 입사자가 생길 때마다 `.env` 를 고치고 `make gen` → **재배포**해야 멘션이
+  /// 붙었다. 멘션 한 줄 때문에 전원이 새 빌드를 받는 건 비싸다. 그래서 명단의
+  /// 최신판은 콘솔에 있고, 구워진 쪽은 그보다 낡은 사본으로 본다.
+  ///
+  /// 덧붙이는 것이라 **원격에서 지울 수는 없다.** 퇴사자를 지우고 싶으면
+  /// `.env` 에서 지우고 다음 배포를 기다리는 수밖에 없는데, Slack 계정이
+  /// 비활성이면 멘션이 회색 이름으로 뜰 뿐이라 급한 일이 아니다.
   final Map<String, String> _userIds;
 
   Map<String, String> get _auth => <String, String>{
@@ -196,6 +218,10 @@ class SlackRepository {
   ///
   /// Slack 계정이 아예 없는 사람이 있고(매핑에도 없다), 입사자가 매핑에
   /// 추가되기 전일 수도 있다. 그때 제출자 줄이 비면 누가 올렸는지 모른다.
+  ///
+  /// 원격 조회가 끝나기 전에 제출하면 구워진 명단만 보고 판단한다 — 입사자는
+  /// 그 짧은 동안 이메일 글자로 떨어진다. 조회를 기다리느라 제출을 늦추는
+  /// 것보다 낫다(멘션은 글의 장식이고, 제출은 사용자가 누른 일이다).
   @visibleForTesting
   String mentionFor(String email) {
     // 이메일은 대소문자를 가리지 않는다. 매핑 쪽 표기가 달라도 찾아야 한다.

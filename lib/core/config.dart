@@ -77,6 +77,12 @@ abstract final class Config {
   /// **왜 코드가 아닌 `.env` 인가** — 이 레포는 공개돼 있다. 코드에 박으면
   /// 사내 전원의 이메일과 Slack ID 명단이 그대로 공개된다.
   ///
+  /// **이것은 바닥일 뿐이다.** 최신 명단은 Remote Config 의 `slack_user_ids`
+  /// 에 있고 그쪽이 이긴다(`SlackRepository` 의 두 겹 설명). 입사자는 콘솔에
+  /// 적으면 끝이고 여기를 고칠 필요가 없다 — 여기를 고치는 것은 재배포를
+  /// 뜻한다. 그래도 남겨두는 이유는 `FIREBASE_*` 를 비운 빌드에서도 멘션이
+  /// 붙어야 하기 때문이다.
+  ///
   /// 비어 있어도 빌드된다(멘션 없이 이메일 글자가 들어간다).
   ///
   /// user id 는 **워크스페이스 단위**라 Slack 앱을 새로 만들어도 그대로다 —
@@ -123,9 +129,15 @@ abstract final class Config {
 
   // ── Firebase (Remote Config 전용) ──────────────────────────────────
   //
-  // **용도가 하나다** — 새 버전이 올라왔는지 묻는 것(`AppUpdateService`).
-  // Analytics·Crashlytics·푸시를 붙이는 일이 생기면 이 줄부터 고친다.
-  // Anthropic 키의 "셋째 용도를 늘리지 않는다" 와 같은 규칙이다.
+  // **용도가 둘이다. 둘 다 Remote Config 를 읽기만 한다**(ADR 제약 1).
+  //
+  //   1. 새 버전이 올라왔는지 묻는다 (`AppUpdateService`)
+  //   2. Slack 멘션 매핑을 받아온다 (`RemoteKeys.slackUserIds`) — 입사자가
+  //      생길 때마다 `.env` 를 고쳐 재배포하던 것을 콘솔 한 줄로 바꿨다
+  //
+  // Analytics·Crashlytics·푸시처럼 **읽기가 아닌 용도**가 붙는 일이 생기면
+  // 이 줄과 ADR 부터 고친다. Anthropic 키의 "셋째 용도를 늘리지 않는다" 와
+  // 같은 규칙이다 — 늘릴 때마다 여기 적어서 목록이 닫혀 있게 둔다.
   //
   // ## 왜 `google-services.json`·`GoogleService-Info.plist` 가 아닌가
   //

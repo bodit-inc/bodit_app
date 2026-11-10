@@ -14,6 +14,7 @@ import 'package:bodit_app/data/remote/drive_repository.dart';
 import 'package:bodit_app/data/remote/entry_advisor.dart';
 import 'package:bodit_app/data/remote/google_auth.dart';
 import 'package:bodit_app/data/remote/ocr_service.dart';
+import 'package:bodit_app/data/remote/remote_config.dart';
 import 'package:bodit_app/data/remote/sheets_repository.dart';
 import 'package:bodit_app/data/remote/slack_repository.dart';
 import 'package:bodit_app/data/submission_sender.dart';
@@ -62,11 +63,19 @@ final cardRepositoryProvider = Provider<CardRepository>((ref) {
   return CardRepository(spreadsheetId: Config.cardSheetId);
 });
 
+/// Slack 게시. **멘션 매핑이 원격 값이라 조회가 끝나면 다시 만들어진다.**
+///
+/// `.value` 를 보기 때문에 조회를 기다리지 않는다 — 아직 모르면 null 이고,
+/// 그동안은 `.env` 에 구워진 명단만 쓴다. 기다리게 하면 Slack 저장소가
+/// 비동기가 되고 그게 `submissionSenderProvider` 까지 번지는데, 멘션 하나
+/// 때문에 제출 경로 전체를 비동기로 바꿀 이유가 없다.
 final slackRepositoryProvider = Provider<SlackRepository>((ref) {
+  final remote = ref.watch(remoteConfigProvider).value;
   return SlackRepository(
     botToken: Config.slackBotToken,
     channelId: Config.slackChannelId,
     userIds: Config.slackUserIds,
+    remoteUserIds: remote?.slackUserIds ?? '',
   );
 });
 
@@ -90,17 +99,27 @@ final submissionSenderProvider = Provider<SubmissionSender>((ref) {
   );
 });
 
-/// 새 버전이 올라왔는지. **앱이 켜질 때 한 번** 묻는다.
+/// Remote Config 조회. **앱이 켜질 때 한 번**, 소비자 둘이 같이 본다
+/// (업데이트 안내 · Slack 멘션 매핑).
 ///
 /// `autoDispose` 를 쓰지 않는다 — 화면을 떠났다 돌아올 때마다 다시 물으면
-/// Remote Config 조회가 반복되고, 같은 답을 두 번 받으면 안내 다이얼로그가
-/// 또 뜬다. 켜 있는 동안 한 번이면 충분한 질문이다.
+/// 조회가 반복되고, 업데이트 안내 다이얼로그가 또 뜬다. 켜 있는 동안 한
+/// 번이면 충분한 질문이다.
 ///
-/// 조회가 실패해도 **에러로 끝나지 않는다** — `AppUpdateService.check()` 가
-/// `AppUpdate.none` 을 돌려준다. 그래서 읽는 쪽(`UpdateGate`·`UpdateNotice`)이
+/// **에러 상태가 되지 않는다** — `RemoteConfigService.fetch()` 가 실패를
+/// `RemoteValues.empty` 로 바꿔준다. 그래서 읽는 쪽이 에러를 다루지 않는다.
+final remoteConfigProvider = FutureProvider<RemoteValues>((ref) {
+  return const RemoteConfigService().fetch();
+});
+
+/// 새 버전이 올라왔는지. 조회는 [remoteConfigProvider] 가 하고 여기는 판정만.
+///
+/// 조회가 실패해도 **에러로 끝나지 않는다** — 빈 값이 들어오면
+/// `AppUpdate.none` 이 나온다. 그래서 읽는 쪽(`UpdateGate`·`UpdateNotice`)이
 /// 에러 상태를 따로 다루지 않는다.
-final appUpdateProvider = FutureProvider<AppUpdate>((ref) {
-  return const AppUpdateService().check();
+final appUpdateProvider = FutureProvider<AppUpdate>((ref) async {
+  final values = await ref.watch(remoteConfigProvider.future);
+  return const AppUpdateService().judge(values);
 });
 
 /// 전송 대기 목록. 홈과 내 제출 화면이 같이 본다.
