@@ -7,6 +7,7 @@ library;
 import 'package:bodit_app/core/config.dart';
 import 'package:bodit_app/core/log.dart';
 import 'package:bodit_app/data/local/queue_db.dart';
+import 'package:bodit_app/data/remote/app_update_service.dart';
 import 'package:bodit_app/data/remote/card_repository.dart';
 import 'package:bodit_app/data/remote/drive_folder_index.dart';
 import 'package:bodit_app/data/remote/drive_repository.dart';
@@ -16,6 +17,7 @@ import 'package:bodit_app/data/remote/ocr_service.dart';
 import 'package:bodit_app/data/remote/sheets_repository.dart';
 import 'package:bodit_app/data/remote/slack_repository.dart';
 import 'package:bodit_app/data/submission_sender.dart';
+import 'package:bodit_app/models/app_update.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
 
@@ -86,6 +88,19 @@ final submissionSenderProvider = Provider<SubmissionSender>((ref) {
     sheets: ref.watch(sheetsRepositoryProvider),
     slack: ref.watch(slackRepositoryProvider),
   );
+});
+
+/// 새 버전이 올라왔는지. **앱이 켜질 때 한 번** 묻는다.
+///
+/// `autoDispose` 를 쓰지 않는다 — 화면을 떠났다 돌아올 때마다 다시 물으면
+/// Remote Config 조회가 반복되고, 같은 답을 두 번 받으면 안내 다이얼로그가
+/// 또 뜬다. 켜 있는 동안 한 번이면 충분한 질문이다.
+///
+/// 조회가 실패해도 **에러로 끝나지 않는다** — `AppUpdateService.check()` 가
+/// `AppUpdate.none` 을 돌려준다. 그래서 읽는 쪽(`UpdateGate`·`UpdateNotice`)이
+/// 에러 상태를 따로 다루지 않는다.
+final appUpdateProvider = FutureProvider<AppUpdate>((ref) {
+  return const AppUpdateService().check();
 });
 
 /// 전송 대기 목록. 홈과 내 제출 화면이 같이 본다.

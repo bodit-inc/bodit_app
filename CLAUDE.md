@@ -21,6 +21,8 @@
 ## 아키텍처 제약 (ADR 에서 온 것 — 바꾸려면 ADR 부터)
 
 1. **백엔드 없음.** 앱이 Google · Anthropic · Slack API 를 직접 호출한다.
+   Firebase 가 하나 붙어 있지만 **Remote Config 를 읽기만** 한다 — 서버를
+   만든 것이 아니다(아래 "업데이트 알림"). 거기에 쓰는 코드를 만들지 않는다.
 2. **Sheets 가 원천.** 별도 DB 없음. 앱은 **append 만** 하고 수정·삭제하지 않는다.
    그래서 행을 지목할 일이 없고 **UUID 키 컬럼도 없다.**
    (단 하나의 예외 — 나중에 올라간 증빙링크를 그 칸에만 채운다. 아래
@@ -308,6 +310,36 @@
   Drive 파일명의 확장자가 이 경로에서 온다
 - 크기는 줄이지 않는다. 회계가 보관하는 원본이다. OCR 용 축소는
   `compressForOcr` 가 따로 한다
+
+## 업데이트 알림 (Firebase Remote Config)
+
+배포가 TestFlight(iOS)·App Distribution(Android)으로 나가는데 **둘 다 올린
+쪽은 알지만 깔린 쪽은 모른다.** 그래서 앱이 켜질 때 Remote Config 에 묻고
+자기 버전과 비교한다. 파라미터와 콘솔 절차는 README "업데이트 알림" 에 있다.
+
+- **Firebase 용도는 이것 하나다.** Analytics·Crashlytics·푸시를 붙이는 일이
+  생기면 `core/config.dart` 의 "Firebase" 주석부터 고친다. Anthropic 키의
+  "셋째 용도를 늘리지 않는다" 와 같은 규칙이다
+- **네이티브 설정 파일(`google-services.json`·`GoogleService-Info.plist`)을
+  쓰지 않는다.** 둘 다 `.gitignore` 에 걸려 있고(레포가 공개돼 있다) flavor
+  마다 다른 파일을 고르는 장치를 또 만들어야 한다. 대신 `.env` 의 값으로
+  `Firebase.initializeApp(options:)` 에 넘긴다 — Remote Config 는 그걸로 된다.
+  그 값들은 비밀이 아니라 앱 식별자지만(콘솔이 내려주는 plist 에 그대로 있다)
+  전 직원이 보는 공개 레포에 둘 이유는 없다
+- **값이 비면 조용히 건너뛴다.** 안내가 안 뜰 뿐 앱은 돈다 —
+  `AppInfo.load()` 와 같은 규칙이다. `ensureConfigured()` 가 막지 않는다
+- **읽을 수 없는 원격 값은 없는 것으로 친다**(`AppVersion.tryParse` → null).
+  특히 `minimum_version` 은 콘솔 오타 하나로 전원을 막을 수 있는 값이다
+- **비교는 빌드 번호까지 본다** — `1.0.0+5` → `1.0.0+6` 이 가장 흔한 경우다.
+  단 **한쪽에 빌드 번호가 없으면 그 자리로 가르지 않는다** — 안 적은 것은
+  0 이 아니라 모르는 것이다
+- 차단은 **라우터 바깥**(`app.dart` 의 `builder`)에서 한다. 라우트마다 검사를
+  붙이면 새 화면에서 빠뜨리고, 그 화면으로 들어가 제출까지 한다
+- **iOS 의 받는 곳은 `itms-beta://`(TestFlight 앱)가 기본이다.** 앱 안의 우리 앱
+  페이지로 가는 링크는 외부 테스터 그룹의 공개 링크뿐이라 사내 배포에는 없다.
+  콘솔에 `update_url_ios` 를 넣으면 그쪽이 이긴다 — 코드를 고치지 않는다
+- 안내 다이얼로그는 **홈**에서 띄운다 — 로그인 화면 위에 띄우면 사용자가
+  로그인이 막힌 줄 안다. 같은 버전은 하루 한 번만 묻는다
 
 ## 에러를 화면에 보일 때
 

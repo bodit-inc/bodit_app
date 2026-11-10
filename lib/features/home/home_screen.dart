@@ -13,6 +13,7 @@ import 'package:bodit_app/features/capture/capture_service.dart';
 import 'package:bodit_app/features/review/review_controller.dart';
 import 'package:bodit_app/features/submissions/sending_banner.dart';
 import 'package:bodit_app/features/submissions/submission_row.dart';
+import 'package:bodit_app/features/update/update_notice.dart';
 import 'package:bodit_app/router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -70,6 +71,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: ListView(
               padding: screenPadding,
               children: [
+                // 그려지는 것이 없다 — 새 버전이 올라왔으면 다이얼로그를
+                // 한 번 띄운다(`UpdateNotice` 주석). 차단은 라우터 바깥의
+                // `UpdateGate` 가 따로 맡는다.
+                const UpdateNotice(),
                 // 개발 빌드에서만. **무엇이 다른지**까지 적는다 — "개발 환경입니다"
                 // 만으로는 제출이 어디로 가는지 모르고, 그걸 확인하려고 아래
                 // 바로가기를 눌러보게 된다.

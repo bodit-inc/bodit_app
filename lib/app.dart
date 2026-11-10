@@ -2,6 +2,7 @@ import 'package:bodit_app/core/flavor.dart';
 import 'package:bodit_app/core/theme/app_theme.dart';
 import 'package:bodit_app/data/background_send.dart';
 import 'package:bodit_app/features/auth/auth_controller.dart';
+import 'package:bodit_app/features/update/update_gate.dart';
 import 'package:bodit_app/router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -77,11 +78,16 @@ class _BoditAppState extends ConsumerState<BoditApp> {
       // `debugShowCheckedModeBanner` 와 다른 것이다 — 그건 release 빌드에서
       // 사라지는데, 개발 환경을 release 로도 빌드하기 때문이다.
       builder: (context, child) {
-        if (!isDevFlavor || child == null) return child ?? const SizedBox();
+        // 쓰면 안 되는 버전은 여기서 막는다 — **라우터보다 위**라 어떤
+        // 화면으로도 들어가지 못한다(`UpdateGate` 주석). 평소에는 아무것도
+        // 하지 않고 `child` 를 그대로 흘린다.
+        final gated = UpdateGate(child: child ?? const SizedBox());
+        if (!isDevFlavor) return gated;
+        // DEV 리본은 차단 화면 위에도 남아야 한다 — 그래서 가장 바깥이다.
         return Banner(
           message: 'DEV',
           location: BannerLocation.topEnd,
-          child: child,
+          child: gated,
         );
       },
     );

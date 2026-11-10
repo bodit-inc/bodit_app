@@ -36,6 +36,19 @@ dependencies:
 
   extension_google_sign_in_as_googleapis_auth: ^3.0.0
   file_picker: ^13.0.0
+  # 새 버전 알림(Remote Config) 전용. 용도를 늘리지 않는다 — CLAUDE.md "업데이트 알림".
+  #
+  # **메이저를 올리지 않는다.** 5.x·7.x 는 firebase-ios-sdk 13 을 고정으로 끌고
+  # 오는데, 그게 `google_sign_in` 과 iOS 에서 **충돌한다**:
+  #
+  #   firebase-ios-sdk 13  →  app-check 12 · gtm-session-fetcher 4
+  #   GoogleSignIn-iOS 9   →  app-check 11 · gtm-session-fetcher 3
+  #
+  # (SPM 이 "Failed to resolve dependencies" 로 거절한다. CocoaPods 로 바꿔도
+  # 같은 제약이다.) GoogleSignIn-iOS 가 app-check 12 를 받는 버전을 내놓을 때
+  # 같이 올린다. 4.x 는 firebase-ios-sdk 12 를 쓴다.
+  firebase_core: ^4.0.0
+  firebase_remote_config: ^6.0.0
   flutter:
     sdk: flutter
 
