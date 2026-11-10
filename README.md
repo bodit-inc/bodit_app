@@ -92,7 +92,7 @@ envied 가 `.env.*` 를 build_runner 그래프 밖에서 읽기 때문에 생기
 개발 아이콘은 운영 아이콘에서 만든다 — 운영 아이콘을 바꿨으면 `make icons`
 ([`tool/make_dev_icons.py`](tool/make_dev_icons.py)).
 
-## .env 값 9개가 어디서 오는가
+## .env 값 15개가 어디서 오는가
 
 값은 여기 적지 않는다 — **이 repo 는 공개되어 있다.** 받는 곳만 적는다.
 개발·운영이 **같아도 되는 값**과 **달라야 하는 값**이 갈린다.
@@ -108,10 +108,51 @@ envied 가 `.env.*` 를 build_runner 그래프 밖에서 읽기 때문에 생기
 | `DRIVE_FOLDER_ID` | 증빙 공유 드라이브 폴더 | **달라야 함.** 원래 폴더가 개발, **새 폴더가 운영**. 섞이면 회계 담당자가 테스트 파일을 보게 된다 |
 | `GOOGLE_IOS_CLIENT_ID` | Google Cloud OAuth 클라이언트 | **달라야 함** — 클라이언트는 번들 ID 로 매칭되고 개발은 `co.bodit.boditApp.dev` 다. **배포 여부와 무관하다**: 내 기기 debug 빌드도 번들 ID 가 다르면 로그인이 거부된다. 뒤집은 값을 [`ios/Flutter/Dev.xcconfig`](ios/Flutter/Dev.xcconfig) 에도 넣는다 |
 | `GOOGLE_SERVER_CLIENT_ID` | Google Cloud OAuth 클라이언트 | 같아도 됨(웹 클라이언트라 패키지명과 무관). 단 GCP 에 Android 클라이언트 `co.bodit.bodit_app.dev` + SHA-1 을 따로 등록해야 개발 빌드에서 로그인이 통과한다 |
+| `FIREBASE_PROJECT_ID` · `FIREBASE_PROJECT_NUMBER` | Firebase 콘솔 → 프로젝트 설정 | 같아도 됨 — 개발·운영 앱이 **한 프로젝트** 안에 있다 |
+| `FIREBASE_APP_ID_IOS` · `FIREBASE_APP_ID_ANDROID` | 그 프로젝트의 앱 (`GoogleService-Info.plist` 의 `GOOGLE_APP_ID` · `google-services.json` 의 `mobilesdk_app_id`) | **달라야 함** — 번들 ID·패키지명으로 등록되므로 개발(`.dev`)은 따로 등록한 앱이다. 구글 OAuth 클라이언트와 같은 이유다 |
+| `FIREBASE_API_KEY_IOS` · `FIREBASE_API_KEY_ANDROID` | 같은 파일의 `API_KEY` · `current_key` | 같아도 됨 — **키는 앱이 아니라 플랫폼 단위**다. 개발 앱을 등록해도 같은 iOS/Android 키가 내려온다. 앱을 가르는 것은 앱 ID 쪽이다 |
+
+**Firebase 값 6개는 비어 있어도 된다.** 그러면 업데이트 안내만 안 뜨고 앱은
+그대로 돈다(`make *-prod` 도 막지 않는다). 용도는 **새 버전 알림 하나**다 —
+아래 "업데이트 알림" 참조.
 
 `envied` 는 **난독화일 뿐 보안이 아니다.** 런타임에는 평문으로 헤더에 실려 나간다.
 실질 방어선은 Anthropic 지출 한도와 Slack 의 좁은 scope 두 개다
 ([`lib/core/config.dart`](lib/core/config.dart) 주석).
+
+## 업데이트 알림 (Firebase Remote Config)
+
+배포가 TestFlight(iOS)·Firebase App Distribution(Android)으로 나간다.
+둘 다 **올린 쪽은 알지만 깔린 쪽은 모른다.** 그래서 앱이 켜질 때 Remote Config
+에 "최신이 몇이냐" 를 묻고, 자기 버전(`pubspec.yaml` → `package_info_plus`)과
+비교한다. 새 빌드를 올린 뒤 **콘솔에서 값 한 줄만 고치면** 전원에게 전달된다.
+
+| 파라미터 | 값 | 없으면 |
+|---|---|---|
+| `latest_version` | `1.0.1+6` — 방금 올린 빌드 | 안내하지 않는다 |
+| `minimum_version` | 이 밑은 **못 쓴다.** 평소에는 **비워둔다** | 아무도 막히지 않는다 |
+| `update_message` | 안내에 같이 띄울 한 줄 (무엇이 바뀌었는지) | 기본 문구 |
+| `update_url_ios` | 공개 링크가 있으면 그것 | **TestFlight 앱이 열린다**(`itms-beta://` 폴백) |
+| `update_url_android` | App Distribution 링크 | 버튼이 "받는 곳 링크가 없다" 고 말한다 |
+
+- 비교는 **빌드 번호까지** 본다 — `1.0.0+5` → `1.0.0+6` 도 새 버전이다
+  ([`lib/core/version.dart`](lib/core/version.dart))
+- `latest_version` 이 높으면 **홈에서 다이얼로그**를 띄운다. 같은 버전은 하루
+  한 번만 묻는다 — 켤 때마다 뜨면 [나중에] 를 반사적으로 누르게 된다
+- `minimum_version` 에 걸리면 **화면을 통째로 막는다**([`update_required_screen.dart`](lib/features/update/update_required_screen.dart)).
+  시트가 append-only 라 잘못 쓰는 버전을 즉시 세울 길이 하나는 있어야 해서다.
+  **쓸 일이 거의 없는 값이니 비워둔다**
+- 읽을 수 없는 값(오타·`1.0.0-rc1`)은 **없는 것으로 친다** — 콘솔 오타 하나로
+  전원이 막히는 쪽이 훨씬 나쁘다
+- 조회가 실패하면(비행기 모드·`.env` 미입력) 조용히 넘어간다. 앱은 그대로 돈다
+- **iOS 는 `update_url_ios` 를 비워둬도 된다** — TestFlight 앱이 열린다. 앱 안의
+  우리 앱 페이지로 바로 가는 링크는 **외부 테스터 그룹의 공개 링크**뿐인데
+  (빌드마다 베타 심사) 사내 배포는 내부 그룹이라 그게 없다. 나중에 생기면
+  콘솔에 넣기만 하면 그쪽이 이긴다
+
+**개발 빌드가 같이 막히는 것을 피하려면** 콘솔에서 `minimum_version` 에
+"앱이 운영일 때" 조건을 건다 — 개발 앱이 Firebase 에 따로 등록돼 있어서
+(`.dev` 번들·패키지) 조건으로 가를 수 있다.
 
 ## 테스트
 

@@ -38,4 +38,24 @@ abstract class EnvProd {
 
   @EnviedField(varName: 'GOOGLE_SERVER_CLIENT_ID', defaultValue: '')
   static final String googleServerClientId = _EnvProd.googleServerClientId;
+
+  // Firebase — Remote Config 전용. **비어도 빌드된다**(안내만 안 뜬다).
+  // 왜 그런지는 core/config.dart 의 "Firebase" 주석에 있다.
+  @EnviedField(varName: 'FIREBASE_PROJECT_ID', defaultValue: '')
+  static final String firebaseProjectId = _EnvProd.firebaseProjectId;
+
+  @EnviedField(varName: 'FIREBASE_PROJECT_NUMBER', defaultValue: '')
+  static final String firebaseProjectNumber = _EnvProd.firebaseProjectNumber;
+
+  @EnviedField(varName: 'FIREBASE_API_KEY_IOS', defaultValue: '')
+  static final String firebaseApiKeyIos = _EnvProd.firebaseApiKeyIos;
+
+  @EnviedField(varName: 'FIREBASE_APP_ID_IOS', defaultValue: '')
+  static final String firebaseAppIdIos = _EnvProd.firebaseAppIdIos;
+
+  @EnviedField(varName: 'FIREBASE_API_KEY_ANDROID', defaultValue: '')
+  static final String firebaseApiKeyAndroid = _EnvProd.firebaseApiKeyAndroid;
+
+  @EnviedField(varName: 'FIREBASE_APP_ID_ANDROID', defaultValue: '')
+  static final String firebaseAppIdAndroid = _EnvProd.firebaseAppIdAndroid;
 }

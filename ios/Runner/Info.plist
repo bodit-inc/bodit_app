@@ -63,6 +63,23 @@
 	──────────────────────────────────────────────────────────── -->
 		<key>ITSAppUsesNonExemptEncryption</key>
 		<false/>
+		<!-- ── 다른 앱이 깔렸는지 물어볼 수 있는 스킴 목록 ──────────────
+	     업데이트 안내의 [업데이트] 가 `itms-beta://` 로 TestFlight 를 연다
+	     (lib/features/update/update_prompt.dart).
+
+	     **여는 것 자체는 이 목록과 무관하다** — `UIApplication.open` 은
+	     제한을 받지 않는다. 제한을 받는 것은 `canOpenURL` 쪽이고, 목록에
+	     없는 스킴에는 앱이 깔려 있어도 **무조건 false** 를 돌려준다.
+	     url_launcher 의 `canLaunchUrl` 이 그걸 쓰므로, 지금은 안 쓰더라도
+	     나중에 누가 "열 수 있나" 를 먼저 물으면 조용히 못 연다고 나온다.
+	     한 줄이면 그 함정이 사라진다.
+
+	     `://` 를 붙여 적으면 검사가 false 가 된다 — 스킴 이름만 적는다.
+	──────────────────────────────────────────────────────────── -->
+		<key>LSApplicationQueriesSchemes</key>
+		<array>
+			<string>itms-beta</string>
+		</array>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
 		<!-- ── 권한 설명 문구 ──────────────────────────────────────────

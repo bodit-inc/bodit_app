@@ -121,6 +121,56 @@ abstract final class Config {
   static String get googleServerClientId =>
       _pick(EnvDev.googleServerClientId, EnvProd.googleServerClientId);
 
+  // ── Firebase (Remote Config 전용) ──────────────────────────────────
+  //
+  // **용도가 하나다** — 새 버전이 올라왔는지 묻는 것(`AppUpdateService`).
+  // Analytics·Crashlytics·푸시를 붙이는 일이 생기면 이 줄부터 고친다.
+  // Anthropic 키의 "셋째 용도를 늘리지 않는다" 와 같은 규칙이다.
+  //
+  // ## 왜 `google-services.json`·`GoogleService-Info.plist` 가 아닌가
+  //
+  // 그 두 파일은 `.gitignore` 에 걸려 있다(이 레포는 공개돼 있다). 그러면
+  // 받은 사람 쪽에서 빌드가 깨지고, flavor 마다 다른 파일을 Xcode 빌드
+  // 단계에서 골라 복사하는 장치를 하나 더 만들어야 한다.
+  //
+  // 대신 Dart 에서 `Firebase.initializeApp(options:)` 로 넘긴다 — 두 파일에
+  // 적힌 값과 같은 것이고, Remote Config 는 그걸로 충분하다. 환경 분리도
+  // 이미 있는 장치(`.env.dev`·`.env.prod`)를 그대로 쓴다.
+  //
+  // ## 왜 `ensureConfigured()` 가 막지 않나
+  //
+  // 비어 있으면 **업데이트 안내만 안 뜨고 앱은 돈다**(`AppUpdateService` 가
+  // 조용히 건너뛴다). 시트·Slack 설정이 비면 제출이 깨지니 앱을 세우는 게
+  // 맞지만, 이건 보여주는 기능이다 — 못 물어봤다고 앱을 못 쓰게 만들 이유가
+  // 없다. `AppInfo.load()` 가 실패해도 안 던지는 것과 같은 이유다.
+
+  /// Firebase 프로젝트 ID. 콘솔 → 프로젝트 설정 → 일반.
+  static String get firebaseProjectId =>
+      _pick(EnvDev.firebaseProjectId, EnvProd.firebaseProjectId);
+
+  /// 프로젝트 번호(= `messagingSenderId`). 같은 프로젝트면 개발·운영이 같다.
+  static String get firebaseProjectNumber =>
+      _pick(EnvDev.firebaseProjectNumber, EnvProd.firebaseProjectNumber);
+
+  /// iOS 앱의 API 키. **플랫폼마다 다른 키가 자동으로 만들어진다** —
+  /// 콘솔이 내려주는 `GoogleService-Info.plist` 의 `API_KEY` 다.
+  static String get firebaseApiKeyIos =>
+      _pick(EnvDev.firebaseApiKeyIos, EnvProd.firebaseApiKeyIos);
+
+  /// iOS 앱 ID(`1:123...:ios:abc`). 번들 ID 로 등록된 그 앱이다 —
+  /// 개발은 `co.bodit.boditApp.dev` 로 **따로 등록**해야 한다.
+  static String get firebaseAppIdIos =>
+      _pick(EnvDev.firebaseAppIdIos, EnvProd.firebaseAppIdIos);
+
+  /// Android 앱의 API 키. `google-services.json` 의 `current_key` 다.
+  static String get firebaseApiKeyAndroid =>
+      _pick(EnvDev.firebaseApiKeyAndroid, EnvProd.firebaseApiKeyAndroid);
+
+  /// Android 앱 ID(`1:123...:android:abc`).
+  /// 개발은 패키지명 `co.bodit.bodit_app.dev` 로 따로 등록한다.
+  static String get firebaseAppIdAndroid =>
+      _pick(EnvDev.firebaseAppIdAndroid, EnvProd.firebaseAppIdAndroid);
+
   /// 환경에 맞는 쪽을 고른다. 분기를 한 군데로 모아 빠뜨릴 수 없게 한다.
   static String _pick(String dev, String prod) => switch (flavor) {
     AppFlavor.dev => dev,

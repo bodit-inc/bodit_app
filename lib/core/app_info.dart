@@ -22,15 +22,24 @@
 library;
 
 import 'package:bodit_app/core/log.dart';
+import 'package:bodit_app/core/version.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 /// 앱 버전. [load] 로 채운다.
 abstract final class AppInfo {
   static String _version = '';
+  static AppVersion? _current;
 
   /// `1.0.0 (2)` 꼴. **못 읽었으면 빈 문자열이다** — [load] 전이거나 플랫폼
   /// 조회가 실패한 경우다. 부르는 쪽이 비었으면 그 줄을 감춘다.
   static String get version => _version;
+
+  /// 같은 값을 **비교할 수 있는 형태**로. 업데이트 안내가 이걸 쓴다.
+  ///
+  /// [version] 은 화면에 보여줄 표기(`1.0.0 (5)`)라 비교에 쓸 수 없다 —
+  /// 둘을 따로 들고 있는 이유다. 못 읽었으면 null 이고, 그때는 비교를
+  /// 하지 않는다(모르는 버전을 낮다고 단정하면 쓰던 앱이 막힌다).
+  static AppVersion? get current => _current;
 
   /// `main()` 이 `runApp` 전에 한 번 부른다.
   ///
@@ -43,6 +52,12 @@ abstract final class AppInfo {
       _version = info.buildNumber.isEmpty
           ? info.version
           : '${info.version} (${info.buildNumber})';
+      // 비교용은 `+` 로 잇는다 — `AppVersion` 이 읽는 표준 표기다.
+      _current = AppVersion.tryParse(
+        info.buildNumber.isEmpty
+            ? info.version
+            : '${info.version}+${info.buildNumber}',
+      );
     } on Object catch (e, st) {
       log.w('앱 버전을 읽지 못했습니다.', error: e, stackTrace: st);
     }

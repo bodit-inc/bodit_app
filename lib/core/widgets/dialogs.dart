@@ -42,6 +42,44 @@ Future<bool> confirmDestructive(
   return ok ?? false;
 }
 
+/// 새 버전이 있다고 알리고, 받으러 갈지 묻는다. 가겠다고 하면 true.
+///
+/// [confirmDestructive] 와 **버튼 성격이 반대다** — 되돌릴 수 없는 동작이
+/// 아니라 권하는 동작이라, 확인이 빨간 글자가 아니라 강조 버튼이다.
+/// 창 밖을 눌러도 닫힌다: 여기서 닫는 것은 "나중에" 와 같은 뜻이고,
+/// 꼭 받아야 하는 버전은 다이얼로그가 아니라 **화면으로** 막는다
+/// (`features/update/update_required_screen.dart`).
+///
+/// 화면에서 `showDialog` 를 직접 쓰지 않기로 했으므로(`test/architecture_test.dart`)
+/// 업데이트 안내도 여기 둔다. 내용은 부르는 쪽이 [message] 로 넘긴다 —
+/// `core` 는 버전 비교 규칙을 모른다.
+Future<bool> confirmUpdate(
+  BuildContext context, {
+  required String title,
+  required Widget message,
+  String updateLabel = '업데이트',
+  String laterLabel = '나중에',
+}) async {
+  final go = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: message,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: Text(laterLabel),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: Text(updateLabel),
+        ),
+      ],
+    ),
+  );
+  return go ?? false;
+}
+
 /// 값 하나를 고쳐 받는다. 취소하면 null.
 ///
 
