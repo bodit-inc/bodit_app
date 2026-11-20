@@ -57,7 +57,20 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
   /// 잘못 누른 뒤 비목 없이 넘어갈 길이 있어야 한다. 선택을 못 풀면
   /// 사용자는 아무 비목이나 고른 채로 넘어가고, 그건 틀린 비목인데
   /// 시트는 append-only 라 되돌릴 수 없다.
+  ///
+  /// 고를 때 **키보드를 내린다.** 검색창에 포커스가 남아 있으면 칩이나
+  /// 목록을 눌러도 키보드가 그대로 떠 있다 — 모바일의 `TextField` 는
+  /// 바깥을 눌러도 포커스를 놓지 않는다(그래서 `InlineEditText` 는
+  /// `onTapOutside` 를 직접 적어둔다). 그 상태로는 고른 값이 물든 목록과
+  /// 하단 버튼이 절반쯤 가린 채라, 확인하려면 칸 밖을 한 번 더 눌러야 한다.
+  ///
+  /// **칩과 목록을 가르지 않는다.** 둘은 같은 값을 고르는 두 가지 길이고
+  /// (칩은 검색을 건너뛰는 쪽이다), 한쪽만 키보드를 내리면 같은 화면에서
+  /// 같은 동작이 다르게 움직인다. 검색어를 더 고치려면 칸을 다시 누르면
+  /// 된다 — 한 번 더 누르는 대가가, 가린 목록을 못 보는 대가보다 싸다
+  /// (`SearchField` 가 자동 포커스를 안 가져가는 것과 같은 판단이다).
   void _toggle(String category) {
+    FocusScope.of(context).unfocus();
     setState(() => _picked = _picked == category ? null : category);
   }
 
@@ -216,6 +229,7 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
     // 이건 틀린 값이 아니라 그럴듯한 후보다 — 검토 폼의 "이 업체의 다른
     // 비목" 과 같은 이유다.
     initialState: _picked != value,
+    // 키보드를 내리는 것은 [_toggle] 이 한다 — 목록 탭과 같은 자리다.
     onTap: () => _toggle(value),
   );
 
