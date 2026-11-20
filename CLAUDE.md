@@ -68,6 +68,32 @@
 6. 개발 아이콘은 **운영 아이콘에서 만든다**(`make icons`). 손으로 편집해 두면
    운영 아이콘이 바뀔 때 한쪽만 낡는다
 
+## 배포 (사내 — 스토어 심사 없음)
+
+Android 는 Firebase App Distribution(그룹 `Bodit`), iOS 는 TestFlight 다.
+절차와 준비물은 README "배포" 에 있다.
+
+1. **손으로 빌드해서 올리지 않는다.** `make deploy-android`·`deploy-ios`·
+   `deploy` 하나를 쓴다. 순서가 있고 빠뜨리면 조용히 틀린다 — 빌드 번호를
+   안 올리면 TestFlight 가 거부하고(Android 는 **거부하지 않고 그냥 올라가서**
+   받는 사람이 새 빌드인지 모른다), `make gen` 을 건너뛰면 고친 `.env.prod`
+   가 빌드에 안 들어간다
+2. **빌드 번호는 스크립트가 올린다.** `pubspec.yaml` 을 손으로 고치지 않는다.
+   재시도는 `--no-bump` 로 — 안 그러면 나간 적 없는 번호가 생긴다
+3. **출시 노트는 사람이 쓴다**(`release_notes.md`). 비면 빌드하지 않고 멈춘다.
+   짐작해서 채우지 않는다 — 무엇이 바뀌었는지는 올리는 사람만 안다.
+   그 글이 세 곳으로 간다: App Distribution 출시 노트 · 버전 커밋 본문 ·
+   TestFlight 의 What to Test
+4. **배포 자격증명은 `.env.deploy` 에 둔다.** `.env.prod` 에 적지 않는다 —
+   저쪽은 envied 가 **앱 바이너리에 굽는** 값이라 전 직원 기기에
+   App Store Connect 키가 들어간다
+5. **배포가 끝나면 Remote Config 공지가 남는다.** 올린 쪽은 알지만 깔린 쪽은
+   모른다. 강제 여부(`minimum_version`)와 문구는 **사용자에게 묻는다** —
+   오타 하나로 전원이 막히는 값이라 혼자 정하지 않는다
+6. **Android release 가 debug 키로 서명된다.** 알고 둔 것이다 — 바꾸면 기존
+   설치를 전부 지우고 다시 깔아야 하고, 새 SHA-1 을 GCP 에 등록할 때까지
+   Google 로그인이 막힌다. 스토어로 나갈 일이 생기면 그때 ADR 부터다
+
 ## 보안 (타협 불가)
 
 - Google 인증은 **사용자별 OAuth(PKCE)**. 서비스 계정 키를 코드에 넣지 않는다.

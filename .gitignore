@@ -28,6 +28,7 @@ pubspec.lock
 # `cp ... .env.dev` 가 받는 사람 쪽에서 성립하지 않았다(CI 도 같은 이유로 깨졌다).
 !.env.dev.example
 !.env.prod.example
+!.env.deploy.example
 **/secrets.dart
 **/google-services.json
 **/GoogleService-Info.plist
@@ -41,6 +42,13 @@ android/.kotlin/
 *.apk
 *.aab
 *.ipa
+
+# 출시 노트 — 배포마다 갈아쓰는 파일이다. 내용은 버전 커밋 본문에 남는다.
+/release_notes.md
+
+# firebase CLI 가 실패할 때 레포 루트에 떨어뜨리는 로그
+firebase-debug*.log
+firestore-debug.log
 
 # fvm — .fvmrc(버전 핀)는 커밋하고 SDK 심볼릭 링크는 무시한다
 .fvm/
