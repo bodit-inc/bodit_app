@@ -1,0 +1,214 @@
+name: Claude PR 리뷰
+
+# PR 이 열리거나 갱신되면 Claude 가 자동으로 리뷰해 PR 에 코멘트를 남긴다.
+# goprone-flutter-app·fh-finder·cow-game 의 claude-pr-review.yml 과 같은 구조·일반 리뷰 규칙을 쓴다.
+# "이 레포의 컨벤션" 만 이 앱(증빙 OCR → Sheets·Drive·Slack 동시 제출)에 맞게 바꿨다.
+# 이 앱 전용 관점이 더 필요해지면 아래 "리뷰 관점" 에 번호를 이어 추가한다.
+#
+# 인증: Workload Identity Federation(정적 API 키 없음).
+# 필요한 변수(Repository variables): CLAUDE_REVIEW_FEDERATION_RULE_ID, CLAUDE_REVIEW_ORGANIZATION_ID,
+# CLAUDE_REVIEW_SERVICE_ACCOUNT_ID, CLAUDE_REVIEW_WORKSPACE_ID
+# 주의: Anthropic Console 의 federation rule 이 이 레포(bodit-inc/bodit_app)의 토큰을
+# 허용해야 한다. 다른 레포 전용으로 묶여 있으면 변수만 등록해도 인증에 실패한다.
+#
+# 이 레포에는 ci.yml 이 따로 있다(analyze·test). 여기서 Flutter 툴체인을 깔지 않는다 —
+# 리뷰는 코드를 읽을 뿐이고, 테스트가 통과하는지는 같은 PR 에서 ci.yml 이 본다.
+
+on:
+  pull_request:
+    # opened: PR 생성, synchronize: 새 커밋 push, ready_for_review: draft 해제
+    types: [opened, synchronize, ready_for_review]
+
+# 같은 PR 에 새 커밋이 올라오면 이전 리뷰는 취소한다.
+concurrency:
+  group: claude-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # draft PR 은 제외. fork PR 과 변수 미등록은 아래 step 에서 건너뛴다.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read # 코드 읽기만. 리뷰가 코드를 고치거나 push 하지 못하게 write 를 주지 않는다.
+      pull-requests: write # PR 에 리뷰 코멘트 작성
+      issues: write # PR 일반 코멘트(이슈 코멘트 API) 작성
+      id-token: write # WIF 용 OIDC 토큰 발급
+    env:
+      # fork PR 은 id-token 을 받을 수 없어 WIF 가 안 되므로 같은 레포 PR 에서만 켠다.
+      CAN_REVIEW: ${{ vars.CLAUDE_REVIEW_FEDERATION_RULE_ID != '' && github.event.pull_request.head.repo.full_name == github.repository }}
+    steps:
+      - name: 실행 조건 확인
+        if: env.CAN_REVIEW != 'true'
+        run: echo "::notice::fork PR 이거나 CLAUDE_REVIEW_FEDERATION_RULE_ID 변수가 없어 리뷰를 건너뜁니다."
+
+      - name: Checkout
+        if: env.CAN_REVIEW == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Claude 코드 리뷰
+        if: env.CAN_REVIEW == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          # anthropic_api_key 를 함께 넣으면 정적 키가 우선해 WIF 가 안 쓰이므로 넣지 않는다.
+          anthropic_federation_rule_id: ${{ vars.CLAUDE_REVIEW_FEDERATION_RULE_ID }}
+          anthropic_organization_id: ${{ vars.CLAUDE_REVIEW_ORGANIZATION_ID }}
+          anthropic_service_account_id: ${{ vars.CLAUDE_REVIEW_SERVICE_ACCOUNT_ID }}
+          anthropic_workspace_id: ${{ vars.CLAUDE_REVIEW_WORKSPACE_ID }}
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            이 PR 을 코드 리뷰하라. PR 브랜치는 현재 작업 디렉터리에 체크아웃되어 있다.
+            리뷰는 반드시 한국어로 작성한다.
+
+            레포 루트에 CLAUDE.md 가 있으면 먼저 읽고 그 규칙도 기준으로 삼는다.
+            이 앱의 제약은 대부분 ADR 에서 온 것이라 CLAUDE.md 가 그 단일 원천이다.
+
+            ## 이 레포의 컨벤션 (Flutter 사내 매입내역 자동완성 앱)
+            - 증빙(영수증·카드 앱 캡처)을 OCR 로 읽어 매입내역 폼을 프리필하고, 제출하면
+              Sheets(행 추가)·Drive(파일 업로드)·Slack(게시) 세 곳에 동시에 올린다.
+              백엔드가 없다. 앱이 Google·Anthropic·Slack API 를 직접 부른다.
+              Firebase 가 하나 붙어 있지만 Remote Config 를 읽기만 한다 — 거기에 쓰는 코드,
+              Analytics·Crashlytics·푸시처럼 읽기가 아닌 용도가 새로 붙으면 지적한다.
+            - **Sheets 는 append-only 다. 가장 중요한 규칙이다.** 추가는 values.append 로만 한다.
+              읽고→계산하고→쓰기 금지(동시 제출에서 덮어쓴다). 기존 행을 수정·삭제하지 않는다.
+              잘못된 행이 들어가면 앱으로 되돌릴 수 없으므로 이 계열 위반은 전부 [중요]다.
+              쓰기 예외는 단 하나 — SheetsRepository.fillEvidenceLink 가 증빙링크 칸 하나만 채운다.
+              그 예외가 다른 칸(금액·비목·분류)으로 넓어지거나, 행을 지목하기 전에
+              업체명·내역 일치와 빈 칸 여부를 확인하지 않으면 지적한다.
+              append 가 돌려준 행 번호는 밀릴 수 있다(위쪽 행이 지워지면). 어긋나면
+              쓰지 않고 followUpNote 로 사용자에게 넘기는 경로가 유지되는지 본다.
+            - 수식 컬럼(해당년도·해당월·분류명)에 값을 쓰지 않는다. ARRAYFORMULA 가 채운다.
+            - **부가세를 자동 계산하지 않는다.** 면세는 0원이고 인쇄된 값만 넣는다.
+              단 총금액을 고치면 공급가액·부가세를 그대로 두지 않는다(합이 안 맞는 행이 들어간다).
+              vatSplitApplied 표시가 있는 건에만 같은 판단을 재적용하고, 없으면 비우고 다시 묻는다.
+              표시 없는 건에 1.1 을 나누면 면세에 없는 세금이 생긴다.
+            - **세 목적지는 독립으로 보낸다.** 하나가 실패해도 뒤를 건너뛰지 않는다.
+              실패 사유는 목적지별로 따로 적는다(둘이 동시에 실패할 수 있다).
+              앞 단계 실패로 뒤가 멈추는 제어흐름이 새로 생기면 지적한다.
+            - 비목·분류명 마스터를 하드코딩하지 않는다. 시트의 _비목마스터·_분류마스터 탭을 읽는다.
+              예외는 마스터를 못 읽었을 때의 폴백 이름 `법인(신용)` 하나뿐이다.
+            - **비목은 필수가 아니다.** 안 골랐으면 빈 칸으로 append 한다.
+              내역처럼 `운영팀 확인 요청` 으로 채우지 않는다 — 비목 칸은 마스터의 34개 중 하나여야 한다.
+              비목을 isComplete 의 필수 조건으로 올리는 변경은 지적한다.
+            - **비목은 업체 이력에서, 분류는 카드에서 온다.** 두 추천이 같은 칸을 채우지 않는다.
+              분류를 업체 이력으로 정하거나 비목을 카드로 정하는 코드는 지적한다.
+              카드보유내역 시트(CARD_SHEET_ID)는 보기 전용이고, 그 시트의 분류명(E열)을 읽지 않는다 —
+              분류명의 출처는 _분류마스터 하나다(두 시트가 어긋난 적이 있다).
+              현재사용여부가 O 인 카드만 쓰되 X 행도 버리지 않는다(사용자에게 할 말이 다르다).
+            - 카드번호는 영수증에 인쇄된 대로 전체를 저장한다(가려진 자리는 `*`).
+              마스크를 풀거나 전체 번호를 지어내지 않는다. 대조는 번호 전체로,
+              자리 단위 호환 판정(CardDirectory.compatible)으로 하고 길이가 달라도 뒤에서 맞춘다.
+              번호로도 열쇠가 아니다 — 둘 이상 걸리면 조용히 첫 번째를 고르지 않고 사용자에게 고르게 한다.
+            - 분류 기본값 `3 법인(신용)` 은 근거가 하나도 없을 때만 넣는다.
+              고를 후보가 있으면 넣지 않고, cardClass 에는 넣지 않고(그 칸은 "카드가 정한 사실" 이다),
+              사용자가 고른 값을 덮지 않는다.
+            - Drive: 폴더는 `YYMM`, 파일명 접두는 `YYMMDD` 로 **일부러 다르다.** 한쪽에 맞추지 않는다.
+              files.list 로 폴더를 조회해 찾지 않는다 — drive.file 스코프에서는 앱이 만든 파일만 보여
+              사용자마다 같은 이름 폴더가 생긴다. _드라이브폴더 탭에 폴더 ID 를 적어 공유하고
+              같은 연월의 첫 행만 쓴다. 폴더를 못 정하면 루트로 떨어지지 않고 던진다.
+              파일명에 대괄호를 쓰지 않고, 치환은 `< > : " / \ | ? *` → `-` 와 제어문자 삭제만 한다
+              (공백·한글·`_`·`-`·`,`·괄호는 그대로 통과). 사용자가 고친 파일명에도 같은 치환을 적용한다.
+            - 보안: Google 인증은 사용자별 OAuth(PKCE)다. 서비스 계정 키를 코드에 넣지 않는다.
+              Drive scope 는 drive.file 만. Slack scope 는 chat:write·files:write·files:read 셋만
+              (users:read.email 은 일부러 뺐다). Anthropic 키 용도는 OCR 과 EntryAdvisor 둘뿐이고
+              셋째 용도를 늘리지 않는다. 이 범위가 넓어지는 변경은 [중요]다.
+              secrets.dart·.env 가 커밋에 들어오면 [중요]다. 레포가 공개돼 있다.
+              네이티브 Firebase 설정 파일(google-services.json·GoogleService-Info.plist)을 쓰지 않는다 —
+              .env 값으로 Firebase.initializeApp(options:) 에 넘긴다.
+            - 증빙 보관(CaptureService._store): JPEG 계열은 복사하지 말고 회전을 픽셀에 굽는다.
+              autoCorrectionAngle: true 와 keepExif: false 가 **둘 다** 필요하다(태그를 남기면 뷰어가 한 번 더 돌린다).
+              PNG 는 건드리지 않는다. 굽기에 실패하면 원본을 그대로 복사한다(증빙을 잃는 쪽이 나쁘다).
+              크기를 줄이지 않는다 — OCR 용 축소는 compressForOcr 가 따로 한다.
+            - OCR: structured outputs 로 JSON 스키마를 강제한다. 후보는 스키마의 enum 에 마스터를 박아 받고
+              (모델이 없는 비목 이름을 지어내면 시트에 없는 값이 들어간다), maxItems 는 쓰지 못한다.
+              비목·분류코드는 OCR 대상이 아니다 — 영수증에 없다.
+              EntryAdvisor(비목·내역 짐작)는 **별도 호출이다. OCR 요청에 합치지 않는다** —
+              OCR 프롬프트는 "인쇄된 값만 읽어라" 로 일관돼야 한다. 둘을 합치는 변경은 지적한다.
+              confidence 표시 기준은 0.7 이고, 확신도가 없는 항목(직접 친 값·PDF)은 표시하지 않는다.
+            - 내역 짐작: 비어 있을 때만 채우고, 채운 값은 descriptionIsGuess 로 표시한다.
+              사용자가 고치거나 다른 후보를 고르면 표시를 내린다.
+              목적·사람을 지어내지 않는다(`거래처 미팅`·`팀 회식` 은 영수증에 없는 사실이다).
+              시각이 없으면 때를 말하지 않는다. 과거 값을 자동으로 채우지 않는다.
+            - 화면은 core/widgets 의 컴포넌트만 조립하고 배럴(app_widgets.dart) 하나만 import 한다.
+              화면에서 showDialog·TextField·styleFrom 을 직접 쓰지 않는다.
+              글자 크기는 Theme.of(context).textTheme 의 15개 슬롯에서만 온다 — fontSize: 를 직접 적지 않는다
+              (색·굵기·고정폭을 copyWith 로 얹는 것은 된다). 가장 작은 슬롯이 labelSmall(14px)이다.
+              test/architecture_test.dart 가 이 둘을 집행한다 — 그 테스트를 느슨하게 고치는 변경은 [중요]다.
+            - 예외를 Text('$e') 로 그냥 뿌리지 않는다. ErrorDisclosure 를 쓴다
+              (기본은 사람이 읽을 한 줄, 누르면 예외 원문). 컨트롤러·상태는 예외 원문만 들고 있고
+              사람이 읽을 문구는 화면이 붙인다. 사라지는 스낵바는 예외다.
+              조용히 실패하는(원인을 삼키는) 경로가 새로 생기면 지적한다.
+            - flavor: FLAVOR 에 기본값을 두지 않는다(없으면 main() 이 화면을 띄우기 전에 던진다).
+              설정 키를 늘리면 네 곳을 같이 고친다 — 두 .env.*.example 과 두 env 클래스.
+              test/flavor_config_test.dart 가 막는다. 호출부는 Config 하나로만 읽고 환경을 모른다.
+              데스크톱·웹 타깃을 추가하지 않는다(모바일 전용).
+            - 앱에 수정·삭제·승인 화면이 없다(제출자가 전부 채우고 바로 확정된다).
+              그런 화면·경로를 새로 만드는 변경은 ADR 선행이 필요하다고 지적한다.
+            - 주석을 충분히 단다. 특히 "왜 이렇게 했는지" — 위 제약에서 나온 코드는 근거를 남긴다.
+              파일·디렉토리·식별자는 영어 kebab/lowerCamel, 주석·문서는 한국어 평어체.
+            - 커밋 메시지는 Conventional Commits `<type>: <제목>` 이고 타입만 영어다
+              (feat·fix·docs·style·refactor·perf·test·build·ci·chore·revert).
+              제목·본문은 한국어 평어체로 "무엇을 했는지" 를 쓴다 — "~했음" 이나 명사로 끊지 않는다.
+            - 포맷만 바뀐 diff(줄바꿈, 재정렬)는 의미 있는 변경이 아니다.
+
+            ## 리뷰 관점
+            1. 버그, 널 처리(`!` 강제 언랩, late 미초기화), 비동기/상태 갱신 오류, 엣지 케이스
+            2. 위 컨벤션 위반
+            3. 보안(시크릿·키 하드코딩, 스코프 확대, 사용자 개인정보·민감 정보의 로그 노출)
+            4. 테스트 누락 (순수 로직이 바뀌었는데 test/ 에 테스트가 없는 경우)
+            5. 중복 실행: 버튼 연타·중복 요청·재렌더로 같은 요청이 두 번 나가는 경로가 있는지 본다.
+               **제출 경로에서는 이것이 중복 시트 행·중복 Drive 파일·중복 Slack 글을 뜻하고 append-only 라
+               되돌릴 수 없다.** 이 PR 이 추가하거나 바꾼 비동기 호출에 진행 중 가드(또는 비활성화)가 있는지 확인한다.
+            6. 영향 범위: 이 PR 이 바꾼 함수·위젯·상태·상수의 호출처를 전수 검색하고, 다른 화면에서
+               기존 동작이 바뀌지 않는지 확인한다. 확신이 없으면 호출처 목록과 함께 확인 질문으로 남긴다.
+            7. 변경 후 반영: 데이터를 생성·수정하는 변경이면 제출 목록·검토 폼·provider 상태에
+               갱신이 반영되는 경로가 있는지 본다.
+            8. 비동기 이후 접근: `await` 이후 setState·notifyListeners·context 를 쓰면 mounted 또는
+               dispose 여부를 확인한다. StreamSubscription·컨트롤러·타이머가 해제되는 경로도 본다.
+            9. 응답·값 방어: OCR 응답·시트 행·카드 시트 행·Remote Config 값의 누락·빈 값·범위 밖 값·
+               타입 차이(int/double, 문자열 금액)를 0이나 기본값으로 바꿔 틀리게 표시하지 않는지 확인한다.
+               의미가 다른 상태(값 없음·실패·정상)를 하나의 표시로 합치지 않는지도 본다.
+               읽을 수 없는 Remote Config 값은 없는 것으로 쳐야 한다(minimum_version 오타 하나로 전원이 막힌다).
+               **금액·카드번호·일자는 틀려도 사람이 못 알아채고 시트에 그대로 들어간다** — 이 세 값의
+               파싱·정규화·표시가 바뀌면 [중요]로 본다.
+            10. 코드 중복(중요): 같은 로직·블록·계산식·초기화 코드가 이 PR 안이나 기존 코드와 두 곳 이상에 있으면
+                사소한 지적이 아니라 중요 지적으로 보고 해당 줄에 인라인 코멘트를 남기며,
+                공용 함수·위젯으로 뺄 위치를 제안한다. 상태별 색·문구 매핑처럼 한쪽만 고치면 화면끼리
+                어긋나는 값, 복붙 분기에서 한쪽만 고친 경우도 포함한다.
+            11. enum·상태 분기 fallback: enum 이나 상태 값을 다루는 switch·조건에서 default 가 특정 값으로
+                조용히 떨어져 다른 경우가 잘못 처리되지 않는지, 값이 추가될 때 빠지는 분기가 없는지 본다.
+                cardNotice 처럼 경우마다 사용자가 할 일이 다른 값을 하나로 합치지 않는지도 본다.
+
+            ## 코멘트 방식
+            - 중요 이슈(버그, 크래시, 보안, 코드 중복, 데이터 오류·유실, append-only 위반, 계층 규칙 위반)만
+              해당 줄에 인라인 코멘트로 개별 지적한다.
+            - 사소한 지적(네이밍, 스타일, 취향 수준 제안)은 인라인으로 흩뿌리지 말고 하나로 묶어 PR 코멘트 한 개에 정리한다.
+            - 이미 통과한 항목이나 칭찬을 나열하지 않는다. 문제가 없으면 한 줄로 "특이사항 없음"만 남긴다.
+            - 재리뷰(새 커밋이 올라와 다시 실행된 경우)에도 PR 전체를 처음부터 다시 본다.
+              지난 리뷰 코멘트는 `gh pr view` 로 확인하되 바뀐 부분만 보지 않는다.
+              새 커밋이 건드리지 않은 파일·줄에도 놓친 문제가 있을 수 있다.
+            - 사소한 지적도 숨기지 않고 말한다. 찾는 범위는 줄이지 않고 표시만 구분한다. 코드 중복은 계속 중요 지적으로 다룬다.
+              - 심각도 표시: 제목 앞에 [중요]·[확인 필요]를 붙인다. 표시 없는 지적은 사소로 본다.
+              - [중요]는 보안·비밀값/데이터 유출·데이터 손실·주로 쓰는 경로의 오동작에만 붙인다.
+                코드 중복도 [중요]다. 시트에 잘못된 행이 들어가는 경로도 [중요]다(되돌릴 수 없다).
+              - 드문 경로(부분 실패 후 재실행, 동시에 두 번 발생하는 경우 등)의 문제는 [중요]로 올리지 말고
+                [확인 필요]로 표시한다. 어떤 조건에서 발생하는지와 그때의 영향을 한두 줄로 함께 적는다.
+              - 그 밖의 네이밍·스타일·취향 수준은 사소로 둔다.
+              - 새로 찾은 [중요] 지적은 리뷰 맨 앞에 쓴다. [확인 필요]는 그 뒤에 쓴다.
+              - 새로 찾은 사소한 지적은 리뷰 끝 '사소한 지적' 한 섹션에 묶는다.
+              - 지난 리뷰에서 이미 남겼는데 반영되지 않은 지적(중요·사소 모두)은 본문에 다시 풀어쓰지 않고
+                '아직 반영 안 된 지난 지적' 한 섹션에 한 줄씩 묶는다.
+                중요 지적이 반영되지 않았다면 그 줄에 [중요] 표시를 남긴다.
+            - 새로 지적할 문제가 하나도 없으면 "특이사항 없음" 한 줄만 남긴다.
+              이미 통과한 항목이나 체크리스트, 진행 표시를 나열하지 않는다.
+            - 추측하지 말고 코드에서 확인한 사실만 근거로 쓴다. 확신이 없으면 확인 질문으로 표현한다.
+            - 코드를 수정하거나 커밋하지 않는다. 리뷰 코멘트만 남긴다.
+          # 리뷰에 필요한 도구만 허용한다: 인라인 코멘트 작성, PR 코멘트 작성, PR diff·정보 조회.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
