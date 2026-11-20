@@ -120,6 +120,90 @@ envied 가 `.env.*` 를 build_runner 그래프 밖에서 읽기 때문에 생기
 실질 방어선은 Anthropic 지출 한도와 Slack 의 좁은 scope 두 개다
 ([`lib/core/config.dart`](lib/core/config.dart) 주석).
 
+## 배포
+
+사내 배포다 — **스토어 심사로 나가지 않는다.** 받는 곳이 둘이다:
+
+| | 어디로 | 누가 받나 |
+|---|---|---|
+| Android | Firebase App Distribution | 테스터 그룹 `Bodit` |
+| iOS | TestFlight | 내부 테스터 (심사 없음) |
+
+```bash
+# 1. 출시 노트부터 쓴다. 비어 있으면 스크립트가 빌드하지 않고 멈춘다
+vi release_notes.md
+
+# 2. 올린다
+make deploy-android      # Android 만
+make deploy-ios          # iOS 만
+make deploy              # 둘 다 — 빌드 번호는 한 번만 올라간다
+
+# 3. iOS 는 Apple 쪽 처리(5~30분)가 끝난 뒤 한 번 더
+make testflight-notes    # TestFlight 의 "What to Test" 를 채운다
+
+# 4. 공지 — Claude 에게 "배포했다, 공지하자" 고 말한다
+#    강제로 할지·문구를 뭘로 할지 묻고 콘솔에 넣을 값을 만들어준다
+```
+
+### 스크립트가 하는 일 ([`tool/deploy.sh`](tool/deploy.sh))
+
+순서가 있고, 하나라도 빠지면 **조용히 틀리기 때문에** 손으로 하지 않는다.
+
+| 단계 | 빠뜨리면 |
+|---|---|
+| 출시 노트 확인 | 받는 사람이 무엇이 바뀌었는지 모른다 |
+| 빌드 번호 `+1` | TestFlight 가 **같은 번호를 거부한다.** Android 는 거부하지 않고 그냥 올라가서 더 나쁘다 |
+| `make gen` | `.env.prod` 를 고친 것이 빌드에 안 들어간다 — envied 는 **굽는 시점**의 값을 쓴다 |
+| 빌드 → 업로드 | — |
+| `chore: [Version] …` 커밋 | 어느 커밋이 나갔는지 남지 않는다. **본문은 출시 노트 그대로** 들어간다(`release_notes.md` 는 다음 배포 때 갈아쓰는 파일이라서) |
+| Remote Config 공지 | 올린 쪽만 알고 깔린 쪽은 모른다 (아래 "업데이트 알림") |
+
+- 커밋은 **`pubspec.yaml` 하나만** 담는다 — 작업 중인 다른 변경을 끌어가지 않는다
+- 작업 트리가 더러우면 **막지 않고 묻는다.** 막으면 급할 때 스크립트를 안 쓰고
+  손으로 빌드하게 된다
+- 빌드·업로드가 **다 끝난 뒤에** 커밋한다. 먼저 커밋하면 깨졌을 때 나간 적
+  없는 번호가 역사에 남는다
+- 실패해서 다시 돌릴 때는 `--no-bump` 를 붙인다 — 안 그러면 번호가 한 번 더 오른다:
+
+  ```bash
+  tool/deploy.sh ios --no-bump
+  ```
+
+### 처음 한 번만 — 준비물
+
+```bash
+# 1. firebase CLI (App Distribution 업로드)
+npm i -g firebase-tools
+firebase login
+
+# 2. 배포 전용 설정
+cp .env.deploy.example .env.deploy   # 값은 파일 안 주석이 안내한다
+```
+
+| 무엇 | 어디서 | 없으면 |
+|---|---|---|
+| App Distribution 그룹 alias | 콘솔 → 테스터 및 그룹 → 그룹 주소 끝(`?group=…`) | 업로드는 되고 **배포만 안 된다** |
+| App Store Connect API 키(`.p8`) | ASC → 사용자 및 액세스 → 통합 → App Store Connect API (역할 App Manager) | iOS 업로드가 막힌다. **.p8 은 만들 때 한 번만** 받을 수 있다 |
+| iOS 배포 인증서 (Apple Distribution) | Xcode 가 자동 서명으로 만든다 — Apple Developer 팀에서 Admin 이어야 한다 | `make deploy-ios` 가 IPA 를 못 만든다 |
+
+**왜 Apple ID + 앱 암호가 아니라 API 키인가**: 2단계 인증에 안 걸리고,
+TestFlight 의 What to Test 를 쓰는 API 가 같은 키로 열린다
+([`tool/testflight_notes.py`](tool/testflight_notes.py)).
+
+**왜 GitHub Actions 가 아닌가**: 이 레포에 repo admin 이 없어서 시크릿 하나
+넣는 데 org owner 를 거쳐야 하고, iOS 는 키스토어·배포 인증서·프로파일·ASC
+키를 전부 시크릿으로 올려야 한다. 사내 배포 빈도에 비해 비싸다.
+
+### Android release 가 debug 키로 서명된다
+
+[`android/app/build.gradle.kts`](android/app/build.gradle.kts) 의
+`signingConfig = signingConfigs.getByName("debug")` 다. 알고 그대로 둔다 —
+App Distribution 은 서명 주체를 따지지 않고, **바꾸면 기존에 깔린 앱을 전부
+지우고 다시 깔아야 하며**(서명이 다르면 덮어 설치가 안 된다) GCP 에 새 SHA-1
+을 등록할 때까지 **Google 로그인이 막힌다.**
+
+스토어로 나갈 일이 생기면 그때 릴리스 키스토어를 만든다. 그건 ADR 부터다.
+
 ## 원격 설정 (Firebase Remote Config)
 
 **콘솔에서 고치면 재배포 없이 바뀌는 값**이 여기 있다. 조회는 앱이 켜질 때

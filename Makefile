@@ -24,6 +24,7 @@ FLUTTER := fvm flutter
 DART := fvm dart
 
 .PHONY: help gen clean-gen icons run-dev run-prod apk-prod ipa-prod \
+        deploy deploy-android deploy-ios testflight-notes \
         test analyze check-prod-env
 
 help:
@@ -31,8 +32,13 @@ help:
 	@echo "icons       개발용 앱 아이콘 다시 만들기 (운영 아이콘이 바뀌었을 때)"
 	@echo "run-dev     개발 환경으로 실행 (debug · 내 기기 전용)"
 	@echo "run-prod    운영 환경으로 실행 — 운영 시트에 실제로 들어간다"
-	@echo "apk-prod    운영 APK (release)"
-	@echo "ipa-prod    운영 IPA (release)"
+	@echo "apk-prod    운영 APK (release) — 올리지는 않는다"
+	@echo "ipa-prod    운영 IPA (release) — 올리지는 않는다"
+	@echo ""
+	@echo "deploy-android   APK 빌드 → Firebase App Distribution"
+	@echo "deploy-ios       IPA 빌드 → TestFlight"
+	@echo "deploy           둘 다 (빌드 번호는 한 번만 올라간다)"
+	@echo "testflight-notes 처리가 끝난 TestFlight 빌드에 What to Test 붙이기"
 	@echo "analyze     flutter analyze"
 	@echo "test        flutter test"
 
@@ -62,6 +68,25 @@ apk-prod: check-prod-env
 
 ipa-prod: check-prod-env
 	$(FLUTTER) build ipa --release --flavor prod --dart-define=FLAVOR=prod
+
+# 사내 배포. 빌드 번호 올리기 · 생성 코드 굽기 · 빌드 · 업로드 · 공지 안내를
+# 한 줄로 묶는다. 순서와 이유는 `tool/deploy.sh` 머리말에 적혀 있다.
+#
+# `apk-prod`·`ipa-prod` 는 그대로 둔다 — **올리지 않고 빌드만** 해보는 길이
+# 하나는 있어야 한다(서명이 되는지, 빌드가 깨지지 않는지).
+deploy-android: check-prod-env
+	tool/deploy.sh android
+
+deploy-ios: check-prod-env
+	tool/deploy.sh ios
+
+deploy: check-prod-env
+	tool/deploy.sh all
+
+# 업로드와 따로인 이유: Apple 쪽 처리(5~30분)가 끝나야 노트를 붙일 빌드가
+# 생긴다. 처리 중이면 그렇다고 말하고 멈춘다.
+testflight-notes:
+	python3 tool/testflight_notes.py
 
 # 운영으로 나가기 전에 `.env.prod` 가 자리값인지 본다.
 #
