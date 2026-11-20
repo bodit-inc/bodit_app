@@ -43,6 +43,11 @@ API = "https://api.appstoreconnect.apple.com"
 # 운영 쪽은 바꾸지 않는다(CLAUDE.md "환경 분리" 1).
 BUNDLE_ID = os.environ.get("ASC_BUNDLE_ID", "co.bodit.boditApp")
 
+# 화면에는 "What to Test" 로 나오지만 API 필드는 `whatsNew` 다. `whatsToTest`
+# 로 보내면 409 로 거절한다("unknown attribute"). UI 라벨을 그대로 필드
+# 이름으로 짐작하지 않는다 — 실제 GET 응답의 키가 이것이다.
+WHATS_NEW = "whatsNew"
+
 
 def die(message: str) -> None:
     print(f"\n\033[31m오류: {message}\033[0m", file=sys.stderr)
@@ -208,14 +213,14 @@ def main() -> None:
             "data": {
                 "type": "betaBuildLocalizations",
                 "id": mine["id"],
-                "attributes": {"whatsToTest": notes},
+                "attributes": {WHATS_NEW: notes},
             }
         })
     else:
         call(token, "POST", "/v1/betaBuildLocalizations", {
             "data": {
                 "type": "betaBuildLocalizations",
-                "attributes": {"locale": locale, "whatsToTest": notes},
+                "attributes": {"locale": locale, WHATS_NEW: notes},
                 "relationships": {
                     "build": {"data": {"type": "builds", "id": build_id}}
                 },
