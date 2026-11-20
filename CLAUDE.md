@@ -89,8 +89,20 @@ Android 는 Firebase App Distribution(그룹 `Bodit`), iOS 는 TestFlight 다.
    App Store Connect 키가 들어간다
 5. **배포가 끝나면 Remote Config 공지가 남는다.** 올린 쪽은 알지만 깔린 쪽은
    모른다. 강제 여부(`minimum_version`)와 문구는 **사용자에게 묻는다** —
-   오타 하나로 전원이 막히는 값이라 혼자 정하지 않는다
-6. **Android release 가 debug 키로 서명된다.** 알고 둔 것이다 — 바꾸면 기존
+   오타 하나로 전원이 막히는 값이라 혼자 정하지 않는다.
+   값을 넣는 것은 Claude 가 `firebase` CLI 로 한다. 쓰기는 **템플릿 통째로
+   교체**라 읽기 → 그 값만 고치기 → 쓰기로 가고, **쓰기 전에 diff 를 보여준다**.
+   틀리면 `firebase remoteconfig:rollback --version-number N` 으로 되돌린다.
+   **스크립트로 만들지 않는다** — 배포당 값 두 개인데, 전 직원을 막을 수 있는
+   값에 쓰기 권한을 가진 코드를 레포에 둘 일이 아니다. 템플릿에
+   `slack_user_ids`(전 직원 이메일·Slack ID)가 같이 들어 있어서 **템플릿
+   파일을 레포에 두는 방식은 쓰지 않는다** — 이 레포는 공개다
+6. **iOS 의 What to Test 는 Claude 가 붙인다.** Apple 쪽 처리(5~30분)가 끝나야
+   붙일 빌드가 생기므로 배포 직후에는 안 된다. 배포가 끝나면 Claude 가
+   **10분 간격으로 재시도**하고 붙으면 말해준다 — 사람에게 "나중에
+   `make testflight-notes` 를 돌려라" 고 넘기지 않는다. 그 재시도는 대화가
+   열려 있는 동안만 도므로, Claude 없이 배포했으면 직접 돌린다
+7. **Android release 가 debug 키로 서명된다.** 알고 둔 것이다 — 바꾸면 기존
    설치를 전부 지우고 다시 깔아야 하고, 새 SHA-1 을 GCP 에 등록할 때까지
    Google 로그인이 막힌다. 스토어로 나갈 일이 생기면 그때 ADR 부터다
 

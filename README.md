@@ -138,8 +138,9 @@ make deploy-android      # Android 만
 make deploy-ios          # iOS 만
 make deploy              # 둘 다 — 빌드 번호는 한 번만 올라간다
 
-# 3. iOS 는 Apple 쪽 처리(5~30분)가 끝난 뒤 한 번 더
-make testflight-notes    # TestFlight 의 "What to Test" 를 채운다
+# 3. iOS 의 "What to Test" — Claude 가 10분 간격으로 재시도해 붙인다.
+#    Claude 없이 배포했다면 처리(5~30분)가 끝난 뒤 직접:
+make testflight-notes
 
 # 4. 공지 — Claude 에게 "배포했다, 공지하자" 고 말한다
 #    강제로 할지·문구를 뭘로 할지 묻고 콘솔에 넣을 값을 만들어준다

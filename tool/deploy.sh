@@ -219,10 +219,13 @@ GUIDE
 if [ "$do_ios" = 1 ]; then
   cat <<GUIDE
 
-    iOS 는 Apple 쪽 처리(5~30분)가 끝난 뒤 한 번 더:
+    iOS 의 What to Test 는 Apple 쪽 처리(5~30분)가 끝나야 붙는다.
+    **Claude 가 10분 간격으로 재시도한다** — 기다렸다 돌릴 필요 없다.
+
+    Claude 없이 배포했다면 처리가 끝난 뒤 직접 돌린다:
 
       make testflight-notes
 
-    처리 중이면 그렇다고 말하고 멈춘다 — 조금 뒤에 다시 돌리면 된다.
+    처리 중이면 그렇다고 말하고 멈춘다 — 일찍 돌려도 괜찮다.
 GUIDE
 fi
